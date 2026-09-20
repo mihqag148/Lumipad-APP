@@ -25,7 +25,7 @@ public static class ProductCatalog
     public static ProductDefinition DialDesk { get; } =
         new(
             "dial-desk",
-            "DIAL DESK",
+            "RYNOR ONE",
             "Wireless macro control desk",
             "DD-01",
             true,

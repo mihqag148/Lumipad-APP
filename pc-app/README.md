@@ -1,6 +1,6 @@
 # LumiPad Windows App
 
-Windows companion app for the Lumi MacroPad.
+Windows companion app for RYNOR ONE and PIXEL PRO. See the [repository README](../README.md) for build and independent release instructions.
 
 Current functions:
 
@@ -19,9 +19,9 @@ Current functions:
 
 ## Use
 
-1. Flash the matching newest Lumi MacroPad firmware.
+1. Flash the firmware for your selected product from its own repository.
 2. Connect the macropad to the Windows PC by USB.
-3. Open LumiPad.exe.
+3. Open `Lumi Macropad.exe` and select RYNOR ONE or PIXEL PRO.
 4. Press Detect LumiPad if it is not detected automatically.
 5. Start playing music.
 

@@ -412,7 +412,7 @@ public sealed class SerialLink : IDeviceLink
                             $"Bluetooth · {(!string.IsNullOrWhiteSpace(info.Name) ? info.Name : candidate.Name)}";
 
                         if (string.IsNullOrWhiteSpace(_connectionName.TrimEnd()))
-                            _connectionName = "Bluetooth · DIAL DESK";
+                            _connectionName = "Bluetooth · RYNOR ONE";
 
                         Log("INFO",
                             $"Connected {_connectionName}; {FirmwareHello}; BLE payload={_blePayloadSize} bytes");

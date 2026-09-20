@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+publish/
+dist/
+.vs/
+*.user
+pc-app/LumiPad.App/Assets/LumiPad.ico

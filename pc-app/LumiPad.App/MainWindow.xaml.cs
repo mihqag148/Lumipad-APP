@@ -42,7 +42,9 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _reconnectCts = new();
     private static readonly HttpClient UpdateHttp = CreateUpdateHttpClient();
     private const string UpdateReleaseApi =
-        "https://api.github.com/repos/mihqag148/MacroPad/releases/latest";
+        "https://api.github.com/repos/mihqag148/Lumipad-APP/releases/latest";
+    private const string RynorFirmwareReleaseApi =
+        "https://api.github.com/repos/mihqag148/RYNOR-ONE/releases/latest";
     private const string PixelProFirmwareReleaseApi =
         "https://api.github.com/repos/mihqag148/PIXEL-PRO---Lumi-Macropad/releases/latest";
     private bool _updateBusy;
@@ -621,7 +623,7 @@ public partial class MainWindow : Window
         };
         display.Child = new TextBlock
         {
-            Text = "DIAL DESK",
+            Text = "RYNOR ONE",
             Foreground = System.Windows.Media.Brushes.White,
             FontSize = 9,
             FontWeight = FontWeights.SemiBold,
@@ -894,7 +896,7 @@ public partial class MainWindow : Window
         ["GIF / Image local"] = "GIF / Ảnh trên máy",
         ["Choose a GIF or image"] = "Chọn GIF hoặc ảnh",
         ["No file selected"] = "Chưa chọn tệp",
-        ["Converted to a lightweight loop for DIAL DESK."] = "Tự chuyển thành vòng lặp nhẹ cho DIAL DESK.",
+        ["Converted to a lightweight loop for RYNOR ONE."] = "Tự chuyển thành vòng lặp nhẹ cho RYNOR ONE.",
         ["Scale"] = "Co giãn",
         ["Fill"] = "Lấp đầy",
         ["Fit"] = "Vừa khung",
@@ -903,7 +905,7 @@ public partial class MainWindow : Window
         ["Center"] = "Căn giữa",
         ["Span"] = "Phủ rộng",
         ["Choose GIF / Image"] = "Chọn GIF / Ảnh",
-        ["Send to DIAL DESK"] = "Gửi tới DIAL DESK",
+        ["Send to RYNOR ONE"] = "Gửi tới RYNOR ONE",
         ["Clear"] = "Xóa",
         ["The file stays local. Only reduced animation frames are sent."] = "Tệp vẫn nằm trên máy. Chỉ các frame đã giảm được gửi đi.",
         ["Screensaver after"] = "Bảo vệ màn hình sau",
@@ -2726,163 +2728,68 @@ public partial class MainWindow : Window
         ParseVersionLoose(latest) >
         ParseVersionLoose(current);
 
-    private async Task<LatestReleaseInfo> GetLatestReleaseInfoAsync()
+    private static async Task<(string Tag, string Version, string ManifestUrl)>
+        ReadReleaseVersionAsync(string api, string manifestName, string versionProperty)
     {
-        using var response =
-            await UpdateHttp.GetAsync(UpdateReleaseApi);
+        using var response = await UpdateHttp.GetAsync(api);
         response.EnsureSuccessStatusCode();
-
-        using JsonDocument release =
-            JsonDocument.Parse(
-                await response.Content.ReadAsStringAsync());
-
-        string tag =
-            release.RootElement.TryGetProperty(
-                "tag_name",
-                out JsonElement tagElement)
-                ? tagElement.GetString() ?? ""
-                : "";
-
+        using JsonDocument release = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+        string tag = release.RootElement.GetProperty("tag_name").GetString() ?? "";
+        string version = tag.TrimStart('v', 'V');
         string manifestUrl = "";
-
-        if (release.RootElement.TryGetProperty(
-                "assets",
-                out JsonElement assets))
+        if (release.RootElement.TryGetProperty("assets", out JsonElement assets))
         {
             foreach (JsonElement asset in assets.EnumerateArray())
             {
-                string name =
-                    asset.GetProperty("name").GetString() ?? "";
-
-                if (!string.Equals(
-                        name,
-                        "release-manifest.json",
-                        StringComparison.OrdinalIgnoreCase))
-                {
+                if (!string.Equals(asset.GetProperty("name").GetString(),
+                        manifestName, StringComparison.OrdinalIgnoreCase))
                     continue;
-                }
-
-                manifestUrl =
-                    asset.GetProperty(
-                        "browser_download_url").GetString() ?? "";
+                manifestUrl = asset.GetProperty("browser_download_url").GetString() ?? "";
                 break;
             }
         }
-
-        string appVersion =
-            tag.TrimStart('v', 'V');
-        string firmwareVersion = appVersion;
-
         if (!string.IsNullOrWhiteSpace(manifestUrl))
         {
-            using var manifestResponse =
-                await UpdateHttp.GetAsync(manifestUrl);
+            using var manifestResponse = await UpdateHttp.GetAsync(manifestUrl);
             manifestResponse.EnsureSuccessStatusCode();
-
-            using JsonDocument manifest =
-                JsonDocument.Parse(
-                    await manifestResponse.Content.ReadAsStringAsync());
-
-            if (manifest.RootElement.TryGetProperty(
-                    "appVersion",
-                    out JsonElement appElement))
-            {
-                appVersion =
-                    appElement.GetString() ?? appVersion;
-            }
-            else if (manifest.RootElement.TryGetProperty(
-                         "version",
-                         out JsonElement legacyElement))
-            {
-                appVersion =
-                    legacyElement.GetString() ?? appVersion;
-            }
-
-            if (manifest.RootElement.TryGetProperty(
-                    "firmwareVersion",
-                    out JsonElement fwElement))
-            {
-                firmwareVersion =
-                    fwElement.GetString() ?? firmwareVersion;
-            }
+            using JsonDocument manifest = JsonDocument.Parse(
+                await manifestResponse.Content.ReadAsStringAsync());
+            if (manifest.RootElement.TryGetProperty(versionProperty, out JsonElement value) ||
+                manifest.RootElement.TryGetProperty("version", out value))
+                version = value.GetString() ?? version;
         }
+        return (tag, version, manifestUrl);
+    }
 
-        if (string.Equals(
-                _activeProduct.Id,
-                ProductCatalog.PixelPro.Id,
-                StringComparison.OrdinalIgnoreCase))
+    private async Task<LatestReleaseInfo> GetLatestReleaseInfoAsync()
+    {
+        // Independent release channels: a missing firmware release must not block app updates.
+        string tag = "", appVersion = "", firmwareVersion = "", manifestUrl = "";
+        try
         {
-            using var pixelResponse =
-                await UpdateHttp.GetAsync(PixelProFirmwareReleaseApi);
-            pixelResponse.EnsureSuccessStatusCode();
-
-            using JsonDocument pixelRelease =
-                JsonDocument.Parse(
-                    await pixelResponse.Content.ReadAsStringAsync());
-
-            string pixelTag =
-                pixelRelease.RootElement.TryGetProperty(
-                    "tag_name",
-                    out JsonElement pixelTagElement)
-                    ? pixelTagElement.GetString() ?? ""
-                    : "";
-
-            string cleanPixelTag =
-                pixelTag.Trim().TrimStart('v', 'V');
-
-            if (!string.IsNullOrWhiteSpace(cleanPixelTag))
-                firmwareVersion = cleanPixelTag;
-
-            if (pixelRelease.RootElement.TryGetProperty(
-                    "assets",
-                    out JsonElement pixelAssets))
-            {
-                foreach (JsonElement asset in pixelAssets.EnumerateArray())
-                {
-                    string name =
-                        asset.GetProperty("name").GetString() ?? "";
-
-                    if (!string.Equals(
-                            name,
-                            "firmware-manifest.json",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    string pixelManifestUrl =
-                        asset.GetProperty(
-                            "browser_download_url").GetString() ?? "";
-
-                    if (string.IsNullOrWhiteSpace(pixelManifestUrl))
-                        break;
-
-                    using var pixelManifestResponse =
-                        await UpdateHttp.GetAsync(pixelManifestUrl);
-                    pixelManifestResponse.EnsureSuccessStatusCode();
-
-                    using JsonDocument pixelManifest =
-                        JsonDocument.Parse(
-                            await pixelManifestResponse.Content.ReadAsStringAsync());
-
-                    if (pixelManifest.RootElement.TryGetProperty(
-                            "version",
-                            out JsonElement pixelVersion))
-                    {
-                        firmwareVersion =
-                            pixelVersion.GetString() ?? firmwareVersion;
-                    }
-
-                    break;
-                }
-            }
+            (tag, appVersion, manifestUrl) = await ReadReleaseVersionAsync(
+                UpdateReleaseApi, "release-manifest.json", "appVersion");
         }
-
-        return new LatestReleaseInfo(
-            tag,
-            appVersion,
-            firmwareVersion,
-            manifestUrl);
+        catch (Exception ex)
+        {
+            AddLog("WARN", "UPDATE", $"App release check failed: {ex.Message}");
+        }
+        try
+        {
+            bool pixel = string.Equals(_activeProduct.Id, ProductCatalog.PixelPro.Id,
+                StringComparison.OrdinalIgnoreCase);
+            var firmware = await ReadReleaseVersionAsync(
+                pixel ? PixelProFirmwareReleaseApi : RynorFirmwareReleaseApi,
+                pixel ? "firmware-manifest.json" : "release-manifest.json",
+                pixel ? "version" : "firmwareVersion");
+            firmwareVersion = firmware.Version;
+        }
+        catch (Exception ex)
+        {
+            AddLog("WARN", "UPDATE", $"Firmware release check failed: {ex.Message}");
+        }
+        return new LatestReleaseInfo(tag, appVersion, firmwareVersion, manifestUrl);
     }
 
     private void RefreshUpdateUi()
@@ -3022,6 +2929,7 @@ public partial class MainWindow : Window
 
             _firmwareUpdateAvailable =
                 _serial.IsConnected &&
+                !string.IsNullOrWhiteSpace(_latestFirmwareVersion) &&
                 (currentFirmware is null ||
                  IsNewerVersion(
                     _latestFirmwareVersion,
@@ -3690,8 +3598,8 @@ public partial class MainWindow : Window
         {
             System.Windows.MessageBox.Show(
                 L(
-                    "Connect DIAL DESK by USB first. The app will enter UF2 bootloader and flash the latest firmware automatically.",
-                    "Hãy cắm DIAL DESK bằng USB trước. App sẽ tự vào UF2 bootloader và tự nạp firmware mới nhất."),
+                    "Connect RYNOR ONE by USB first. The app will enter UF2 bootloader and flash the latest firmware automatically.",
+                    "Hãy cắm RYNOR ONE bằng USB trước. App sẽ tự vào UF2 bootloader và tự nạp firmware mới nhất."),
                 "LumiPad Firmware Update",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -3700,8 +3608,8 @@ public partial class MainWindow : Window
 
         var confirm = System.Windows.MessageBox.Show(
             L(
-                "Download and install the latest DIAL DESK firmware now?",
-                "Tải và tự nạp firmware DIAL DESK mới nhất ngay bây giờ?"),
+                "Download and install the latest RYNOR ONE firmware now?",
+                "Tải và tự nạp firmware RYNOR ONE mới nhất ngay bây giờ?"),
             "LumiPad Firmware Update",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -3726,7 +3634,7 @@ public partial class MainWindow : Window
 
             var asset =
                 await FindLatestAssetAsync(
-                    "firmware.uf2");
+                    "firmware.uf2", RynorFirmwareReleaseApi);
             await DownloadFileAsync(
                 asset.Url,
                 tempFile);
@@ -4329,8 +4237,8 @@ try {{
             else if (_pcMonitorEnabled)
             {
                 PcMonitorLinkText.Text =
-                    L("PC sensors live · DIAL DESK is offline",
-                      "Cảm biến PC đang chạy · DIAL DESK chưa kết nối");
+                    L("PC sensors live · RYNOR ONE is offline",
+                      "Cảm biến PC đang chạy · RYNOR ONE chưa kết nối");
             }
             else
             {

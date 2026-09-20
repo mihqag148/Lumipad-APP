@@ -59,7 +59,7 @@
                         Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="WorkspaceProductTitle"
-                               Text="DIAL DESK"
+                               Text="RYNOR ONE"
                                FontSize="28"
                                FontWeight="SemiBold"/>
                     <TextBlock Text="Lumi Macropad · Device Control"
@@ -384,7 +384,7 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- Physical DIAL DESK panel is 320x172.
+                            <!-- Physical RYNOR ONE panel is 320x172.
                                  Keep the app preview at exactly the same 1.8605:1
                                  aspect ratio instead of approximating 16:9. -->
                             <Border Width="360"
@@ -414,7 +414,7 @@
                                        Margin="0,10,0,0"/>
 
                             <TextBlock x:Name="ScreensaverMediaInfo"
-                                       Text="Converted to a lightweight loop for DIAL DESK."
+                                       Text="Converted to a lightweight loop for RYNOR ONE."
                                        FontSize="11"
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource Muted}"
@@ -441,7 +441,7 @@
                                 <Button Content="Choose GIF / Image"
                                         Click="ChooseScreensaverMedia_Click"/>
                                 <Button x:Name="SendScreensaverButton"
-                                        Content="Send to DIAL DESK"
+                                        Content="Send to RYNOR ONE"
                                         Click="SendScreensaverMedia_Click"
                                         IsEnabled="False"/>
                                 <Button x:Name="ShowScreensaverNowButton"
@@ -1043,7 +1043,7 @@
                                    FontSize="24"
                                    FontWeight="SemiBold"
                                    Margin="0,6,0,0"/>
-                        <TextBlock Text="Create actions and assign them to DIAL DESK keys."
+                        <TextBlock Text="Create actions and assign them to RYNOR ONE keys."
                                    Foreground="{DynamicResource Muted}"
                                    Margin="0,4,0,0"/>
                     </StackPanel>
@@ -1243,7 +1243,7 @@
                             </StackPanel>
                             <CheckBox x:Name="PcMonitorEnabledCheckBox"
                                       Grid.Column="1"
-                                      Content="Stream to DIAL DESK"
+                                      Content="Stream to RYNOR ONE"
                                       IsChecked="True"
                                       Checked="PcMonitorEnabled_Changed"
                                       Unchecked="PcMonitorEnabled_Changed"
@@ -1333,7 +1333,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="DIAL DESK DISPLAY"
+                                        <TextBlock Text="RYNOR ONE DISPLAY"
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Muted}"/>
@@ -1622,7 +1622,7 @@
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="DIAL DESK status"
+                                    <TextBlock Text="RYNOR ONE status"
                                                FontSize="21"
                                                FontWeight="SemiBold"
                                                Margin="0,6,0,18"/>
