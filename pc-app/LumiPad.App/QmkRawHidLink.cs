@@ -126,7 +126,16 @@ public sealed class QmkRawHidLink : IDeviceLink
             }
 
             if (!device.TryOpen(out HidStream stream))
+            {
+                Log(
+                    "WARN",
+                    $"Raw HID candidate IN={inputLength} OUT={outputLength} could not be opened. Another app/browser may still own the interface.");
                 continue;
+            }
+
+            Log(
+                "INFO",
+                $"Raw HID opened successfully; probing Lumi HELLO on VID=0x{device.VendorID:X4} PID=0x{device.ProductID:X4}.");
 
             _device = device;
             _stream = stream;
@@ -139,9 +148,22 @@ public sealed class QmkRawHidLink : IDeviceLink
                 string? hello =
                     await QueryLineAsync("HELLO", 900, cancellationToken);
 
-                if (hello is null ||
-                    !hello.StartsWith("LUMIPAD|", StringComparison.Ordinal))
+                if (hello is null)
                 {
+                    Log(
+                        "WARN",
+                        "Raw HID opened, but Lumi HELLO timed out. Device is present but the firmware did not answer the Lumi protocol.");
+                    stream.Dispose();
+                    _stream = null;
+                    _device = null;
+                    continue;
+                }
+
+                if (!hello.StartsWith("LUMIPAD|", StringComparison.Ordinal))
+                {
+                    Log(
+                        "WARN",
+                        $"Raw HID opened and replied, but HELLO response was unexpected: {hello}");
                     stream.Dispose();
                     _stream = null;
                     _device = null;
