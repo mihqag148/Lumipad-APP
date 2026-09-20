@@ -767,6 +767,7 @@ public partial class MainWindow : Window
             _zmkInitialized = false;
             _loadedConfiguratorUrl = "";
             UpdateDeviceConfiguratorUi();
+            UpdateProductSpecificText();
 
             SetDeviceControlsEnabled(false);
             UpdateTransportIndicators();
@@ -789,6 +790,46 @@ public partial class MainWindow : Window
         {
             _autoReconnectEnabled = true;
         }
+    }
+
+    private void UpdateProductSpecificText()
+    {
+        string productName = _activeProduct.Name;
+
+        if (WorkspaceProductTitle is not null)
+            WorkspaceProductTitle.Text = productName;
+
+        if (SendScreensaverButton is not null)
+            SendScreensaverButton.Content =
+                L($"Send to {productName}", $"Gửi tới {productName}");
+
+        if (ScreensaverMediaInfo is not null &&
+            _screensaverAnimation is null)
+        {
+            ScreensaverMediaInfo.Text =
+                L(
+                    $"Converted to a lightweight loop for {productName}.",
+                    $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
+        }
+
+        if (LumiActionDescriptionText is not null)
+        {
+            LumiActionDescriptionText.Text =
+                L(
+                    $"Create actions and assign them to {productName} keys.",
+                    $"Tạo action và gán vào các phím {productName}.");
+        }
+
+        if (PcMonitorEnabledCheckBox is not null)
+            PcMonitorEnabledCheckBox.Content =
+                L($"Stream to {productName}", $"Gửi tới {productName}");
+
+        if (PcMonitorDisplayTitleText is not null)
+            PcMonitorDisplayTitleText.Text = $"{productName.ToUpperInvariant()} DISPLAY";
+
+        if (SettingsDeviceTitleText is not null)
+            SettingsDeviceTitleText.Text =
+                L($"{productName} status", $"Trạng thái {productName}");
     }
 
     private void UpdateProductHubUi()
@@ -1106,6 +1147,7 @@ public partial class MainWindow : Window
     {
         var visited = new HashSet<DependencyObject>();
         TranslateElement(this, visited);
+        UpdateProductSpecificText();
 
         if (_trayIcon?.ContextMenuStrip is not null)
         {
@@ -1644,6 +1686,13 @@ public partial class MainWindow : Window
     {
         _lightTheme = !_lightTheme;
         ApplyTheme();
+
+        // Auto Profile rows are created in code and hold concrete resource
+        // brushes. Rebuild them after a theme switch so light mode does not
+        // leave stale dark cards/icons behind.
+        RefreshAutoProfileMappingsUi();
+        RefreshRunningAppsUi();
+
         ApplyLanguage();
         SaveTheme();
     }
