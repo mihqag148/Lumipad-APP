@@ -48,6 +48,8 @@ public partial class MainWindow : Window
         "https://api.github.com/repos/mihqag148/RYNOR-ONE/releases/latest";
     private const string PixelProFirmwareReleaseApi =
         "https://api.github.com/repos/mihqag148/PIXEL-PRO/releases/latest";
+    private const string PixelProQmkFirmwareAsset =
+        "PIXEL_PRO_QMK_merged.bin";
     private bool _updateBusy;
     private bool _checkingUpdates;
     private bool _appUpdateAvailable;
@@ -3295,9 +3297,9 @@ public partial class MainWindow : Window
     {
         var confirm = System.Windows.MessageBox.Show(
             L(
-                "This PIXEL PRO needs a one-time bootstrap before in-app OTA can work. Lumi Macropad can do it itself: it will download the official Espressif flashing engine and the latest PIXEL PRO firmware. You only need to put the board into BOOT mode when prompted. Continue?",
-                "PIXEL PRO này cần bootstrap một lần trước khi OTA trong app hoạt động. Lumi Macropad sẽ tự tải bộ nạp chính thức của Espressif và firmware mới nhất. Bạn chỉ cần đưa mạch vào BOOT khi app yêu cầu. Tiếp tục?"),
-            "PIXEL PRO · Enable one-click updates",
+                "Install or repair the real QMK firmware on PIXEL PRO? LumiPad will download the latest PIXEL PRO QMK image and the official Espressif flashing engine. You only need to put the board into ROM BOOT mode when prompted.",
+                "Cài hoặc sửa firmware QMK thật cho PIXEL PRO? LumiPad sẽ tự tải bản QMK mới nhất và bộ nạp chính thức của Espressif. Bạn chỉ cần đưa mạch vào ROM BOOT khi app yêu cầu."),
+            "PIXEL PRO · Install real QMK",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -3310,12 +3312,12 @@ public partial class MainWindow : Window
         string workRoot =
             IO.Path.Combine(
                 IO.Path.GetTempPath(),
-                "LumiPad-PixelPro-Bootstrap-" +
+                "LumiPad-PixelPro-QMK-" +
                 Guid.NewGuid().ToString("N"));
         string mergedPath =
             IO.Path.Combine(
                 workRoot,
-                "PIXEL_PRO_merged.bin");
+                PixelProQmkFirmwareAsset);
 
         try
         {
@@ -3323,12 +3325,12 @@ public partial class MainWindow : Window
 
             UpdateStatusText.Text =
                 L(
-                    "Downloading PIXEL PRO bootstrap firmware…",
-                    "Đang tải firmware bootstrap PIXEL PRO…");
+                    "Downloading latest PIXEL PRO real QMK firmware…",
+                    "Đang tải firmware QMK thật mới nhất cho PIXEL PRO…");
 
             var firmware =
                 await FindLatestAssetAsync(
-                    "PIXEL_PRO_merged.bin",
+                    PixelProQmkFirmwareAsset,
                     PixelProFirmwareReleaseApi);
 
             await DownloadFileAsync(
@@ -3472,8 +3474,8 @@ public partial class MainWindow : Window
 
             UpdateStatusText.Text =
                 L(
-                    $"PIXEL PRO {firmware.Tag} bootstrap installed. Reconnecting…",
-                    $"Đã nạp bootstrap PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
+                    $"PIXEL PRO QMK {firmware.Tag} installed. Reconnecting…",
+                    $"Đã nạp QMK PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
 
             _autoReconnectEnabled = true;
 
@@ -3489,9 +3491,9 @@ public partial class MainWindow : Window
             {
                 System.Windows.MessageBox.Show(
                     L(
-                        "Flash completed. ESP32-S2 sometimes needs one manual RESET after flashing. Press RESET once, then click Connect USB. After this bootstrap, future firmware updates are fully automatic inside Lumi Macropad.",
-                        "Đã nạp xong. ESP32-S2 đôi khi cần nhấn RESET một lần sau khi flash. Nhấn RESET rồi bấm Kết nối USB. Sau lần bootstrap này, các firmware sau sẽ cập nhật hoàn toàn tự động trong Lumi Macropad."),
-                    "PIXEL PRO bootstrap complete",
+                        "QMK flash completed and verified. If PIXEL PRO has not reconnected yet, press RESET once. LumiPad will keep trying the QMK Raw HID interface automatically.",
+                        "Đã nạp và xác minh QMK xong. Nếu PIXEL PRO chưa kết nối lại, nhấn RESET một lần. LumiPad sẽ tự tiếp tục dò QMK Raw HID."),
+                    "PIXEL PRO QMK install",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -3504,8 +3506,8 @@ public partial class MainWindow : Window
 
                 System.Windows.MessageBox.Show(
                     L(
-                        "Bootstrap complete. PIXEL PRO now supports one-click firmware updates directly from GitHub inside Lumi Macropad.",
-                        "Bootstrap hoàn tất. Từ giờ PIXEL PRO có thể cập nhật firmware 1 nút trực tiếp từ GitHub trong Lumi Macropad."),
+                        "QMK installed and LumiPad connected. The VIA tab will release Raw HID automatically when you open VIA.",
+                        "QMK đã cài và LumiPad đã kết nối. Khi mở tab VIA, app sẽ tự nhả Raw HID cho VIA."),
                     "PIXEL PRO",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -3518,12 +3520,12 @@ public partial class MainWindow : Window
             _autoReconnectEnabled = true;
             UpdateStatusText.Text =
                 L(
-                    $"PIXEL PRO bootstrap failed: {ex.Message}",
-                    $"Bootstrap PIXEL PRO lỗi: {ex.Message}");
+                    $"PIXEL PRO QMK install failed: {ex.Message}",
+                    $"Cài QMK PIXEL PRO lỗi: {ex.Message}");
             AddLog(
                 "ERROR",
                 "UPDATE",
-                $"PIXEL PRO bootstrap failed: {ex}");
+                $"PIXEL PRO QMK install failed: {ex}");
         }
         finally
         {
@@ -3544,148 +3546,18 @@ public partial class MainWindow : Window
 
     private async Task UpdatePixelProFirmwareAsync()
     {
-        if (_serial is not QmkRawHidLink pixelLink)
+        if (_serial is not QmkRawHidLink)
         {
             throw new InvalidOperationException(
-                "PIXEL PRO Raw HID driver is not active.");
+                "PIXEL PRO QMK Raw HID driver is not active.");
         }
 
-        // Recovery path: a broken/stale Raw HID descriptor must not block
-        // firmware repair. Bootstrap uses the ESP32-S2 ROM BOOT COM port and
-        // PIXEL_PRO_merged.bin, so it does not require the running firmware to
-        // have a working Lumi/VIA channel.
-        if (!pixelLink.IsConnected || !pixelLink.IsUsbConnected)
-        {
-            await BootstrapPixelProFirmwareAsync();
-            return;
-        }
-
-        if (!pixelLink.SupportsFirmwareOta)
-        {
-            await BootstrapPixelProFirmwareAsync();
-            return;
-        }
-
-        var confirm = System.Windows.MessageBox.Show(
-            L(
-                "Download the latest PIXEL PRO firmware from GitHub and install it directly over USB now?",
-                "Tải firmware PIXEL PRO mới nhất từ GitHub và nạp trực tiếp qua USB ngay?"),
-            "PIXEL PRO Firmware Update",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (confirm != MessageBoxResult.Yes)
-            return;
-
-        _updateBusy = true;
-        SetDeviceControlsEnabled(true);
-
-        string tempFile =
-            IO.Path.Combine(
-                IO.Path.GetTempPath(),
-                $"pixel-pro-ota-{Guid.NewGuid():N}.bin");
-
-        try
-        {
-            UpdateStatusText.Text =
-                L(
-                    "Downloading latest PIXEL PRO firmware…",
-                    "Đang tải firmware PIXEL PRO mới nhất…");
-
-            var asset =
-                await FindLatestAssetAsync(
-                    "PIXEL_PRO_OTA.bin",
-                    PixelProFirmwareReleaseApi);
-
-            await DownloadFileAsync(
-                asset.Url,
-                tempFile);
-
-            byte[] image =
-                await IO.File.ReadAllBytesAsync(tempFile);
-
-            if (image.Length < 4096)
-            {
-                throw new InvalidOperationException(
-                    "Downloaded PIXEL PRO firmware image is invalid.");
-            }
-
-            var progress = new Progress<int>(value =>
-            {
-                UpdateStatusText.Text =
-                    L(
-                        $"Installing PIXEL PRO firmware… {value}%",
-                        $"Đang nạp firmware PIXEL PRO… {value}%");
-            });
-
-            await pixelLink.InstallFirmwareAsync(
-                image,
-                progress);
-
-            UpdateStatusText.Text =
-                L(
-                    $"Firmware {asset.Tag} installed. Reconnecting…",
-                    $"Đã nạp firmware {asset.Tag}. Đang kết nối lại…");
-
-            await Task.Delay(1200);
-            _serial.Disconnect();
-
-            _autoReconnectEnabled = true;
-
-            string? connection = null;
-            for (int i = 0; i < 12 && connection is null; i++)
-            {
-                await Task.Delay(500);
-                connection =
-                    await _serial.ConnectUsbAsync();
-            }
-
-            if (connection is null)
-            {
-                throw new IO.IOException(
-                    L(
-                        "Firmware installed, but PIXEL PRO did not reconnect yet. Press RESET once, then Connect USB.",
-                        "Đã nạp firmware nhưng PIXEL PRO chưa kết nối lại. Nhấn RESET một lần rồi bấm Kết nối USB."));
-            }
-
-            DeviceStatus.Text = connection;
-            DeviceDot.Fill =
-                new SolidColorBrush(
-                    MediaColor.FromRgb(48, 209, 88));
-
-            UpdateStatusText.Text =
-                L(
-                    $"PIXEL PRO firmware update complete · {asset.Tag}",
-                    $"Cập nhật firmware PIXEL PRO hoàn tất · {asset.Tag}");
-
-            await CheckForUpdatesAsync(silent: true);
-        }
-        catch (Exception ex)
-        {
-            UpdateStatusText.Text =
-                L(
-                    $"PIXEL PRO firmware update failed: {ex.Message}",
-                    $"Cập nhật firmware PIXEL PRO lỗi: {ex.Message}");
-            AddLog(
-                "ERROR",
-                "UPDATE",
-                $"PIXEL PRO firmware update failed: {ex}");
-        }
-        finally
-        {
-            try
-            {
-                if (IO.File.Exists(tempFile))
-                    IO.File.Delete(tempFile);
-            }
-            catch
-            {
-            }
-
-            _updateBusy = false;
-            SetDeviceControlsEnabled(
-                _serial.IsConnected);
-        }
+        // PIXEL PRO is QMK-first now. The app always installs the merged QMK
+        // image through ESP32-S2 ROM BOOT so a broken running HID stack can
+        // never prevent firmware recovery or migration from the old ESP-IDF
+        // firmware. Future QMK OTA support can be added without changing the
+        // user's Update Firmware entry point.
+        await BootstrapPixelProFirmwareAsync();
     }
 
     private async void FirmwareUpdate_Click(
