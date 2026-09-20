@@ -2,7 +2,6 @@
   "name": "PIXEL PRO",
   "vendorId": "0x303A",
   "productId": "0x4009",
-  "lighting": "none",
   "matrix": {
     "rows": 2,
     "cols": 4

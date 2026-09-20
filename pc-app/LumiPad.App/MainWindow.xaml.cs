@@ -6322,20 +6322,53 @@ try {{
             return;
 
         _viaConfiguratorExclusive = false;
-        _autoReconnectEnabled = true;
+        _autoReconnectEnabled = false;
 
         if (_activeProduct.Driver != DeviceDriverKind.QmkRawHid)
+        {
+            _autoReconnectEnabled = true;
             return;
+        }
 
         AddLog(
             "INFO",
             "VIA",
-            "VIA tab released; reconnecting PIXEL PRO Raw HID to LumiPad.");
+            "Closing WebHID and unloading VIA before reconnecting PIXEL PRO.");
+
+        try
+        {
+            if (ZmkWebView?.CoreWebView2 is not null)
+            {
+                try
+                {
+                    await ZmkWebView.CoreWebView2.ExecuteScriptAsync(
+                        "(async()=>{try{const ds=await navigator.hid.getDevices();" +
+                        "for(const d of ds){if(d.vendorId===0x303A&&d.productId===0x4009&&d.opened){await d.close();}}" +
+                        "}catch(e){} return true;})()");
+                }
+                catch
+                {
+                }
+
+                ZmkWebView.CoreWebView2.Navigate("about:blank");
+            }
+
+            _zmkInitialized = false;
+            _loadedConfiguratorUrl = "";
+
+            // Give WebView2/Chromium time to release the Win32 HID handle.
+            await Task.Delay(500);
+        }
+        catch (Exception ex)
+        {
+            AddLog("WARN", "VIA", $"WebHID release failed: {ex.Message}");
+        }
 
         DeviceStatus.Text = L("Reconnecting…", "Đang kết nối lại…");
         DeviceDot.Fill =
             new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
 
+        _autoReconnectEnabled = true;
         await DetectAsync();
     }
 
@@ -6425,7 +6458,24 @@ try {{
             return;
 
         if (_activeProduct.Driver == DeviceDriverKind.QmkRawHid)
+        {
             await EnterViaExclusiveModeAsync();
+
+            // External Edge must be the only browser owning WebHID.
+            if (ZmkWebView?.CoreWebView2 is not null)
+            {
+                try
+                {
+                    ZmkWebView.CoreWebView2.Navigate("about:blank");
+                    _zmkInitialized = false;
+                    _loadedConfiguratorUrl = "";
+                    await Task.Delay(250);
+                }
+                catch
+                {
+                }
+            }
+        }
 
         try
         {
