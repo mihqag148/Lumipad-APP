@@ -152,7 +152,49 @@ public sealed class QmkRawHidLink : IDeviceLink
                 {
                     Log(
                         "WARN",
-                        "Raw HID opened, but Lumi HELLO timed out. Device is present but the firmware did not answer the Lumi protocol.");
+                        "Raw HID opened, but Lumi HELLO timed out. Probing the standard VIA protocol before rejecting the device.");
+
+                    int? viaProtocol =
+                        await ProbeViaProtocolAsync(
+                            stream,
+                            device,
+                            cancellationToken);
+
+                    if (viaProtocol.HasValue)
+                    {
+                        string productName;
+                        try
+                        {
+                            productName = device.GetProductName();
+                        }
+                        catch
+                        {
+                            productName = _product.Name;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(productName))
+                            productName = _product.Name;
+
+                        // Compatibility mode: pure QMK/VIA is still accepted
+                        // even if the optional Lumi extension is unavailable.
+                        FirmwareHello =
+                            "LUMIPAD|3|FW=0.0.0-qmk-via|CAPS=";
+                        ProtocolVersion = 3;
+                        _capabilities.Clear();
+                        _connectionName =
+                            $"QMK VIA Raw HID · {productName}";
+
+                        Log(
+                            "INFO",
+                            $"Connected {_connectionName} in VIA compatibility mode; " +
+                            $"VIA protocol=0x{viaProtocol.Value:X4}.");
+
+                        return _connectionName;
+                    }
+
+                    Log(
+                        "WARN",
+                        "Raw HID did not answer Lumi HELLO or VIA protocol probe.");
                     stream.Dispose();
                     _stream = null;
                     _device = null;
@@ -250,6 +292,81 @@ public sealed class QmkRawHidLink : IDeviceLink
             "INFO",
             $"QMK Lumi protocol v{ProtocolVersion}; caps=" +
             string.Join(",", _capabilities));
+    }
+
+    private async Task<int?> ProbeViaProtocolAsync(
+        HidStream stream,
+        HidDevice device,
+        CancellationToken cancellationToken)
+    {
+        int outputLength =
+            Math.Max(
+                RawPayloadBytes + 1,
+                device.GetMaxOutputReportLength());
+
+        byte[] request = new byte[outputLength];
+        request[0] = _product.RawReportId;
+
+        // QMK VIA command 0x01 = id_get_protocol_version.
+        // QMK modifies the same 32-byte Raw HID buffer and sends it back:
+        // [0] command, [1] version MSB, [2] version LSB.
+        request[1] = 0x01;
+
+        stream.WriteTimeout = 900;
+        stream.ReadTimeout = 250;
+        stream.Write(request);
+
+        DateTime deadline =
+            DateTime.UtcNow.AddMilliseconds(1000);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            byte[] response =
+                new byte[Math.Max(
+                    RawPayloadBytes + 1,
+                    device.GetMaxInputReportLength())];
+
+            int count;
+            try
+            {
+                count =
+                    await Task.Run(
+                        () => stream.Read(
+                            response,
+                            0,
+                            response.Length),
+                        cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                continue;
+            }
+
+            int p =
+                count >= RawPayloadBytes + 1
+                    ? 1
+                    : 0;
+
+            if (p == 1 &&
+                response[0] != _product.RawReportId)
+            {
+                continue;
+            }
+
+            if (count - p < 3)
+                continue;
+
+            if (response[p] != 0x01)
+                continue;
+
+            return
+                (response[p + 1] << 8) |
+                response[p + 2];
+        }
+
+        return null;
     }
 
     public void Disconnect()
