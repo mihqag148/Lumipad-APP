@@ -4,7 +4,7 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- Lumi Macropad v1.14.4 · active-product UI and PIXEL PRO HID diagnostics -->
+  <!-- Lumi Macropad v1.14.5 · exclusive WebHID/VIA access for PIXEL PRO -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -19,9 +19,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.14.4</Version>
-    <AssemblyVersion>1.14.4.0</AssemblyVersion>
-    <FileVersion>1.14.4.0</FileVersion>
+    <Version>1.14.5</Version>
+    <AssemblyVersion>1.14.5.0</AssemblyVersion>
+    <FileVersion>1.14.5.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Content Include="Definitions\PIXEL-PRO-VIA.json">

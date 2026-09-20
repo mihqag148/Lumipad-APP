@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private bool _zmkInitialized;
     private string _loadedConfiguratorUrl = "";
     private bool _autoReconnectEnabled = true;
+    private bool _viaConfiguratorExclusive;
     private string _connectionPreference = "auto";
     private bool _keyboardSleeping;
     private readonly CancellationTokenSource _reconnectCts = new();
@@ -712,6 +713,9 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        if (_viaConfiguratorExclusive)
+            await ExitViaExclusiveModeAsync();
+
         DeviceWorkspace.Visibility = Visibility.Collapsed;
         ProductHub.Visibility = Visibility.Visible;
         await UpdateProductOverviewAsync();
@@ -742,6 +746,7 @@ public partial class MainWindow : Window
     private async Task SwitchActiveProductAsync(ProductDefinition product)
     {
         _autoReconnectEnabled = false;
+        _viaConfiguratorExclusive = false;
 
         try
         {
@@ -780,6 +785,12 @@ public partial class MainWindow : Window
                 $"Active product: {product.Name} ({product.Driver})");
 
             await DetectAsync();
+
+            if (ZmkTab.IsSelected &&
+                _activeProduct.Driver == DeviceDriverKind.QmkRawHid)
+            {
+                await EnterViaExclusiveModeAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -788,7 +799,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _autoReconnectEnabled = true;
+            _autoReconnectEnabled = !_viaConfiguratorExclusive;
         }
     }
 
@@ -6245,6 +6256,19 @@ try {{
         if (!ReferenceEquals(e.OriginalSource, MainTabs) || !_uiReady)
             return;
 
+        bool viaSelected =
+            ZmkTab.IsSelected &&
+            _activeProduct.Driver == DeviceDriverKind.QmkRawHid;
+
+        if (viaSelected)
+        {
+            await EnterViaExclusiveModeAsync();
+        }
+        else if (_viaConfiguratorExclusive)
+        {
+            await ExitViaExclusiveModeAsync();
+        }
+
         ApplyLanguage();
         Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
@@ -6252,6 +6276,67 @@ try {{
 
         if (ZmkTab.IsSelected)
             await EnsureDeviceConfiguratorAsync();
+    }
+
+    private Task EnterViaExclusiveModeAsync()
+    {
+        if (_activeProduct.Driver != DeviceDriverKind.QmkRawHid)
+            return Task.CompletedTask;
+
+        if (_viaConfiguratorExclusive)
+            return Task.CompletedTask;
+
+        _viaConfiguratorExclusive = true;
+        _autoReconnectEnabled = false;
+
+        AddLog(
+            "INFO",
+            "VIA",
+            "Releasing PIXEL PRO Raw HID so WebHID/VIA can own the interface.");
+
+        try
+        {
+            _serial.Disconnect();
+        }
+        catch
+        {
+        }
+
+        DeviceStatus.Text =
+            L("VIA owns PIXEL PRO", "VIA đang dùng PIXEL PRO");
+        DeviceDot.Fill =
+            new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
+        BottomStatus.Text =
+            L(
+                "Raw HID released to VIA. Leave the VIA tab to reconnect LumiPad.",
+                "Đã nhả Raw HID cho VIA. Rời tab VIA để LumiPad tự kết nối lại.");
+
+        SetDeviceControlsEnabled(false);
+        UpdateTransportIndicators();
+        return Task.CompletedTask;
+    }
+
+    private async Task ExitViaExclusiveModeAsync()
+    {
+        if (!_viaConfiguratorExclusive)
+            return;
+
+        _viaConfiguratorExclusive = false;
+        _autoReconnectEnabled = true;
+
+        if (_activeProduct.Driver != DeviceDriverKind.QmkRawHid)
+            return;
+
+        AddLog(
+            "INFO",
+            "VIA",
+            "VIA tab released; reconnecting PIXEL PRO Raw HID to LumiPad.");
+
+        DeviceStatus.Text = L("Reconnecting…", "Đang kết nối lại…");
+        DeviceDot.Fill =
+            new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
+
+        await DetectAsync();
     }
 
     private async Task EnsureDeviceConfiguratorAsync(bool force = false)
@@ -6302,8 +6387,12 @@ try {{
 
                 ZmkStatus.Text = webHidAvailable
                     ? L(
-                        "VIA loaded · WebHID ready",
-                        "VIA đã tải · WebHID sẵn sàng")
+                        _viaConfiguratorExclusive
+                            ? "VIA loaded · WebHID ready · LumiPad Raw HID released"
+                            : "VIA loaded · WebHID ready",
+                        _viaConfiguratorExclusive
+                            ? "VIA đã tải · WebHID sẵn sàng · LumiPad đã nhả Raw HID"
+                            : "VIA đã tải · WebHID sẵn sàng")
                     : L(
                         "VIA loaded · WebHID unavailable here — use Open in Edge",
                         "VIA đã tải · WebHID không khả dụng tại đây — dùng Open in Edge");
@@ -6329,11 +6418,14 @@ try {{
             ZmkWebView.Reload();
     }
 
-    private void OpenZmkExternal_Click(object sender, RoutedEventArgs e)
+    private async void OpenZmkExternal_Click(object sender, RoutedEventArgs e)
     {
         string url = CurrentConfiguratorUrl();
         if (string.IsNullOrWhiteSpace(url))
             return;
+
+        if (_activeProduct.Driver == DeviceDriverKind.QmkRawHid)
+            await EnterViaExclusiveModeAsync();
 
         try
         {
