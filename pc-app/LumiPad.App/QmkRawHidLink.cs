@@ -109,10 +109,19 @@ public sealed class QmkRawHidLink : IDeviceLink
                 continue;
             }
 
-            // QMK Raw HID is 32 bytes plus the report-ID byte used by HidSharp.
+            // HidSharp includes the report-ID byte in these lengths.
+            // A QMK/VIA Raw HID payload of 32 bytes therefore appears as 33.
+            Log(
+                "INFO",
+                $"HID candidate VID=0x{device.VendorID:X4} PID=0x{device.ProductID:X4} " +
+                $"IN={inputLength} OUT={outputLength}");
+
             if (inputLength < RawPayloadBytes + 1 ||
                 outputLength < RawPayloadBytes + 1)
             {
+                Log(
+                    "INFO",
+                    $"Skipping HID interface: expected at least {RawPayloadBytes + 1} bytes including report ID.");
                 continue;
             }
 
