@@ -1043,7 +1043,8 @@
                                    FontSize="24"
                                    FontWeight="SemiBold"
                                    Margin="0,6,0,0"/>
-                        <TextBlock Text="Create actions and assign them to RYNOR ONE keys."
+                        <TextBlock x:Name="LumiActionDescriptionText"
+                                   Text="Create actions and assign them to RYNOR ONE keys."
                                    Foreground="{DynamicResource Muted}"
                                    Margin="0,4,0,0"/>
                     </StackPanel>
@@ -1333,7 +1334,8 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="RYNOR ONE DISPLAY"
+                                        <TextBlock x:Name="PcMonitorDisplayTitleText"
+                                                   Text="RYNOR ONE DISPLAY"
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Muted}"/>
@@ -1622,7 +1624,8 @@
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="RYNOR ONE status"
+                                    <TextBlock x:Name="SettingsDeviceTitleText"
+                                               Text="RYNOR ONE status"
                                                FontSize="21"
                                                FontWeight="SemiBold"
                                                Margin="0,6,0,18"/>
