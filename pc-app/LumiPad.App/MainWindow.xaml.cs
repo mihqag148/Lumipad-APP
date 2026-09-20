@@ -2995,13 +2995,27 @@ public partial class MainWindow : Window
                     _latestAppVersion,
                     currentApp);
 
+            bool pixelRecovery =
+                string.Equals(
+                    _activeProduct.Id,
+                    ProductCatalog.PixelPro.Id,
+                    StringComparison.OrdinalIgnoreCase);
+
             _firmwareUpdateAvailable =
-                _serial.IsConnected &&
                 !string.IsNullOrWhiteSpace(_latestFirmwareVersion) &&
-                (currentFirmware is null ||
-                 IsNewerVersion(
-                    _latestFirmwareVersion,
-                    currentFirmware));
+                (
+                    pixelRecovery
+                        ? (!_serial.IsConnected ||
+                           currentFirmware is null ||
+                           IsNewerVersion(
+                               _latestFirmwareVersion,
+                               currentFirmware))
+                        : (_serial.IsConnected &&
+                           (currentFirmware is null ||
+                            IsNewerVersion(
+                                _latestFirmwareVersion,
+                                currentFirmware)))
+                );
 
             RefreshUpdateUi();
 
