@@ -6421,10 +6421,10 @@ try {{
                 ZmkStatus.Text = webHidAvailable
                     ? L(
                         _viaConfiguratorExclusive
-                            ? "VIA loaded · WebHID ready · LumiPad Raw HID released"
+                            ? "VIA loaded · WebHID ready · LumiPad Raw HID released · V2 definition: turn V2 ON"
                             : "VIA loaded · WebHID ready",
                         _viaConfiguratorExclusive
-                            ? "VIA đã tải · WebHID sẵn sàng · LumiPad đã nhả Raw HID"
+                            ? "VIA đã tải · WebHID sẵn sàng · LumiPad đã nhả Raw HID · JSON V2: bật Use V2 definitions"
                             : "VIA đã tải · WebHID sẵn sàng")
                     : L(
                         "VIA loaded · WebHID unavailable here — use Open in Edge",
