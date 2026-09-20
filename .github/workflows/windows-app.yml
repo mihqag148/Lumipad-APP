@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths: ['pc-app/**', '.github/workflows/windows-app.yml']
   pull_request:
-    paths: ['pc-app/**', '.github/workflows/windows-app.yml']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,19 @@ jobs:
           name: LumiPad-Windows-x64
           path: publish/LumiPad/**
           if-no-files-found: error
+
+  pr-checks:
+    name: PR checks
+    needs: build
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require successful build
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: test "$BUILD_RESULT" = success
 
   release:
     needs: build
