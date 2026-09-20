@@ -162,18 +162,18 @@ public sealed class QmkRawHidLink : IDeviceLink
 
                     if (viaProtocol.HasValue)
                     {
-                        string productName;
+                        string fallbackProductName;
                         try
                         {
-                            productName = device.GetProductName();
+                            fallbackProductName = device.GetProductName();
                         }
                         catch
                         {
-                            productName = _product.Name;
+                            fallbackProductName = _product.Name;
                         }
 
-                        if (string.IsNullOrWhiteSpace(productName))
-                            productName = _product.Name;
+                        if (string.IsNullOrWhiteSpace(fallbackProductName))
+                            fallbackProductName = _product.Name;
 
                         // Compatibility mode: pure QMK/VIA is still accepted
                         // even if the optional Lumi extension is unavailable.
@@ -182,7 +182,7 @@ public sealed class QmkRawHidLink : IDeviceLink
                         ProtocolVersion = 3;
                         _capabilities.Clear();
                         _connectionName =
-                            $"QMK VIA Raw HID · {productName}";
+                            $"QMK VIA Raw HID · {fallbackProductName}";
 
                         Log(
                             "INFO",
