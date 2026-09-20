@@ -46,7 +46,7 @@ public partial class MainWindow : Window
     private const string RynorFirmwareReleaseApi =
         "https://api.github.com/repos/mihqag148/RYNOR-ONE/releases/latest";
     private const string PixelProFirmwareReleaseApi =
-        "https://api.github.com/repos/mihqag148/PIXEL-PRO---Lumi-Macropad/releases/latest";
+        "https://api.github.com/repos/mihqag148/PIXEL-PRO/releases/latest";
     private bool _updateBusy;
     private bool _checkingUpdates;
     private bool _appUpdateAvailable;

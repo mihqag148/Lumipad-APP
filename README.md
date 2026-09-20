@@ -12,7 +12,7 @@ Toàn bộ 23 file của `pc-app/` được nhập nguyên vẹn từ RYNOR-ONE 
 - `.github/workflows/windows-app.yml`: build và phát hành app Windows độc lập.
 
 Firmware/hardware nằm ở [RYNOR-ONE](https://github.com/mihqag148/RYNOR-ONE)
-và [PIXEL PRO](https://github.com/mihqag148/PIXEL-PRO---Lumi-Macropad).
+và [PIXEL PRO](https://github.com/mihqag148/PIXEL-PRO).
 Không cần clone hai repo firmware để build app.
 
 ## Build trên Windows
@@ -41,7 +41,7 @@ Updater đọc ba nguồn độc lập:
 |---|---|---|
 | App | `mihqag148/Lumipad-APP` | `LumiPad-Windows-x64.zip` |
 | RYNOR ONE firmware | `mihqag148/RYNOR-ONE` | `firmware.uf2` |
-| PIXEL PRO firmware | `mihqag148/PIXEL-PRO---Lumi-Macropad` | `PIXEL_PRO_OTA.bin`, `PIXEL_PRO_merged.bin` |
+| PIXEL PRO firmware | `mihqag148/PIXEL-PRO` | `PIXEL_PRO_OTA.bin`, `PIXEL_PRO_merged.bin` |
 
 Bản app cũ trỏ vào repo firmware: tải bản app đầu tiên từ repo này và chạy một lần
 để chuyển sang kênh cập nhật mới. Các release cũ được giữ nguyên.
