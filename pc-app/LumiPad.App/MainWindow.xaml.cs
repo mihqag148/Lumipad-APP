@@ -3430,17 +3430,44 @@ public partial class MainWindow : Window
             string stdout = await stdoutTask;
             string stderr = await stderrTask;
 
-            AddLog(
-                process.ExitCode == 0 ? "INFO" : "ERROR",
-                "ESPTOOL",
-                stdout + Environment.NewLine + stderr);
+            string esptoolOutput =
+                stdout + Environment.NewLine + stderr;
 
-            if (process.ExitCode != 0)
+            bool flashVerified =
+                esptoolOutput.Contains(
+                    "Hash of data verified",
+                    StringComparison.OrdinalIgnoreCase);
+
+            bool postResetPortGone =
+                flashVerified &&
+                esptoolOutput.Contains(
+                    "Cannot configure port",
+                    StringComparison.OrdinalIgnoreCase) &&
+                esptoolOutput.Contains(
+                    "device which does not exist",
+                    StringComparison.OrdinalIgnoreCase);
+
+            AddLog(
+                process.ExitCode == 0 || postResetPortGone
+                    ? "INFO"
+                    : "ERROR",
+                "ESPTOOL",
+                esptoolOutput);
+
+            if (process.ExitCode != 0 && !postResetPortGone)
             {
                 throw new InvalidOperationException(
                     L(
                         $"Espressif flashing failed (exit {process.ExitCode}). Open Diagnostics for details.",
                         $"Nạp bằng Espressif lỗi (mã {process.ExitCode}). Mở Diagnostics để xem chi tiết."));
+            }
+
+            if (postResetPortGone)
+            {
+                AddLog(
+                    "INFO",
+                    "UPDATE",
+                    "PIXEL PRO flash verified; boot COM disappeared during watchdog reset, treating flash as successful.");
             }
 
             UpdateStatusText.Text =
