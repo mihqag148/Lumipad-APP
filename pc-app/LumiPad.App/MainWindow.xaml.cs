@@ -2124,11 +2124,19 @@ public partial class MainWindow : Window
             KeyboardDfuButton.IsEnabled = connected;
 
         if (FirmwareUpdateButton is not null)
+        {
+            bool pixelRecovery =
+                string.Equals(
+                    _activeProduct.Id,
+                    ProductCatalog.PixelPro.Id,
+                    StringComparison.OrdinalIgnoreCase);
+
             FirmwareUpdateButton.IsEnabled =
                 !_updateBusy &&
                 _firmwareUpdateAvailable &&
-                connected &&
-                _serial.IsUsbConnected;
+                (pixelRecovery ||
+                 (connected && _serial.IsUsbConnected));
+        }
 
         if (AppUpdateButton is not null)
             AppUpdateButton.IsEnabled =
@@ -3484,17 +3492,19 @@ public partial class MainWindow : Window
 
     private async Task UpdatePixelProFirmwareAsync()
     {
-        if (!_serial.IsConnected ||
-            !_serial.IsUsbConnected ||
-            _serial is not QmkRawHidLink pixelLink)
+        if (_serial is not QmkRawHidLink pixelLink)
         {
-            System.Windows.MessageBox.Show(
-                L(
-                    "Connect PIXEL PRO by USB first.",
-                    "Hãy kết nối PIXEL PRO bằng USB trước."),
-                "PIXEL PRO Firmware Update",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            throw new InvalidOperationException(
+                "PIXEL PRO Raw HID driver is not active.");
+        }
+
+        // Recovery path: a broken/stale Raw HID descriptor must not block
+        // firmware repair. Bootstrap uses the ESP32-S2 ROM BOOT COM port and
+        // PIXEL_PRO_merged.bin, so it does not require the running firmware to
+        // have a working Lumi/VIA channel.
+        if (!pixelLink.IsConnected || !pixelLink.IsUsbConnected)
+        {
+            await BootstrapPixelProFirmwareAsync();
             return;
         }
 
