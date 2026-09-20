@@ -6,8 +6,7 @@
     "rows": 2,
     "cols": 4
   },
-  "menus": [],
-  "keycodes": [],
+  "lighting": "none",
   "layouts": {
     "keymap": [
       [
