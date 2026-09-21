@@ -1,5 +1,7 @@
 using System.IO;
 using System.IO.Ports;
+using System.Management;
+using System.Text.RegularExpressions;
 using System.Text;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -126,11 +128,53 @@ public sealed class SerialLink : IDeviceLink
             string.Join(",", _capabilities));
     }
 
+    private static HashSet<string> ReservedPixelProPorts()
+    {
+        var ports = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT Name, PNPDeviceID FROM Win32_PnPEntity WHERE Name LIKE '%(COM%'");
+
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                string name = Convert.ToString(obj["Name"]) ?? "";
+                string pnp = Convert.ToString(obj["PNPDeviceID"]) ?? "";
+
+                if (!pnp.Contains("VID_303A", StringComparison.OrdinalIgnoreCase) ||
+                    !pnp.Contains("PID_80C2", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                Match match = Regex.Match(
+                    name,
+                    @"\((COM\d+)\)",
+                    RegexOptions.IgnoreCase);
+
+                if (match.Success)
+                    ports.Add(match.Groups[1].Value);
+            }
+        }
+        catch
+        {
+        }
+
+        return ports;
+    }
+
+    private static IEnumerable<string> RynorUsbPorts()
+    {
+        HashSet<string> reserved = ReservedPixelProPorts();
+
+        return SerialPort.GetPortNames()
+            .Where(name => !reserved.Contains(name))
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static string CurrentUsbPortSignature() =>
-        string.Join(
-            ";",
-            SerialPort.GetPortNames()
-                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+        string.Join(";", RynorUsbPorts());
 
     private void RecordLinkSuccess() =>
         _consecutiveLinkFailures = 0;
@@ -450,7 +494,7 @@ public sealed class SerialLink : IDeviceLink
 
     private async Task<string?> TryUsbAsync(CancellationToken cancellationToken)
     {
-        foreach (var name in SerialPort.GetPortNames().OrderBy(x => x))
+        foreach (var name in RynorUsbPorts())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -506,7 +550,7 @@ public sealed class SerialLink : IDeviceLink
         if (_port?.IsOpen == true)
             return true;
 
-        foreach (var name in SerialPort.GetPortNames().OrderBy(x => x))
+        foreach (var name in RynorUsbPorts())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
