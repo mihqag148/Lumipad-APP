@@ -1801,6 +1801,31 @@ public sealed class PixelProCdcLink : IDeviceLink
             $"RGB_PROFILE_SET|{profile}|{payload}");
     }
 
+    public void SetPixelRgbEffect(
+        int profile,
+        int effect)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                19);
+
+        effect =
+            Math.Clamp(
+                effect,
+                0,
+                3);
+
+        SendCommand(
+            $"RGB_EFFECT|{profile}|{effect}");
+    }
+
+    public void SetPixelRgbSpeed(
+        int percent) =>
+        SendCommand(
+            $"RGB_SPEED|{Math.Clamp(percent, 10, 100)}");
+
     public void SetRgbProfile(int index, int effect, byte r, byte g, byte b)
     {
         // Legacy shared UI compatibility. PIXEL PRO stores RGB by keymap
@@ -1815,9 +1840,15 @@ public sealed class PixelProCdcLink : IDeviceLink
         SendCommand(
             $"RGB_BRIGHTNESS|{Math.Clamp(percent, 0, 100)}");
 
-    public void SetSpeed(int percent) { }
+    public void SetSpeed(int percent) =>
+        SetPixelRgbSpeed(percent);
+
     public void SetAutoLayer() { }
-    public void SetEffect(int effect) { }
+
+    public void SetEffect(int effect) =>
+        SetPixelRgbEffect(
+            _activeProfile,
+            effect);
 
     public void SetSolid(byte r, byte g, byte b) =>
         SetPixelRgbAll(
