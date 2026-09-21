@@ -6831,7 +6831,7 @@ try {{
 
     private void PixelProfileNameTextBox_KeyDown(
         object sender,
-        KeyEventArgs e)
+        System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key != Key.Enter)
             return;
@@ -7846,7 +7846,7 @@ try {{
 
     private void PixelMacroKeyCaptureBox_PreviewKeyDown(
         object sender,
-        KeyEventArgs e)
+        System.Windows.Input.KeyEventArgs e)
     {
         e.Handled = true;
 
