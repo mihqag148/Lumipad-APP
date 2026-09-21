@@ -286,8 +286,6 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        InitializeComponent();
-
         foreach (ProductDefinition product in ProductCatalog.All)
         {
             IDeviceLink link =
@@ -300,13 +298,18 @@ public partial class MainWindow : Window
             _batteryByProduct[product.Id] = null;
             _firmwareLogSeqByProduct[product.Id] = 0;
             _actionEventSeqByProduct[product.Id] = 0;
-
-            AttachDeviceLinkEvents(
-                product,
-                link);
         }
 
         _serial = LinkFor(_activeProduct);
+
+        InitializeComponent();
+
+        foreach (ProductDefinition product in ProductCatalog.All)
+        {
+            AttachDeviceLinkEvents(
+                product,
+                LinkFor(product));
+        }
 
         BuildPixelProKeymapUi();
         InitializeTrayIcon();
