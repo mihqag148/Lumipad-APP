@@ -1938,7 +1938,8 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="48"/>
                                         <ColumnDefinition/>
-                                        <ColumnDefinition Width="190"/>
+                                        <ColumnDefinition Width="170"/>
+                                        <ColumnDefinition Width="92"/>
                                     </Grid.ColumnDefinitions>
 
                                     <Border Width="40"
@@ -1971,12 +1972,24 @@
                                               Grid.Column="2"
                                               SelectedValuePath="Tag"
                                               VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
                                               SelectionChanged="AutoProfileDefaultCombo_SelectionChanged">
                                         <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
                                         <ComboBoxItem Content="MEDIA" Tag="1"/>
                                         <ComboBoxItem Content="FUSION 360" Tag="2"/>
                                         <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
                                         <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
+                                    </ComboBox>
+                                    <ComboBox x:Name="AutoProfileDefaultLayerCombo"
+                                              Grid.Column="3"
+                                              SelectedValuePath="Tag"
+                                              VerticalAlignment="Center"
+                                              Visibility="Collapsed"
+                                              SelectionChanged="AutoProfileDefaultLayerCombo_SelectionChanged">
+                                        <ComboBoxItem Content="L0" Tag="0" IsSelected="True"/>
+                                        <ComboBoxItem Content="L1" Tag="1"/>
+                                        <ComboBoxItem Content="L2" Tag="2"/>
+                                        <ComboBoxItem Content="L3" Tag="3"/>
                                     </ComboBox>
                                 </Grid>
                             </Border>
