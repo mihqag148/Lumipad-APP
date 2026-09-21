@@ -536,7 +536,11 @@ internal static class PixelProGifOptimizer
                     dictionary[key] =
                         nextCode++;
 
-                    if (nextCode ==
+                    // GIF decoders add dictionary entries one emitted
+                    // code later than the encoder. Grow the code width only
+                    // after crossing the current limit, not when merely
+                    // reaching it.
+                    if (nextCode >
                             (1 << codeSize) &&
                         codeSize < 12)
                     {
