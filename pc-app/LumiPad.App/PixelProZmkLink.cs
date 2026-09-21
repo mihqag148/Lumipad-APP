@@ -68,10 +68,38 @@ public sealed class PixelProZmkLink : IDeviceLink
             return null;
         }
 
-        IEnumerable<HidDevice> candidates =
+        var exactCandidates =
             DeviceList.Local.GetHidDevices(
                 _product.UsbVendorId.Value,
-                _product.UsbProductId.Value);
+                _product.UsbProductId.Value)
+            .ToList();
+
+        Log(
+            "INFO",
+            $"Found {exactCandidates.Count} HID interface(s) at " +
+            $"VID=0x{_product.UsbVendorId.Value:X4} PID=0x{_product.UsbProductId.Value:X4}.");
+
+        var candidates = new List<HidDevice>(exactCandidates);
+
+        // Windows can temporarily expose a stale VID/PID path after reflashing.
+        // Fall back to identity strings, but only for PIXEL PRO-looking devices.
+        foreach (HidDevice device in DeviceList.Local.GetHidDevices())
+        {
+            if (candidates.Any(existing =>
+                    string.Equals(existing.DevicePath, device.DevicePath, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            string product = Safe(() => device.GetProductName(), "");
+            string serial = Safe(() => device.GetSerialNumber(), "");
+
+            if (product.Contains("PIXEL PRO", StringComparison.OrdinalIgnoreCase) ||
+                serial.StartsWith("PIXELPRO", StringComparison.OrdinalIgnoreCase))
+            {
+                candidates.Add(device);
+            }
+        }
 
         foreach (HidDevice device in candidates)
         {
@@ -103,12 +131,15 @@ public sealed class PixelProZmkLink : IDeviceLink
                 $"PRODUCT=\"{productName}\" SERIAL=\"{serial}\" " +
                 $"IN={inputLength} OUT={outputLength} FEATURE={featureLength}");
 
-            // The phase-1 vendor interface has 64-byte Input + Feature reports.
-            // HidSharp includes the report-ID byte, therefore both appear as 65.
-            // The keyboard interface is deliberately skipped by this filter.
-            if (inputLength < HidSharpReportBytes ||
-                featureLength < HidSharpReportBytes)
+            // The vendor interface is identified primarily by its large Input report.
+            // Feature reports are optional for connection; some Windows/HidSharp
+            // combinations report Feature length differently even though Input works.
+            // The normal ZMK keyboard interface is much smaller and is skipped here.
+            if (inputLength < VendorPayloadBytes)
             {
+                Log(
+                    "INFO",
+                    $"Skipping non-vendor HID interface: IN={inputLength}, FEATURE={featureLength}.");
                 continue;
             }
 
@@ -123,7 +154,10 @@ public sealed class PixelProZmkLink : IDeviceLink
                 stream.ReadTimeout = 500;
                 stream.WriteTimeout = 500;
 
-                string? hello = ReadFeatureHello(stream, featureLength);
+                string? hello =
+                    featureLength > 1
+                        ? ReadFeatureHello(stream, featureLength)
+                        : null;
 
                 _device = device;
                 _stream = stream;
@@ -159,8 +193,9 @@ public sealed class PixelProZmkLink : IDeviceLink
 
         Log(
             "WARN",
-            $"PIXEL PRO ZMK vendor HID not found at " +
-            $"VID=0x{_product.UsbVendorId.Value:X4} PID=0x{_product.UsbProductId.Value:X4}.");
+            $"PIXEL PRO ZMK vendor HID not found. Checked " +
+            $"VID=0x{_product.UsbVendorId.Value:X4} PID=0x{_product.UsbProductId.Value:X4} " +
+            $"plus PIXEL PRO product/serial fallback.");
         return null;
     }
 
