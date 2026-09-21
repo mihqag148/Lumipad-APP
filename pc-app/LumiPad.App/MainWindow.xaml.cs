@@ -37,7 +37,6 @@ public partial class MainWindow : Window
     private bool _zmkInitialized;
     private string _loadedConfiguratorUrl = "";
     private bool _autoReconnectEnabled = true;
-    private bool _viaConfiguratorExclusive;
     private string _connectionPreference = "auto";
     private bool _keyboardSleeping;
     private readonly CancellationTokenSource _reconnectCts = new();
@@ -48,8 +47,8 @@ public partial class MainWindow : Window
         "https://api.github.com/repos/mihqag148/RYNOR-ONE/releases/latest";
     private const string PixelProFirmwareReleaseApi =
         "https://api.github.com/repos/mihqag148/PIXEL-PRO/releases/latest";
-    private const string PixelProQmkFirmwareAsset =
-        "PIXEL_PRO_QMK_merged.bin";
+    private const string PixelProZmkFirmwareAsset =
+        "PIXEL_PRO_ZMK.bin";
     private bool _updateBusy;
     private bool _checkingUpdates;
     private bool _appUpdateAvailable;
@@ -520,7 +519,7 @@ public partial class MainWindow : Window
 
     private UIElement CreateProductPreview(ProductDefinition product)
     {
-        if (product.Driver != DeviceDriverKind.QmkRawHid)
+        if (product.Driver != DeviceDriverKind.PixelProZmkHid)
             return CreateDialDeskPreview();
 
         var root = new Grid();
@@ -715,9 +714,6 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        if (_viaConfiguratorExclusive)
-            await ExitViaExclusiveModeAsync();
-
         DeviceWorkspace.Visibility = Visibility.Collapsed;
         ProductHub.Visibility = Visibility.Visible;
         await UpdateProductOverviewAsync();
@@ -748,8 +744,6 @@ public partial class MainWindow : Window
     private async Task SwitchActiveProductAsync(ProductDefinition product)
     {
         _autoReconnectEnabled = false;
-        _viaConfiguratorExclusive = false;
-
         try
         {
             try
@@ -788,11 +782,6 @@ public partial class MainWindow : Window
 
             await DetectAsync();
 
-            if (ZmkTab.IsSelected &&
-                _activeProduct.Driver == DeviceDriverKind.QmkRawHid)
-            {
-                await EnterViaExclusiveModeAsync();
-            }
         }
         catch (Exception ex)
         {
@@ -801,7 +790,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _autoReconnectEnabled = !_viaConfiguratorExclusive;
+            _autoReconnectEnabled = true;
         }
     }
 
@@ -2916,14 +2905,13 @@ public partial class MainWindow : Window
                         _activeProduct.Id,
                         ProductCatalog.PixelPro.Id,
                         StringComparison.OrdinalIgnoreCase) &&
-                    _serial is QmkRawHidLink pixelLink &&
-                    !pixelLink.SupportsFirmwareOta;
+                    _serial is PixelProZmkLink;
 
                 FirmwareUpdateStateText.Text =
                     pixelBootstrapRequired
                         ? L(
-                            "One-time QMK install required; LumiPad will flash it automatically",
-                            "Cần cài QMK một lần; LumiPad sẽ tự nạp firmware")
+                            "ROM BOOT flash required; LumiPad will install ZMK automatically",
+                            "Cần nạp qua ROM BOOT; LumiPad sẽ tự cài ZMK")
                         : _serial.IsUsbConnected
                             ? L("Update available", "Có bản mới")
                             : L(
@@ -3297,9 +3285,9 @@ public partial class MainWindow : Window
     {
         var confirm = System.Windows.MessageBox.Show(
             L(
-                "Install or repair the real QMK firmware on PIXEL PRO? LumiPad will download the latest PIXEL PRO QMK image and the official Espressif flashing engine. You only need to put the board into ROM BOOT mode when prompted.",
-                "Cài hoặc sửa firmware QMK thật cho PIXEL PRO? LumiPad sẽ tự tải bản QMK mới nhất và bộ nạp chính thức của Espressif. Bạn chỉ cần đưa mạch vào ROM BOOT khi app yêu cầu."),
-            "PIXEL PRO · Install real QMK",
+                "Install or repair ZMK firmware on PIXEL PRO? LumiPad will download the latest PIXEL PRO ZMK image and the official Espressif flashing engine. Put the board into ROM BOOT mode when prompted.",
+                "Cài hoặc sửa firmware ZMK cho PIXEL PRO? LumiPad sẽ tự tải bản ZMK mới nhất và bộ nạp chính thức của Espressif. Đưa mạch vào ROM BOOT khi app yêu cầu."),
+            "PIXEL PRO · Install ZMK",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -3312,12 +3300,12 @@ public partial class MainWindow : Window
         string workRoot =
             IO.Path.Combine(
                 IO.Path.GetTempPath(),
-                "LumiPad-PixelPro-QMK-" +
+                "LumiPad-PixelPro-ZMK-" +
                 Guid.NewGuid().ToString("N"));
         string mergedPath =
             IO.Path.Combine(
                 workRoot,
-                PixelProQmkFirmwareAsset);
+                PixelProZmkFirmwareAsset);
 
         try
         {
@@ -3325,12 +3313,12 @@ public partial class MainWindow : Window
 
             UpdateStatusText.Text =
                 L(
-                    "Downloading latest PIXEL PRO real QMK firmware…",
-                    "Đang tải firmware QMK thật mới nhất cho PIXEL PRO…");
+                    "Downloading latest PIXEL PRO ZMK firmware…",
+                    "Đang tải firmware ZMK mới nhất cho PIXEL PRO…");
 
             var firmware =
                 await FindLatestAssetAsync(
-                    PixelProQmkFirmwareAsset,
+                    PixelProZmkFirmwareAsset,
                     PixelProFirmwareReleaseApi);
 
             await DownloadFileAsync(
@@ -3414,7 +3402,7 @@ public partial class MainWindow : Window
             startInfo.ArgumentList.Add("--after");
             startInfo.ArgumentList.Add("hard-reset");
             startInfo.ArgumentList.Add("write-flash");
-            startInfo.ArgumentList.Add("0x0");
+            startInfo.ArgumentList.Add("0x1000");
             startInfo.ArgumentList.Add(mergedPath);
 
             using Process process =
@@ -3474,8 +3462,8 @@ public partial class MainWindow : Window
 
             UpdateStatusText.Text =
                 L(
-                    $"PIXEL PRO QMK {firmware.Tag} installed. Reconnecting…",
-                    $"Đã nạp QMK PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
+                    $"PIXEL PRO ZMK {firmware.Tag} installed. Reconnecting…",
+                    $"Đã nạp ZMK PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
 
             _autoReconnectEnabled = true;
 
@@ -3491,9 +3479,9 @@ public partial class MainWindow : Window
             {
                 System.Windows.MessageBox.Show(
                     L(
-                        "QMK flash completed and verified. If PIXEL PRO has not reconnected yet, press RESET once. LumiPad will keep trying the QMK Raw HID interface automatically.",
-                        "Đã nạp và xác minh QMK xong. Nếu PIXEL PRO chưa kết nối lại, nhấn RESET một lần. LumiPad sẽ tự tiếp tục dò QMK Raw HID."),
-                    "PIXEL PRO QMK install",
+                        "ZMK flash completed and verified. If PIXEL PRO has not reconnected yet, press RESET once. LumiPad will keep trying the ZMK vendor HID interface automatically.",
+                        "Đã nạp và xác minh ZMK xong. Nếu PIXEL PRO chưa kết nối lại, nhấn RESET một lần. LumiPad sẽ tự tiếp tục dò ZMK vendor HID."),
+                    "PIXEL PRO ZMK install",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -3506,8 +3494,8 @@ public partial class MainWindow : Window
 
                 System.Windows.MessageBox.Show(
                     L(
-                        "QMK installed and LumiPad connected. The VIA tab will release Raw HID automatically when you open VIA.",
-                        "QMK đã cài và LumiPad đã kết nối. Khi mở tab VIA, app sẽ tự nhả Raw HID cho VIA."),
+                        "ZMK installed and LumiPad connected through the dedicated PIXEL PRO vendor HID interface.",
+                        "ZMK đã cài và LumiPad đã kết nối qua giao diện vendor HID riêng của PIXEL PRO."),
                     "PIXEL PRO",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -3520,12 +3508,12 @@ public partial class MainWindow : Window
             _autoReconnectEnabled = true;
             UpdateStatusText.Text =
                 L(
-                    $"PIXEL PRO QMK install failed: {ex.Message}",
-                    $"Cài QMK PIXEL PRO lỗi: {ex.Message}");
+                    $"PIXEL PRO ZMK install failed: {ex.Message}",
+                    $"Cài ZMK PIXEL PRO lỗi: {ex.Message}");
             AddLog(
                 "ERROR",
                 "UPDATE",
-                $"PIXEL PRO QMK install failed: {ex}");
+                $"PIXEL PRO ZMK install failed: {ex}");
         }
         finally
         {
@@ -3546,17 +3534,14 @@ public partial class MainWindow : Window
 
     private async Task UpdatePixelProFirmwareAsync()
     {
-        if (_serial is not QmkRawHidLink)
+        if (_serial is not PixelProZmkLink)
         {
             throw new InvalidOperationException(
-                "PIXEL PRO QMK Raw HID driver is not active.");
+                "PIXEL PRO ZMK vendor HID driver is not active.");
         }
 
-        // PIXEL PRO is QMK-first now. The app always installs the merged QMK
-        // image through ESP32-S2 ROM BOOT so a broken running HID stack can
-        // never prevent firmware recovery or migration from the old ESP-IDF
-        // firmware. Future QMK OTA support can be added without changing the
-        // user's Update Firmware entry point.
+        // PIXEL PRO ZMK phase 1 is recovered through the ESP32-S2 ROM BOOT
+        // loader. The Zephyr simple-boot image is written at 0x1000.
         await BootstrapPixelProFirmwareAsync();
     }
 
@@ -6126,7 +6111,7 @@ try {{
         _activeProduct.Driver switch
         {
             DeviceDriverKind.LumiZmk => "ZMK Studio",
-            DeviceDriverKind.QmkRawHid => "VIA",
+            DeviceDriverKind.PixelProZmkHid => "PIXEL PRO",
             DeviceDriverKind.Esp32Companion => "Device Config",
             _ => "Device Config"
         };
@@ -6135,7 +6120,6 @@ try {{
         _activeProduct.Driver switch
         {
             DeviceDriverKind.LumiZmk => "https://zmk.studio/",
-            DeviceDriverKind.QmkRawHid => "https://usevia.app/",
             _ => ""
         };
 
@@ -6152,13 +6136,9 @@ try {{
         {
             ZmkStatus.Text = string.IsNullOrWhiteSpace(url)
                 ? L(
-                    "No embedded configurator for this product.",
-                    "Sản phẩm này chưa có trình cấu hình tích hợp.")
-                : _activeProduct.Driver == DeviceDriverKind.QmkRawHid
-                    ? L(
-                        "Embedded usevia.app · WebHID will be checked after loading",
-                        "Tích hợp usevia.app · sẽ kiểm tra WebHID sau khi tải")
-                    : $"Embedded {url}";
+                    "PIXEL PRO phase 1 uses the LumiPad vendor HID link; no embedded configurator is required.",
+                    "PIXEL PRO phase 1 dùng vendor HID của LumiPad; chưa cần trình cấu hình nhúng.")
+                : $"Embedded {url}";
         }
     }
 
@@ -6169,19 +6149,6 @@ try {{
         if (!ReferenceEquals(e.OriginalSource, MainTabs) || !_uiReady)
             return;
 
-        bool viaSelected =
-            ZmkTab.IsSelected &&
-            _activeProduct.Driver == DeviceDriverKind.QmkRawHid;
-
-        if (viaSelected)
-        {
-            await EnterViaExclusiveModeAsync();
-        }
-        else if (_viaConfiguratorExclusive)
-        {
-            await ExitViaExclusiveModeAsync();
-        }
-
         ApplyLanguage();
         Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
@@ -6189,100 +6156,6 @@ try {{
 
         if (ZmkTab.IsSelected)
             await EnsureDeviceConfiguratorAsync();
-    }
-
-    private Task EnterViaExclusiveModeAsync()
-    {
-        if (_activeProduct.Driver != DeviceDriverKind.QmkRawHid)
-            return Task.CompletedTask;
-
-        if (_viaConfiguratorExclusive)
-            return Task.CompletedTask;
-
-        _viaConfiguratorExclusive = true;
-        _autoReconnectEnabled = false;
-
-        AddLog(
-            "INFO",
-            "VIA",
-            "Releasing PIXEL PRO Raw HID so WebHID/VIA can own the interface.");
-
-        try
-        {
-            _serial.Disconnect();
-        }
-        catch
-        {
-        }
-
-        DeviceStatus.Text =
-            L("VIA owns PIXEL PRO", "VIA đang dùng PIXEL PRO");
-        DeviceDot.Fill =
-            new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
-        BottomStatus.Text =
-            L(
-                "Raw HID released to VIA. Leave the VIA tab to reconnect LumiPad.",
-                "Đã nhả Raw HID cho VIA. Rời tab VIA để LumiPad tự kết nối lại.");
-
-        SetDeviceControlsEnabled(false);
-        UpdateTransportIndicators();
-        return Task.CompletedTask;
-    }
-
-    private async Task ExitViaExclusiveModeAsync()
-    {
-        if (!_viaConfiguratorExclusive)
-            return;
-
-        _viaConfiguratorExclusive = false;
-        _autoReconnectEnabled = false;
-
-        if (_activeProduct.Driver != DeviceDriverKind.QmkRawHid)
-        {
-            _autoReconnectEnabled = true;
-            return;
-        }
-
-        AddLog(
-            "INFO",
-            "VIA",
-            "Closing WebHID and unloading VIA before reconnecting PIXEL PRO.");
-
-        try
-        {
-            if (ZmkWebView?.CoreWebView2 is not null)
-            {
-                try
-                {
-                    await ZmkWebView.CoreWebView2.ExecuteScriptAsync(
-                        "(async()=>{try{const ds=await navigator.hid.getDevices();" +
-                        "for(const d of ds){if(d.vendorId===0x303A&&d.productId===0x4009&&d.opened){await d.close();}}" +
-                        "}catch(e){} return true;})()");
-                }
-                catch
-                {
-                }
-
-                ZmkWebView.CoreWebView2.Navigate("about:blank");
-            }
-
-            _zmkInitialized = false;
-            _loadedConfiguratorUrl = "";
-
-            // Give WebView2/Chromium time to release the Win32 HID handle.
-            await Task.Delay(500);
-        }
-        catch (Exception ex)
-        {
-            AddLog("WARN", "VIA", $"WebHID release failed: {ex.Message}");
-        }
-
-        DeviceStatus.Text = L("Reconnecting…", "Đang kết nối lại…");
-        DeviceDot.Fill =
-            new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
-
-        _autoReconnectEnabled = true;
-        await DetectAsync();
     }
 
     private async Task EnsureDeviceConfiguratorAsync(bool force = false)
@@ -6315,38 +6188,8 @@ try {{
             ZmkWebView.Source = new Uri(url);
             _loadedConfiguratorUrl = url;
             _zmkInitialized = true;
-
             await Task.Delay(750);
-
-            if (_activeProduct.Driver == DeviceDriverKind.QmkRawHid &&
-                ZmkWebView.CoreWebView2 is not null)
-            {
-                string webHidResult =
-                    await ZmkWebView.CoreWebView2.ExecuteScriptAsync(
-                        "typeof navigator.hid !== 'undefined'");
-
-                bool webHidAvailable =
-                    string.Equals(
-                        webHidResult?.Trim(),
-                        "true",
-                        StringComparison.OrdinalIgnoreCase);
-
-                ZmkStatus.Text = webHidAvailable
-                    ? L(
-                        _viaConfiguratorExclusive
-                            ? "VIA loaded · WebHID ready · LumiPad Raw HID released · V2 definition: turn V2 ON"
-                            : "VIA loaded · WebHID ready",
-                        _viaConfiguratorExclusive
-                            ? "VIA đã tải · WebHID sẵn sàng · LumiPad đã nhả Raw HID · JSON V2: bật Use V2 definitions"
-                            : "VIA đã tải · WebHID sẵn sàng")
-                    : L(
-                        "VIA loaded · WebHID unavailable here — use Open in Edge",
-                        "VIA đã tải · WebHID không khả dụng tại đây — dùng Open in Edge");
-            }
-            else
-            {
-                ZmkStatus.Text = $"{name} · {url}";
-            }
+            ZmkStatus.Text = $"{name} · {url}";
         }
         catch (Exception ex)
         {
@@ -6369,26 +6212,6 @@ try {{
         string url = CurrentConfiguratorUrl();
         if (string.IsNullOrWhiteSpace(url))
             return;
-
-        if (_activeProduct.Driver == DeviceDriverKind.QmkRawHid)
-        {
-            await EnterViaExclusiveModeAsync();
-
-            // External Edge must be the only browser owning WebHID.
-            if (ZmkWebView?.CoreWebView2 is not null)
-            {
-                try
-                {
-                    ZmkWebView.CoreWebView2.Navigate("about:blank");
-                    _zmkInitialized = false;
-                    _loadedConfiguratorUrl = "";
-                    await Task.Delay(250);
-                }
-                catch
-                {
-                }
-            }
-        }
 
         try
         {
