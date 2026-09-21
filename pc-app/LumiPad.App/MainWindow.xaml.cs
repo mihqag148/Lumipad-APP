@@ -1857,6 +1857,23 @@ public partial class MainWindow : Window
 
     private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
     {
+        // Most LumiPad ComboBoxes store their logical value in ComboBoxItem.Tag
+        // and do not declare SelectedValuePath. Assigning SelectedValue directly
+        // therefore does not select the requested item and previously left the
+        // PIXEL PRO GIF scale stuck on Fill even when the app intended Center.
+        foreach (object entry in combo.Items)
+        {
+            if (entry is ComboBoxItem item &&
+                string.Equals(
+                    item.Tag?.ToString(),
+                    tag,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedItem = item;
+                return;
+            }
+        }
+
         combo.SelectedValue = tag;
     }
 
@@ -3948,11 +3965,84 @@ public partial class MainWindow : Window
             System.IO.Ports.SerialPort.GetPortNames(),
             StringComparer.OrdinalIgnoreCase);
 
-    private static string? FindNewSerialPort(
+    private static string? FindPixelProBootPort(
         ISet<string> before)
     {
         string[] ports =
             System.IO.Ports.SerialPort.GetPortNames();
+
+        var live =
+            ports.ToHashSet(
+                StringComparer.OrdinalIgnoreCase);
+
+        // ESP32-S2 ROM USB-OTG download mode enumerates as Espressif
+        // VID 303A / PID 0002. Detect that identity first because Windows is
+        // allowed to reuse the exact same COM number after the reboot.
+        try
+        {
+            using var searcher =
+                new System.Management.ManagementObjectSearcher(
+                    "SELECT Name, PNPDeviceID FROM Win32_PnPEntity WHERE Name LIKE '%(COM%'");
+
+            var espressifPorts =
+                new List<string>();
+
+            foreach (System.Management.ManagementObject obj in searcher.Get())
+            {
+                string name =
+                    Convert.ToString(
+                        obj["Name"]) ?? "";
+
+                string pnp =
+                    Convert.ToString(
+                        obj["PNPDeviceID"]) ?? "";
+
+                var match =
+                    System.Text.RegularExpressions.Regex.Match(
+                        name,
+                        @"\((COM\d+)\)",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                if (!match.Success)
+                    continue;
+
+                string port =
+                    match.Groups[1].Value;
+
+                if (!live.Contains(port) ||
+                    !pnp.Contains(
+                        "VID_303A",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                espressifPorts.Add(port);
+
+                if (pnp.Contains(
+                        "PID_0002",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return port;
+                }
+            }
+
+            string? freshEspressif =
+                espressifPorts.FirstOrDefault(
+                    port => !before.Contains(port));
+
+            if (!string.IsNullOrWhiteSpace(freshEspressif))
+                return freshEspressif;
+
+            if (espressifPorts.Distinct(
+                    StringComparer.OrdinalIgnoreCase).Count() == 1)
+            {
+                return espressifPorts[0];
+            }
+        }
+        catch
+        {
+        }
 
         string? fresh =
             ports.FirstOrDefault(
@@ -3961,8 +4051,6 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(fresh))
             return fresh;
 
-        // ESP32-S2 ROM USB CDC is normally the only transient COM port here.
-        // If Windows reused a COM number, prefer the sole port when possible.
         return ports.Length == 1
             ? ports[0]
             : null;
@@ -4098,40 +4186,81 @@ public partial class MainWindow : Window
                 CurrentSerialPorts();
 
             _autoReconnectEnabled = false;
-            _serial.Disconnect();
 
-            UpdateStatusText.Text =
-                L(
-                    "Waiting for PIXEL PRO BOOT mode…",
-                    "Đang chờ PIXEL PRO vào BOOT…");
+            bool automaticBoot =
+                _serial is PixelProCdcLink pixelLink &&
+                await pixelLink.TryEnterRomBootloaderAsync();
 
-            var bootPrompt = System.Windows.MessageBox.Show(
-                L(
-                    "Put PIXEL PRO into ROM BOOT mode now:\n\n1. Hold BOOT.\n2. Press RESET once.\n3. Release RESET.\n4. Release BOOT.\n5. Click OK here.\n\nLumi Macropad will detect the new COM port and flash automatically.",
-                    "Đưa PIXEL PRO vào ROM BOOT ngay:\n\n1. Giữ BOOT.\n2. Nhấn RESET một lần.\n3. Thả RESET.\n4. Thả BOOT.\n5. Bấm OK ở đây.\n\nLumi Macropad sẽ tự tìm cổng COM mới và tự nạp."),
-                "PIXEL PRO · BOOT mode",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Information);
+            if (!automaticBoot)
+            {
+                _serial.Disconnect();
 
-            if (bootPrompt != MessageBoxResult.OK)
-                return;
+                UpdateStatusText.Text =
+                    L(
+                        "Waiting for PIXEL PRO ROM BOOT mode…",
+                        "Đang chờ PIXEL PRO vào ROM BOOT…");
+
+                var bootPrompt = System.Windows.MessageBox.Show(
+                    L(
+                        "Put PIXEL PRO into ROM BOOT mode now:\n\n1. Hold BOOT.\n2. Press RESET once.\n3. Release RESET.\n4. Release BOOT.\n5. Click OK here.\n\nThe app now detects the ESP32-S2 ROM device itself, even if Windows reuses the same COM number.",
+                        "Đưa PIXEL PRO vào ROM BOOT ngay:\n\n1. Giữ BOOT.\n2. Nhấn RESET một lần.\n3. Thả RESET.\n4. Thả BOOT.\n5. Bấm OK ở đây.\n\nApp sẽ nhận đúng thiết bị ROM ESP32-S2 kể cả khi Windows giữ nguyên số COM."),
+                    "PIXEL PRO · BOOT mode",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Information);
+
+                if (bootPrompt != MessageBoxResult.OK)
+                    return;
+            }
+            else
+            {
+                UpdateStatusText.Text =
+                    L(
+                        "PIXEL PRO is entering ROM BOOT automatically…",
+                        "PIXEL PRO đang tự vào ROM BOOT…");
+            }
 
             string? bootPort = null;
 
-            for (int i = 0; i < 30 && bootPort is null; i++)
+            for (int i = 0; i < 40 && bootPort is null; i++)
             {
                 await Task.Delay(250);
                 bootPort =
-                    FindNewSerialPort(
+                    FindPixelProBootPort(
                         portsBefore);
+            }
+
+            // Firmware 1.3.8 cannot arm the explicit app-only boot command.
+            // If an automatic attempt ever disappears without enumerating,
+            // allow one manual BOOT+RESET fallback in the same update flow.
+            if (string.IsNullOrWhiteSpace(bootPort) &&
+                automaticBoot)
+            {
+                var retryPrompt = System.Windows.MessageBox.Show(
+                    L(
+                        "Automatic ROM BOOT did not enumerate. Hold BOOT, press RESET once, release RESET, release BOOT, then click OK.",
+                        "ROM BOOT tự động chưa hiện cổng. Giữ BOOT, nhấn RESET một lần, thả RESET, thả BOOT rồi bấm OK."),
+                    "PIXEL PRO · BOOT fallback",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Information);
+
+                if (retryPrompt != MessageBoxResult.OK)
+                    return;
+
+                for (int i = 0; i < 40 && bootPort is null; i++)
+                {
+                    await Task.Delay(250);
+                    bootPort =
+                        FindPixelProBootPort(
+                            portsBefore);
+                }
             }
 
             if (string.IsNullOrWhiteSpace(bootPort))
             {
                 throw new InvalidOperationException(
                     L(
-                        "No new ESP32-S2 boot COM port appeared. Repeat BOOT + RESET and try again.",
-                        "Không thấy cổng COM boot mới của ESP32-S2. Làm lại BOOT + RESET rồi thử lại."));
+                        "ESP32-S2 ROM BOOT device was not found. Repeat BOOT + RESET and retry.",
+                        "Không tìm thấy thiết bị ROM BOOT ESP32-S2. Làm lại BOOT + RESET rồi thử lại."));
             }
 
             UpdateStatusText.Text =
@@ -4586,8 +4715,10 @@ try {{
                         ProcessWindowStyle.Hidden
                 });
 
-            _allowExit = true;
-            System.Windows.Application.Current.Shutdown();
+            // Perform the same graceful device-link cleanup as a normal Exit.
+            // Abrupt process shutdown used to let Windows tear down CDC line
+            // states unpredictably and could leave PIXEL PRO in ROM BOOT.
+            ExitApplication();
         }
         catch (Exception ex)
         {
