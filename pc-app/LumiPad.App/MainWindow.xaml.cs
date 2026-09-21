@@ -9457,16 +9457,6 @@ try {{
         return true;
     }
 
-    private async void PixelKeymapReload_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        for (int layer = 0; layer < 4; layer++)
-            _pixelLayerLoaded[_pixelSelectedProfile, layer] = false;
-
-        await LoadPixelProKeymapAsync();
-    }
-
     private async void PixelKeymapSave_Click(
         object sender,
         RoutedEventArgs e)
@@ -9497,40 +9487,80 @@ try {{
     {
         if (_serial is not PixelProCdcLink pixel ||
             !pixel.IsConnected)
-            return;
-
-        MessageBoxResult answer =
-            System.Windows.MessageBox.Show(
-                L(
-                    "Reset all 20 profiles to defaults?",
-                    "Đặt lại toàn bộ 20 profile về mặc định?"),
-                "PIXEL PRO",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-        if (answer != MessageBoxResult.Yes)
-            return;
-
-        PixelKeymapStatusText.Text =
-            L("Resetting…", "Đang đặt lại…");
-
-        bool ok = await pixel.ResetKeymapAsync();
-
-        for (int profile = 0; profile < 20; profile++)
         {
-            for (int layer = 0; layer < 4; layer++)
-                _pixelLayerLoaded[profile, layer] = false;
+            PixelKeymapStatusText.Text =
+                L(
+                    "Connect PIXEL PRO before resetting the current profile.",
+                    "Hãy kết nối PIXEL PRO trước khi reset profile hiện tại.");
+            return;
         }
 
-        _pixelSelectedProfile = 0;
-        _pixelSelectedLayer = 0;
-        RefreshPixelProfileCombo();
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelProfileCatalog.Count - 1);
 
-        if (ok)
-            await LoadPixelProKeymapAsync();
-        else
-            PixelKeymapStatusText.Text =
-                L("Reset failed.", "Đặt lại thất bại.");
+        PixelKeymapStatusText.Text =
+            L(
+                $"Resetting Profile {profile + 1} to defaults…",
+                $"Đang đưa Profile {profile + 1} về mặc định…");
+
+        SetPixelProfileDefaults(
+            profile);
+
+        _pixelProfileCatalog.Names[profile] =
+            $"Profile {profile + 1}";
+
+        _pixelSelectedLayer = 0;
+        _pixelSelectedKey = 0;
+        _pixelRgbSelectedKey = -1;
+
+        bool ok = true;
+
+        for (int layer = 0;
+             layer < 4;
+             layer++)
+        {
+            ok &=
+                await pixel.SetKeymapAsync(
+                    profile,
+                    layer,
+                    _pixelProfileMaps[profile][layer]);
+        }
+
+        pixel.SetPixelRgbProfile(
+            profile,
+            _pixelRgbProfiles[profile]);
+
+        pixel.SetProfileLayer(
+            profile,
+            0);
+
+        PixelProProfileStore.Save(
+            _pixelProfileCatalog);
+
+        PixelProKeyEditorUiStore.Save(
+            _pixelModifierPositions);
+
+        SaveAppSettings();
+
+        RefreshPixelProfileCombo();
+        UpdatePixelLayerButtons();
+        UpdatePixelKeyVisuals();
+        UpdatePixelSelectedEditor();
+        UpdatePixelRgbUi();
+        RefreshAutoProfileMappingsUi();
+        RefreshAutoProfileDefaultSelectors();
+
+        PixelKeymapStatusText.Text =
+            ok
+                ? L(
+                    $"Profile {profile + 1} restored to default.",
+                    $"Profile {profile + 1} đã về mặc định.")
+                : L(
+                    $"Profile {profile + 1} reset was only partially saved.",
+                    $"Profile {profile + 1} reset nhưng chưa lưu đủ xuống thiết bị.");
     }
 
     private async void PixelKeymapExport_Click(
