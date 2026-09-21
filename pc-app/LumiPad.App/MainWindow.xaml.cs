@@ -8514,7 +8514,7 @@ try {{
         if (e.OriginalSource is not DependencyObject source)
             return;
 
-        if (PixelMacroFindAncestor<TextBox>(source) is not null)
+        if (PixelMacroFindAncestor<System.Windows.Controls.TextBox>(source) is not null)
             return;
 
         ListBoxItem? item =
@@ -8560,14 +8560,14 @@ try {{
         _pixelMacroDragIndex = -1;
 
         var data =
-            new DataObject(
+            new System.Windows.DataObject(
                 "PIXEL_MACRO_STEP_INDEX",
                 sourceIndex);
 
-        DragDrop.DoDragDrop(
+        System.Windows.DragDrop.DoDragDrop(
             PixelMacroStepsList,
             data,
-            DragDropEffects.Move);
+            System.Windows.DragDropEffects.Move);
     }
 
     private void PixelMacroStepsList_DragOver(
@@ -8577,8 +8577,8 @@ try {{
         e.Effects =
             e.Data.GetDataPresent(
                 "PIXEL_MACRO_STEP_INDEX")
-                ? DragDropEffects.Move
-                : DragDropEffects.None;
+                ? System.Windows.DragDropEffects.Move
+                : System.Windows.DragDropEffects.None;
 
         e.Handled = true;
     }
