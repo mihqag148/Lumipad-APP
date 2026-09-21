@@ -171,6 +171,15 @@ public partial class MainWindow : Window
     private bool _rgbEnabled = true;
     private int _rgbProfileIndex;
     private RgbProfileSetting[] _rgbProfiles = CreateDefaultRgbProfiles();
+
+    // PIXEL PRO keeps its media/RGB state separate from RYNOR ONE.
+    private int _pixelGifMaxFps = PixelProScreensaverMediaService.DefaultGifMaxFps;
+    private int _pixelGifMaxDurationSeconds = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+    private int _pixelImageJpegQuality = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+    private int _pixelRgbSelectedKey = -1; // -1 = all 8 keys
+    private PixelRgbColor[][] _pixelRgbProfiles = CreateDefaultPixelRgbProfiles();
+
+    // This remains the RYNOR scale preference. PIXEL PRO uses fixed Center/no-upscale.
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
     private string _screensaverSource = "Media";
 
@@ -1082,6 +1091,7 @@ public partial class MainWindow : Window
     {
         string productName = _activeProduct.Name;
         UpdateScreensaverProductUi();
+        UpdateRgbProductUi();
 
         if (WorkspaceProductTitle is not null)
             WorkspaceProductTitle.Text = productName;
@@ -1096,8 +1106,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · direct GIF decode · auto Fit / Fill / Stretch · up to 60 FPS.",
-                        "ILI9486 480×320 · giải mã GIF trực tiếp · tự Fit / Fill / Stretch · tối đa 60 FPS.")
+                        "ILI9486 480×320 · GIF target ≤1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
+                        "ILI9486 480×320 · GIF mục tiêu ≤1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -1169,9 +1179,21 @@ public partial class MainWindow : Window
         {
             ScreensaverPreviewHint.Text =
                 pixel
-                    ? "480 × 320 · ILI9486 · Choose a GIF or image"
+                    ? "480 × 320 · ILI9486 · GIF / Image"
                     : "320 × 172 · Choose a GIF or image";
         }
+
+        if (PixelMediaSettingsPanel is not null)
+            PixelMediaSettingsPanel.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (ScreensaverScalePanel is not null)
+            ScreensaverScalePanel.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
 
         _screensaverPreviewTimer.Interval =
             TimeSpan.FromMilliseconds(
@@ -1179,22 +1201,73 @@ public partial class MainWindow : Window
                     ? PixelProScreensaverMediaService.MinFrameIntervalMs
                     : ScreensaverMediaService.MinFrameIntervalMs);
 
-        // PIXEL PRO should open media without crop/zoom by default.
-        // RYNOR keeps its existing saved/default scale behavior.
-        if (pixel &&
-            _screensaverAnimation is null &&
-            ScreensaverScaleCombo is not null &&
-            SelectedScreensaverScaleMode() is
-                ScreensaverScaleMode.Fill or
-                ScreensaverScaleMode.Fit)
-        {
-            // Migrate older PIXEL defaults (Fill/Fit) to true original-size
-            // Center. The user can still explicitly choose another mode later.
-            _screensaverScaleMode = ScreensaverScaleMode.Center;
-            SelectComboTag(
-                ScreensaverScaleCombo,
-                ScreensaverScaleMode.Center.ToString());
-        }
+        // Do not touch _screensaverScaleMode here: it belongs to RYNOR ONE.
+        // PIXEL PRO has its own fixed Center/no-upscale media rule.
+    }
+
+    private void UpdateRgbProductUi()
+    {
+        bool pixel = IsPixelProActive;
+
+        if (PixelRgbKeyPanel is not null)
+            PixelRgbKeyPanel.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (RynorRgbModeTitle is not null)
+            RynorRgbModeTitle.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RynorRgbModeButtons is not null)
+            RynorRgbModeButtons.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RynorRgbPresetsTitle is not null)
+            RynorRgbPresetsTitle.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RynorRgbPresetsPanel is not null)
+            RynorRgbPresetsPanel.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RgbProfileCombo is not null)
+            RgbProfileCombo.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (PixelRgbSaveHint is not null)
+            PixelRgbSaveHint.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (RgbProfileTitle is not null)
+            RgbProfileTitle.Text =
+                pixel
+                    ? L("Keymap RGB", "RGB theo keymap")
+                    : "RGB Profile";
+
+        if (RgbSaveProfileButton is not null)
+            RgbSaveProfileButton.Content =
+                pixel
+                    ? L("Save 8 keys to keymap profile", "Lưu 8 phím vào profile keymap")
+                    : L("Save to profile", "Lưu vào profile");
+
+        if (RgbSpeedSlider is not null)
+            RgbSpeedSlider.IsEnabled =
+                !pixel;
+
+        UpdatePixelRgbUi();
     }
 
     private void UpdateProductHubUi()
@@ -1672,6 +1745,22 @@ public partial class MainWindow : Window
         new() { Effect = 3, R = 80, G = 255, B = 100 },
     ];
 
+    private static PixelRgbColor[][] CreateDefaultPixelRgbProfiles() =>
+        Enumerable.Range(0, 20)
+            .Select(profile =>
+                Enumerable.Range(0, 8)
+                    .Select(key =>
+                    {
+                        // Slightly different defaults make the 8-key preview
+                        // readable before the user customizes it.
+                        byte r = (byte)Math.Clamp(255 - key * 16, 0, 255);
+                        byte g = (byte)Math.Clamp(96 + key * 18, 0, 255);
+                        byte b = (byte)Math.Clamp(profile * 5, 0, 120);
+                        return new PixelRgbColor(r, g, b);
+                    })
+                    .ToArray())
+            .ToArray();
+
     private sealed class AppSettings
     {
         public bool RgbEnabled { get; set; } = true;
@@ -1683,6 +1772,10 @@ public partial class MainWindow : Window
         public byte G { get; set; } = 120;
         public byte B { get; set; }
         public RgbProfileSetting[]? RgbProfiles { get; set; }
+        public int PixelGifMaxFps { get; set; } = PixelProScreensaverMediaService.DefaultGifMaxFps;
+        public int PixelGifMaxDurationSeconds { get; set; } = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+        public int PixelImageJpegQuality { get; set; } = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+        public PixelRgbColor[][]? PixelRgbProfiles { get; set; }
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public int RgbIdleDelaySeconds { get; set; } = 60;
@@ -1731,6 +1824,35 @@ public partial class MainWindow : Window
                         B = p.B
                     })
                     .ToArray();
+            }
+
+            _pixelGifMaxFps =
+                settings.PixelGifMaxFps is 20 or 25 or 30 or 40 or 50 or 60
+                    ? settings.PixelGifMaxFps
+                    : PixelProScreensaverMediaService.DefaultGifMaxFps;
+
+            _pixelGifMaxDurationSeconds =
+                settings.PixelGifMaxDurationSeconds is 5 or 10 or 15 or 20 or 30
+                    ? settings.PixelGifMaxDurationSeconds
+                    : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+
+            _pixelImageJpegQuality =
+                Math.Clamp(
+                    settings.PixelImageJpegQuality,
+                    90,
+                    100);
+
+            if (settings.PixelRgbProfiles is { Length: >= 20 } savedPixelRgb &&
+                savedPixelRgb.Take(20).All(profile => profile is { Length: >= 8 }))
+            {
+                _pixelRgbProfiles =
+                    savedPixelRgb
+                        .Take(20)
+                        .Select(profile =>
+                            profile
+                                .Take(8)
+                                .ToArray())
+                        .ToArray();
             }
 
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
@@ -1798,12 +1920,19 @@ public partial class MainWindow : Window
                         B = p.B
                     })
                     .ToArray(),
+                PixelGifMaxFps = _pixelGifMaxFps,
+                PixelGifMaxDurationSeconds = _pixelGifMaxDurationSeconds,
+                PixelImageJpegQuality = _pixelImageJpegQuality,
+                PixelRgbProfiles = _pixelRgbProfiles
+                    .Select(profile => profile.ToArray())
+                    .ToArray(),
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
                 DeepSleepDelaySeconds = _deepSleepDelaySeconds,
                 ScreensaverMediaPath = _screensaverMediaPath,
-                ScreensaverScaleMode = SelectedScreensaverScaleMode(),
+                // Preserve RYNOR's scale even while PIXEL PRO is active.
+                ScreensaverScaleMode = _screensaverScaleMode,
                 PcMonitorEnabled = _pcMonitorEnabled,
                 PcMonitorIntervalMs = _pcMonitorIntervalMs,
                 PcMonitorGpuId = _pcMonitorGpuId,
@@ -1838,6 +1967,10 @@ public partial class MainWindow : Window
         SelectComboTag(RgbIdleDelayCombo, _rgbIdleDelaySeconds.ToString());
         SelectComboTag(DeepSleepDelayCombo, _deepSleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
+        if (PixelGifFpsCombo is not null)
+            SelectComboTag(PixelGifFpsCombo, _pixelGifMaxFps.ToString());
+        if (PixelGifDurationCombo is not null)
+            SelectComboTag(PixelGifDurationCombo, _pixelGifMaxDurationSeconds.ToString());
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, _screensaverSource);
 
@@ -1857,23 +1990,8 @@ public partial class MainWindow : Window
 
     private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
     {
-        // Most LumiPad ComboBoxes store their logical value in ComboBoxItem.Tag
-        // and do not declare SelectedValuePath. Assigning SelectedValue directly
-        // therefore does not select the requested item and previously left the
-        // PIXEL PRO GIF scale stuck on Fill even when the app intended Center.
-        foreach (object entry in combo.Items)
-        {
-            if (entry is ComboBoxItem item &&
-                string.Equals(
-                    item.Tag?.ToString(),
-                    tag,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                combo.SelectedItem = item;
-                return;
-            }
-        }
-
+        // Keep the original shared/Rynor behavior. PIXEL-specific controls
+        // declare SelectedValuePath=Tag and do not need a global workaround.
         combo.SelectedValue = tag;
     }
 
@@ -6646,6 +6764,9 @@ try {{
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (IsPixelProActive)
+            return;
+
         if (e.AddedItems.Count == 0 ||
             e.AddedItems[0] is not ComboBoxItem item ||
             !int.TryParse(item.Tag?.ToString(), out int index))
@@ -6666,6 +6787,32 @@ try {{
 
     private void RgbSaveProfile_Click(object sender, RoutedEventArgs e)
     {
+        if (IsPixelProActive)
+        {
+            int profile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    _pixelRgbProfiles.Length - 1);
+
+            SaveAppSettings();
+
+            if (_serial is PixelProCdcLink pixel &&
+                pixel.IsConnected)
+            {
+                pixel.SetPixelRgbProfile(
+                    profile,
+                    _pixelRgbProfiles[profile]);
+            }
+
+            BottomStatus.Text =
+                L(
+                    $"PIXEL RGB saved to keymap profile {profile + 1}.",
+                    $"Đã lưu RGB PIXEL vào profile keymap {profile + 1}.");
+
+            return;
+        }
+
         int index = Math.Clamp(_rgbProfileIndex, 0, _rgbProfiles.Length - 1);
         _rgbProfiles[index] = new RgbProfileSetting
         {
@@ -6808,17 +6955,206 @@ try {{
         if (RgbBText is not null) RgbBText.Text = _b.ToString();
     }
 
+    private void UpdatePixelRgbUi()
+    {
+        if (!IsPixelProActive ||
+            PixelRgbK1 is null)
+        {
+            return;
+        }
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbProfiles.Length - 1);
+
+        if (PixelRgbProfileText is not null)
+        {
+            string name =
+                profile <
+                    _pixelProfileCatalog.Names.Length
+                    ? _pixelProfileCatalog.Names[profile]
+                    : $"Profile {profile + 1}";
+
+            PixelRgbProfileText.Text =
+                $"Keymap Profile {profile + 1:00} · {name}";
+        }
+
+        System.Windows.Controls.Button[] buttons =
+        [
+            PixelRgbK1,
+            PixelRgbK2,
+            PixelRgbK3,
+            PixelRgbK4,
+            PixelRgbK5,
+            PixelRgbK6,
+            PixelRgbK7,
+            PixelRgbK8
+        ];
+
+        for (int key = 0; key < 8; key++)
+        {
+            PixelRgbColor color =
+                _pixelRgbProfiles[profile][key];
+
+            buttons[key].Background =
+                new SolidColorBrush(
+                    MediaColor.FromRgb(
+                        color.R,
+                        color.G,
+                        color.B));
+
+            buttons[key].Foreground =
+                new SolidColorBrush(
+                    (color.R * 299 +
+                     color.G * 587 +
+                     color.B * 114) >
+                    150000
+                        ? MediaColor.FromRgb(20, 20, 20)
+                        : MediaColor.FromRgb(245, 245, 245));
+
+            bool selected =
+                _pixelRgbSelectedKey == key;
+
+            buttons[key].BorderBrush =
+                new SolidColorBrush(
+                    selected
+                        ? MediaColor.FromRgb(255, 159, 10)
+                        : MediaColor.FromRgb(92, 92, 96));
+
+            buttons[key].BorderThickness =
+                new Thickness(
+                    selected
+                        ? 3
+                        : 1);
+        }
+
+        if (PixelRgbAllButton is not null)
+        {
+            bool allSelected =
+                _pixelRgbSelectedKey < 0;
+
+            PixelRgbAllButton.BorderBrush =
+                new SolidColorBrush(
+                    allSelected
+                        ? MediaColor.FromRgb(255, 159, 10)
+                        : MediaColor.FromRgb(92, 92, 96));
+
+            PixelRgbAllButton.BorderThickness =
+                new Thickness(
+                    allSelected
+                        ? 3
+                        : 1);
+        }
+    }
+
+    private void PixelRgbKey_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            sender is not System.Windows.Controls.Button button ||
+            !int.TryParse(
+                button.Tag?.ToString(),
+                out int key))
+        {
+            return;
+        }
+
+        _pixelRgbSelectedKey =
+            Math.Clamp(
+                key,
+                -1,
+                7);
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbProfiles.Length - 1);
+
+        PixelRgbColor selected =
+            _pixelRgbProfiles[profile][
+                _pixelRgbSelectedKey >= 0
+                    ? _pixelRgbSelectedKey
+                    : 0];
+
+        _r = selected.R;
+        _g = selected.G;
+        _b = selected.B;
+
+        UpdateRgbReadout();
+        UpdatePixelRgbUi();
+    }
+
     private void ApplySelectedRgbColor(bool send)
     {
         UpdateRgbReadout();
 
-        if (send && _uiReady)
+        if (!send ||
+            !_uiReady)
         {
-            _rgbAuto = false;
-            _rgbEffect = 3;
-            SaveAppSettings();
-            _serial.SetSolid(_r, _g, _b);
+            return;
         }
+
+        if (IsPixelProActive)
+        {
+            int profile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    _pixelRgbProfiles.Length - 1);
+
+            PixelRgbColor color =
+                new(
+                    _r,
+                    _g,
+                    _b);
+
+            if (_pixelRgbSelectedKey < 0)
+            {
+                for (int key = 0; key < 8; key++)
+                    _pixelRgbProfiles[profile][key] = color;
+
+                if (_serial is PixelProCdcLink pixel &&
+                    pixel.IsConnected)
+                {
+                    pixel.SetPixelRgbAll(
+                        profile,
+                        color);
+                }
+            }
+            else
+            {
+                int key =
+                    Math.Clamp(
+                        _pixelRgbSelectedKey,
+                        0,
+                        7);
+
+                _pixelRgbProfiles[profile][key] =
+                    color;
+
+                if (_serial is PixelProCdcLink pixel &&
+                    pixel.IsConnected)
+                {
+                    pixel.SetPixelRgbKey(
+                        profile,
+                        key,
+                        color);
+                }
+            }
+
+            SaveAppSettings();
+            UpdatePixelRgbUi();
+            return;
+        }
+
+        _rgbAuto = false;
+        _rgbEffect = 3;
+        SaveAppSettings();
+        _serial.SetSolid(_r, _g, _b);
     }
 
     private void RgbSwatch_Click(object sender, RoutedEventArgs e)
@@ -6913,12 +7249,40 @@ try {{
         if (!_serial.IsConnected)
             return;
 
-        _rgbEnabled = LedEnabled.IsChecked == true;
-        _rgbBrightness = (int)Math.Round(BrightnessSlider.Value);
-        _rgbSpeed = (int)Math.Round(RgbSpeedSlider.Value);
+        _rgbEnabled =
+            LedEnabled.IsChecked == true;
 
-        // Preserve the known-working pre-redesign protocol: individual
-        // commands are sent in a deterministic order instead of RGB|STATE.
+        _rgbBrightness =
+            (int)Math.Round(
+                BrightnessSlider.Value);
+
+        if (IsPixelProActive &&
+            _serial is PixelProCdcLink pixel)
+        {
+            int profile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    _pixelRgbProfiles.Length - 1);
+
+            pixel.SetPixelRgbProfile(
+                profile,
+                _pixelRgbProfiles[profile]);
+
+            pixel.SetEnabled(
+                _rgbEnabled);
+
+            pixel.SetBrightness(
+                _rgbBrightness);
+
+            return;
+        }
+
+        _rgbSpeed =
+            (int)Math.Round(
+                RgbSpeedSlider.Value);
+
+        // RYNOR ONE: preserve the known-working pre-redesign protocol.
         for (int i = 0; i < _rgbProfiles.Length; i++)
         {
             var profile = _rgbProfiles[i];
@@ -6962,15 +7326,8 @@ try {{
 
         _screensaverMediaPath = dialog.FileName;
 
-        if (IsPixelProActive &&
-            ScreensaverScaleCombo is not null)
-        {
-            _screensaverScaleMode = ScreensaverScaleMode.Center;
-            SelectComboTag(
-                ScreensaverScaleCombo,
-                ScreensaverScaleMode.Center.ToString());
-        }
-
+        // PIXEL PRO has its own Center/no-upscale policy. Do not mutate the
+        // shared RYNOR scale preference when choosing PIXEL media.
         _screensaverSource = "Media";
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, "Media");
@@ -6985,6 +7342,9 @@ try {{
 
     private ScreensaverScaleMode SelectedScreensaverScaleMode()
     {
+        if (IsPixelProActive)
+            return ScreensaverScaleMode.Center;
+
         if (ScreensaverScaleCombo.SelectedItem is ComboBoxItem item &&
             Enum.TryParse<ScreensaverScaleMode>(
                 item.Tag?.ToString(),
@@ -7004,6 +7364,9 @@ try {{
         if (!_uiReady)
             return;
 
+        if (IsPixelProActive)
+            return;
+
         _screensaverScaleMode = SelectedScreensaverScaleMode();
         SaveAppSettings();
 
@@ -7011,6 +7374,46 @@ try {{
             return;
 
         await PrepareScreensaverMediaAsync();
+    }
+
+    private async void PixelMediaSetting_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            !IsPixelProActive)
+        {
+            return;
+        }
+
+        if (PixelGifFpsCombo?.SelectedValue is string fpsText &&
+            int.TryParse(fpsText, out int fps))
+        {
+            _pixelGifMaxFps =
+                fps is 20 or 25 or 30 or 40 or 50 or 60
+                    ? fps
+                    : PixelProScreensaverMediaService.DefaultGifMaxFps;
+        }
+
+        if (PixelGifDurationCombo?.SelectedValue is string durationText &&
+            int.TryParse(durationText, out int duration))
+        {
+            _pixelGifMaxDurationSeconds =
+                duration is 5 or 10 or 15 or 20 or 30
+                    ? duration
+                    : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+        }
+
+        SaveAppSettings();
+
+        if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+            string.Equals(
+                IO.Path.GetExtension(_screensaverMediaPath),
+                ".gif",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await PrepareScreensaverMediaAsync();
+        }
     }
 
     private async Task PrepareScreensaverMediaAsync()
@@ -7032,7 +7435,10 @@ try {{
                 pixel
                     ? await PixelProScreensaverMediaService.LoadAsync(
                         _screensaverMediaPath,
-                        scaleMode)
+                        ScreensaverScaleMode.Center,
+                        _pixelGifMaxFps,
+                        _pixelGifMaxDurationSeconds,
+                        _pixelImageJpegQuality)
                     : await ScreensaverMediaService.LoadAsync(
                         _screensaverMediaPath,
                         scaleMode);
@@ -7048,10 +7454,25 @@ try {{
             if (_screensaverAnimation.PixelFormat ==
                 ScreensaverPixelFormat.Rgb565)
             {
-                ScreensaverMediaInfo.Text =
-                    L(
-                        $"Static image · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 high quality · {scaleMode}",
-                        $"Ảnh tĩnh · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 chất lượng cao · {scaleMode}");
+                if (pixel)
+                {
+                    var jpegInfo =
+                        PixelProScreensaverMediaService.GetEncodedJpegInfo(
+                            _screensaverAnimation);
+
+                    ScreensaverMediaInfo.Text =
+                        L(
+                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · no upscale · centered",
+                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · không phóng lớn · căn giữa");
+                }
+                else
+                {
+                    // RYNOR ONE keeps the original media description/behavior.
+                    ScreensaverMediaInfo.Text =
+                        L(
+                            $"Static image · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 high quality · {scaleMode}",
+                            $"Ảnh tĩnh · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 chất lượng cao · {scaleMode}");
+                }
 
                 ScreensaverPreviewImage.Source =
                     CreateRgb565Bitmap(
@@ -7087,11 +7508,11 @@ try {{
                     pixelGifSummary =
                         pixelGifInfo.Optimized
                             ? L(
-                                $"Optimized GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · saved {savedPercent:0.#}% · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Frames} stored frames · {_screensaverScaleMode}",
-                                $"GIF đã tối ưu · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giảm {savedPercent:0.#}% · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Frames} frame lưu · {_screensaverScaleMode}")
+                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} source resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color adaptive palette · saved {savedPercent:0.#}%",
+                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên độ phân giải {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette thích ứng 256 màu · giảm {savedPercent:0.#}%")
                             : L(
-                                $"GIF already compact · {storedKb:0.#} KB · source retained · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {_screensaverScaleMode}",
-                                $"GIF gốc đã đủ gọn · {storedKb:0.#} KB · giữ nguyên nguồn · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {_screensaverScaleMode}");
+                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale",
+                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -7124,8 +7545,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL PRO will receive the compact GIF payload and decode it on-device; no raw frame dump is stored.",
-                        "Đã sẵn sàng. PIXEL PRO sẽ nhận GIF đã tối ưu và giải mã trực tiếp; không lưu dump frame thô.")
+                        "Ready. PIXEL PRO media is stored compressed: GIF stays GIF; images are JPEG quality 100. Display refresh remains 60 Hz.",
+                        "Đã sẵn sàng. Media PIXEL PRO được lưu dạng nén: GIF giữ GIF; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
@@ -7860,10 +8281,33 @@ try {{
             pixel.SetProfileLayer(
                 _pixelSelectedProfile,
                 _pixelSelectedLayer);
+
+            PixelRgbColor[]? colors =
+                await pixel.GetPixelRgbProfileAsync(
+                    _pixelSelectedProfile);
+
+            if (colors is { Length: 8 })
+            {
+                _pixelRgbProfiles[_pixelSelectedProfile] =
+                    colors.ToArray();
+            }
         }
+
+        _pixelRgbSelectedKey = -1;
+
+        PixelRgbColor firstColor =
+            _pixelRgbProfiles[
+                _pixelSelectedProfile][0];
+
+        _r = firstColor.R;
+        _g = firstColor.G;
+        _b = firstColor.B;
 
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
+        UpdateRgbReadout();
+        UpdatePixelRgbUi();
+        SaveAppSettings();
 
         _pixelViaUpdating = true;
         try
