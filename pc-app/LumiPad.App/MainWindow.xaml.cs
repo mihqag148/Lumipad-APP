@@ -6373,8 +6373,8 @@ try {{
                 ScreensaverMediaInfo.Text =
                     pixel
                         ? L(
-                            $"Original GIF · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} preview · {(_screensaverAnimation.EncodedGif?.Length ?? 0) / 1024.0:0.#} KB compressed · no 2× scaling · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS",
-                            $"GIF gốc · xem trước {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · {(_screensaverAnimation.EncodedGif?.Length ?? 0) / 1024.0:0.#} KB đã nén · không phóng 2× · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS")
+                            $"Original GIF · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} preview · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB compressed · no 2× scaling · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS",
+                            $"GIF gốc · xem trước {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB đã nén · không phóng 2× · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS")
                         : L(
                             $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
                             $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
