@@ -7910,14 +7910,25 @@ try {{
 
     private static string? PixelMacroKeyToken(Key key)
     {
-        if (key is >= Key.A and <= Key.Z)
-            return key.ToString();
+        int keyValue = (int)key;
 
-        if (key is >= Key.D0 and <= Key.D9)
-            return ((int)key - (int)Key.D0).ToString();
-
-        if (key is >= Key.F1 and <= Key.F24)
+        if (keyValue >= (int)Key.A &&
+            keyValue <= (int)Key.Z)
+        {
             return key.ToString();
+        }
+
+        if (keyValue >= (int)Key.D0 &&
+            keyValue <= (int)Key.D9)
+        {
+            return (keyValue - (int)Key.D0).ToString();
+        }
+
+        if (keyValue >= (int)Key.F1 &&
+            keyValue <= (int)Key.F24)
+        {
+            return key.ToString();
+        }
 
         return key switch
         {
