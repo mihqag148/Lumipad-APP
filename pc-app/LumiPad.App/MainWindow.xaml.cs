@@ -130,11 +130,11 @@ public partial class MainWindow : Window
     private sealed class PixelKeyEditor
     {
         public required int Index { get; init; }
-        public required ComboBox Action { get; init; }
-        public required CheckBox Ctrl { get; init; }
-        public required CheckBox Shift { get; init; }
-        public required CheckBox Alt { get; init; }
-        public required CheckBox Win { get; init; }
+        public required System.Windows.Controls.ComboBox Action { get; init; }
+        public required System.Windows.Controls.CheckBox Ctrl { get; init; }
+        public required System.Windows.Controls.CheckBox Shift { get; init; }
+        public required System.Windows.Controls.CheckBox Alt { get; init; }
+        public required System.Windows.Controls.CheckBox Win { get; init; }
         public required TextBlock Summary { get; init; }
     }
 
@@ -6247,7 +6247,7 @@ try {{
 
         for (int i = 0; i < 8; i++)
         {
-            var combo = new ComboBox
+            var combo = new System.Windows.Controls.ComboBox
             {
                 ItemsSource = PixelKeyChoices,
                 DisplayMemberPath = nameof(PixelProKeyChoice.Label),
@@ -6255,10 +6255,10 @@ try {{
                 Margin = new Thickness(0, 10, 0, 12)
             };
 
-            var ctrl = new CheckBox { Content = "Ctrl", Margin = new Thickness(0, 0, 10, 0) };
-            var shift = new CheckBox { Content = "Shift", Margin = new Thickness(0, 0, 10, 0) };
-            var alt = new CheckBox { Content = "Alt", Margin = new Thickness(0, 0, 10, 0) };
-            var win = new CheckBox { Content = "Win", Margin = new Thickness(0) };
+            var ctrl = new System.Windows.Controls.CheckBox { Content = "Ctrl", Margin = new Thickness(0, 0, 10, 0) };
+            var shift = new System.Windows.Controls.CheckBox { Content = "Shift", Margin = new Thickness(0, 0, 10, 0) };
+            var alt = new System.Windows.Controls.CheckBox { Content = "Alt", Margin = new Thickness(0, 0, 10, 0) };
+            var win = new System.Windows.Controls.CheckBox { Content = "Win", Margin = new Thickness(0) };
             var summary = new TextBlock
             {
                 Foreground = TryFindResource("Muted") as System.Windows.Media.Brush,
