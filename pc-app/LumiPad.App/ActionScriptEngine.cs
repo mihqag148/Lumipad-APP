@@ -124,6 +124,14 @@ public static class ActionScriptEngine
     private const uint KeyeventfKeyup = 0x0002;
     private const uint InputKeyboard = 1;
     private const uint KeyeventfUnicode = 0x0004;
+    private const uint MouseeventfMove = 0x0001;
+    private const uint MouseeventfLeftDown = 0x0002;
+    private const uint MouseeventfLeftUp = 0x0004;
+    private const uint MouseeventfRightDown = 0x0008;
+    private const uint MouseeventfRightUp = 0x0010;
+    private const uint MouseeventfMiddleDown = 0x0020;
+    private const uint MouseeventfMiddleUp = 0x0040;
+    private const uint MouseeventfWheel = 0x0800;
 
     public static async Task ExecuteAsync(
         ActionScriptDefinition script,
@@ -168,6 +176,44 @@ public static class ActionScriptEngine
             else if (type.Equals("Media", StringComparison.OrdinalIgnoreCase))
             {
                 SendMediaKey(value);
+            }
+            else if (type.Equals("MouseClick", StringComparison.OrdinalIgnoreCase))
+            {
+                SendMouseClick(value);
+            }
+            else if (type.Equals("MouseWheel", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!int.TryParse(value, out int wheel))
+                    wheel = 0;
+
+                mouse_event(
+                    MouseeventfWheel,
+                    0,
+                    0,
+                    unchecked((uint)(wheel * 120)),
+                    UIntPtr.Zero);
+            }
+            else if (type.Equals("MouseMove", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] parts = value.Split(
+                    ',',
+                    StringSplitOptions.TrimEntries |
+                    StringSplitOptions.RemoveEmptyEntries);
+
+                int dx = 0;
+                int dy = 0;
+
+                if (parts.Length > 0)
+                    _ = int.TryParse(parts[0], out dx);
+                if (parts.Length > 1)
+                    _ = int.TryParse(parts[1], out dy);
+
+                mouse_event(
+                    MouseeventfMove,
+                    unchecked((uint)dx),
+                    unchecked((uint)dy),
+                    0,
+                    UIntPtr.Zero);
             }
         }
     }
@@ -281,6 +327,21 @@ public static class ActionScriptEngine
         return map.TryGetValue(key, out vk);
     }
 
+    private static void SendMouseClick(string value)
+    {
+        string button = value.Trim().ToUpperInvariant();
+
+        (uint down, uint up) flags = button switch
+        {
+            "RIGHT" => (MouseeventfRightDown, MouseeventfRightUp),
+            "MIDDLE" => (MouseeventfMiddleDown, MouseeventfMiddleUp),
+            _ => (MouseeventfLeftDown, MouseeventfLeftUp)
+        };
+
+        mouse_event(flags.down, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(flags.up, 0, 0, 0, UIntPtr.Zero);
+    }
+
     private static void SendMediaKey(string value)
     {
         byte vk = value.Trim().ToUpperInvariant() switch
@@ -388,5 +449,13 @@ public static class ActionScriptEngine
         byte bVk,
         byte bScan,
         uint dwFlags,
+        UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(
+        uint dwFlags,
+        uint dx,
+        uint dy,
+        uint dwData,
         UIntPtr dwExtraInfo);
 }
