@@ -127,20 +127,41 @@ public partial class MainWindow : Window
     private bool _syncingPcMetricUi;
     private int[] _pcMonitorMetricSlots = [0, 3, 6, 9, 10, 11];
 
-    private sealed class PixelKeyEditor
+    private sealed class PixelViaKeyVisual
     {
         public required int Index { get; init; }
-        public required System.Windows.Controls.ComboBox Action { get; init; }
-        public required System.Windows.Controls.CheckBox Ctrl { get; init; }
-        public required System.Windows.Controls.CheckBox Shift { get; init; }
-        public required System.Windows.Controls.CheckBox Alt { get; init; }
-        public required System.Windows.Controls.CheckBox Win { get; init; }
-        public required TextBlock Summary { get; init; }
+        public required System.Windows.Controls.Button Button { get; init; }
+        public required TextBlock MainText { get; init; }
+        public required TextBlock SubText { get; init; }
     }
 
-    private readonly List<PixelKeyEditor> _pixelKeyEditors = [];
-    private bool _pixelKeymapUiBuilt;
-    private bool _pixelKeymapLoading;
+    private sealed class PixelViaExport
+    {
+        public int Version { get; set; } = 1;
+        public PixelProKeyBinding[][] Layers { get; set; } = [];
+        public string[] Macros { get; set; } = [];
+    }
+
+    private readonly List<PixelViaKeyVisual> _pixelViaKeys = [];
+    private readonly PixelProKeyBinding[][] _pixelLayerMaps =
+        Enumerable.Range(0, 4)
+            .Select(layer =>
+                Enumerable.Range(0, 8)
+                    .Select(i =>
+                        layer == 0
+                            ? PixelProKeyBinding.Keyboard((byte)(4 + i))
+                            : PixelProKeyBinding.Transparent())
+                    .ToArray())
+            .ToArray();
+    private readonly bool[] _pixelLayerLoaded = new bool[4];
+    private readonly string[] _pixelMacros = new string[8];
+    private readonly bool[] _pixelMacroLoaded = new bool[8];
+
+    private int _pixelSelectedLayer;
+    private int _pixelSelectedKey;
+    private string _pixelCurrentCategory = "Basic";
+    private bool _pixelViaUiBuilt;
+    private bool _pixelViaUpdating;
 
     private static readonly PixelProKeyChoice[] PixelKeyChoices =
         CreatePixelKeyChoices();
