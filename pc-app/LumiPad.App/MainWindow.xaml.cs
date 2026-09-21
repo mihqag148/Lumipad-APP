@@ -79,6 +79,8 @@ public partial class MainWindow : Window
         new(StringComparer.OrdinalIgnoreCase);
     private string? _lastForegroundAppPath;
     private int _lastAppliedAutoProfile = -1;
+    private int _lastAppliedAutoLayer = -1;
+    private bool _syncingAutoProfileUi;
     private NowPlayingData? _currentNowPlaying;
     private bool _mediaSeekDragging;
     private bool _syncingMediaUi;
