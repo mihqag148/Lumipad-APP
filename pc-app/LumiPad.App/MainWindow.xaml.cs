@@ -1002,6 +1002,19 @@ public partial class MainWindow : Window
                 pixel
                     ? PixelProScreensaverMediaService.MinFrameIntervalMs
                     : ScreensaverMediaService.MinFrameIntervalMs);
+
+        // PIXEL PRO should open media without crop/zoom by default.
+        // RYNOR keeps its existing saved/default scale behavior.
+        if (pixel &&
+            _screensaverAnimation is null &&
+            ScreensaverScaleCombo is not null &&
+            SelectedScreensaverScaleMode() == ScreensaverScaleMode.Fill)
+        {
+            _screensaverScaleMode = ScreensaverScaleMode.Fit;
+            SelectComboTag(
+                ScreensaverScaleCombo,
+                ScreensaverScaleMode.Fit.ToString());
+        }
     }
 
     private void UpdateProductHubUi()
