@@ -7883,11 +7883,21 @@ try {{
             PixelProKeymapPanel.Visibility =
                 pixel ? Visibility.Visible : Visibility.Collapsed;
 
+        if (PixelMacroTab is not null)
+            PixelMacroTab.Visibility =
+                pixel ? Visibility.Visible : Visibility.Collapsed;
+
         if (!pixel && DeviceConfiguratorTitle is not null)
             DeviceConfiguratorTitle.Text = CurrentConfiguratorName();
 
         if (pixel && PixelKeymapSaveButton is not null)
             PixelKeymapSaveButton.IsEnabled = _serial.IsConnected;
+
+        if (AutoProfileDefaultCombo is not null)
+            RefreshAutoProfileDefaultSelectors();
+
+        if (AutoProfileMappingsPanel is not null)
+            RefreshAutoProfileMappingsUi();
     }
 
     private async void MainTabs_SelectionChanged(
