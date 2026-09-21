@@ -423,7 +423,81 @@
                                        Foreground="{DynamicResource Muted}"
                                        Margin="0,4,0,10"/>
 
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <Border x:Name="PixelMediaSettingsPanel"
+                                    Visibility="Collapsed"
+                                    Background="{DynamicResource ControlBg}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="10"
+                                    Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="14"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel>
+                                        <TextBlock Text="PIXEL PRO · GIF"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Accent}"/>
+                                        <TextBlock Text="Target ≤ 1 MiB · keep source resolution · 256-color adaptive palette"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,3,0,7"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Max FPS" Width="72" VerticalAlignment="Center"/>
+                                            <ComboBox x:Name="PixelGifFpsCombo"
+                                                      Width="82"
+                                                      SelectedValuePath="Tag"
+                                                      SelectionChanged="PixelMediaSetting_SelectionChanged">
+                                                <ComboBoxItem Content="60" Tag="60" IsSelected="True"/>
+                                                <ComboBoxItem Content="50" Tag="50"/>
+                                                <ComboBoxItem Content="40" Tag="40"/>
+                                                <ComboBoxItem Content="30" Tag="30"/>
+                                                <ComboBoxItem Content="25" Tag="25"/>
+                                                <ComboBoxItem Content="20" Tag="20"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <TextBlock Text="Max time" Width="72" VerticalAlignment="Center"/>
+                                            <ComboBox x:Name="PixelGifDurationCombo"
+                                                      Width="82"
+                                                      SelectedValuePath="Tag"
+                                                      SelectionChanged="PixelMediaSetting_SelectionChanged">
+                                                <ComboBoxItem Content="5 s" Tag="5"/>
+                                                <ComboBoxItem Content="10 s" Tag="10"/>
+                                                <ComboBoxItem Content="15 s" Tag="15" IsSelected="True"/>
+                                                <ComboBoxItem Content="20 s" Tag="20"/>
+                                                <ComboBoxItem Content="30 s" Tag="30"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="PIXEL PRO · IMAGE"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Accent}"/>
+                                        <TextBlock Text="Auto JPEG · quality 100 · 24-bit source → RGB565 panel"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,3,0,5"/>
+                                        <TextBlock Text="Max 480×320 · preserve aspect · never upscale"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel x:Name="ScreensaverScalePanel"
+                                        Orientation="Horizontal"
+                                        Margin="0,0,0,12">
                                 <TextBlock Text="Scale"
                                            Width="52"
                                            VerticalAlignment="Center"
@@ -1527,11 +1601,46 @@
                                     HorizontalAlignment="Center"/>
 
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Mode"
+                                <StackPanel x:Name="PixelRgbKeyPanel"
+                                            Visibility="Collapsed">
+                                    <TextBlock Text="PIXEL PRO · PER-KEY RGB"
+                                               FontSize="16"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="PixelRgbProfileText"
+                                               Text="Keymap Profile 01"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,4,0,10"/>
+                                    <UniformGrid Columns="4" Rows="2">
+                                        <Button x:Name="PixelRgbK1" Content="K1" Tag="0" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK2" Content="K2" Tag="1" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK3" Content="K3" Tag="2" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK4" Content="K4" Tag="3" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK5" Content="K5" Tag="4" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK6" Content="K6" Tag="5" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK7" Content="K7" Tag="6" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                        <Button x:Name="PixelRgbK8" Content="K8" Tag="7" Click="PixelRgbKey_Click" Height="58" Margin="3"/>
+                                    </UniformGrid>
+                                    <Button x:Name="PixelRgbAllButton"
+                                            Content="ALL 8 KEYS"
+                                            Tag="-1"
+                                            Click="PixelRgbKey_Click"
+                                            Height="42"
+                                            Margin="3,8,3,0"/>
+                                    <TextBlock Text="LED order: 1→K1 · 2→K2 · 3→K3 · 4→K4 · 5→K8 · 6→K7 · 7→K6 · 8→K5"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource Muted}"
+                                               TextWrapping="Wrap"
+                                               Margin="3,8,3,18"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="RynorRgbModeTitle"
+                                           Text="Mode"
                                            FontSize="16"
                                            FontWeight="SemiBold"/>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,12,0,20">
+                                <StackPanel x:Name="RynorRgbModeButtons"
+                                            Orientation="Horizontal"
+                                            Margin="0,12,0,20">
                                     <Button Content="Static" Tag="Static"
                                             Click="RgbMode_Click" Width="100"/>
                                     <Button Content="Dynamic" Tag="Dynamic"
@@ -1540,7 +1649,8 @@
                                             Click="RgbMode_Click" Width="100"/>
                                 </StackPanel>
 
-                                <TextBlock Text="Presets"
+                                <TextBlock x:Name="RynorRgbPresetsTitle"
+                                           Text="Presets"
                                            FontSize="18"
                                            FontWeight="SemiBold"
                                            Margin="0,0,0,14"/>
@@ -1583,9 +1693,17 @@
                                     HorizontalAlignment="Center"/>
 
                             <StackPanel Grid.Column="4">
-                                <TextBlock Text="RGB Profile"
+                                <TextBlock x:Name="RgbProfileTitle"
+                                           Text="RGB Profile"
                                            FontSize="16"
                                            FontWeight="SemiBold"/>
+                                <TextBlock x:Name="PixelRgbSaveHint"
+                                           Text="Saved with the selected keymap profile"
+                                           Visibility="Collapsed"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap"
+                                           Margin="0,5,0,8"/>
                                 <ComboBox x:Name="RgbProfileCombo"
                                           SelectedValuePath="Tag"
                                           SelectionChanged="RgbProfileCombo_SelectionChanged"
@@ -1596,7 +1714,8 @@
                                     <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
                                     <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
                                 </ComboBox>
-                                <Button Content="Save to profile"
+                                <Button x:Name="RgbSaveProfileButton"
+                                        Content="Save to profile"
                                         Click="RgbSaveProfile_Click"
                                         HorizontalAlignment="Left"
                                         Margin="0,0,0,18"/>
