@@ -13,6 +13,7 @@ public sealed class PixelProCdcLink : IDeviceLink
 {
     private readonly ProductDefinition _product;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
+    private readonly SemaphoreSlim _commandGate = new(1, 1);
 
     private SerialPort? _port;
     private CancellationTokenSource? _readCts;
@@ -407,6 +408,171 @@ public sealed class PixelProCdcLink : IDeviceLink
             ? Task.FromResult<string?>(_connectionName)
             : ConnectUsbAsync(cancellationToken);
 
+    private async Task StopReaderAsync()
+    {
+        _readCts?.Cancel();
+
+        Task? task = _readTask;
+        if (task is not null)
+            await Task.WhenAny(task, Task.Delay(700));
+
+        _readCts?.Dispose();
+        _readCts = null;
+        _readTask = null;
+    }
+
+    private async Task<string?> RequestLineAsync(
+        string command,
+        string expectedPrefix,
+        CancellationToken cancellationToken = default)
+    {
+        await _commandGate.WaitAsync(cancellationToken);
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return null;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 300;
+                port.WriteTimeout = 1000;
+                try { port.DiscardInBuffer(); } catch { }
+
+                Log("TX", command);
+                port.WriteLine(command);
+
+                DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+
+                while (DateTime.UtcNow < deadline)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    try
+                    {
+                        string line = port.ReadLine().Trim('\0', '\r', '\n', ' ');
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        Log("CDC", line);
+
+                        if (line.StartsWith(expectedPrefix, StringComparison.Ordinal))
+                            return line;
+
+                        if (line.StartsWith("ERR|", StringComparison.Ordinal))
+                            return line;
+                    }
+                    catch (TimeoutException)
+                    {
+                        await Task.Delay(20, cancellationToken);
+                    }
+                }
+
+                return null;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<PixelProKeyBinding>?> GetKeymapAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? line = await RequestLineAsync(
+            "GET_KEYMAP",
+            "KEYMAP|",
+            cancellationToken);
+
+        if (line is null || !line.StartsWith("KEYMAP|", StringComparison.Ordinal))
+            return null;
+
+        string[] entries = line["KEYMAP|".Length..].Split(',');
+        if (entries.Length != 8)
+            return null;
+
+        var result = new List<PixelProKeyBinding>(8);
+
+        foreach (string entry in entries)
+        {
+            string[] parts = entry.Split(':');
+            if (parts.Length != 3 ||
+                !ushort.TryParse(parts[1], out ushort code) ||
+                !byte.TryParse(parts[2], out byte modifiers))
+            {
+                return null;
+            }
+
+            PixelProKeyBinding binding = parts[0] switch
+            {
+                "K" when code <= byte.MaxValue =>
+                    PixelProKeyBinding.Keyboard((byte)code, modifiers),
+                "C" =>
+                    PixelProKeyBinding.Consumer(code),
+                "D" when code == 0 && modifiers == 0 =>
+                    PixelProKeyBinding.Disabled(),
+                _ => null!
+            };
+
+            if (binding is null)
+                return null;
+
+            result.Add(binding);
+        }
+
+        return result;
+    }
+
+    public async Task<bool> SetKeymapAsync(
+        IReadOnlyList<PixelProKeyBinding> bindings,
+        CancellationToken cancellationToken = default)
+    {
+        if (bindings.Count != 8)
+            return false;
+
+        static string Serialize(PixelProKeyBinding binding) =>
+            binding.Type switch
+            {
+                PixelProKeyBindingType.Keyboard =>
+                    $"K:{binding.Code}:{binding.Modifiers & 0x0F}",
+                PixelProKeyBindingType.Consumer =>
+                    $"C:{binding.Code}:0",
+                _ => "D:0:0"
+            };
+
+        string command =
+            "SET_KEYMAP|" + string.Join(",", bindings.Select(Serialize));
+
+        string? response = await RequestLineAsync(
+            command,
+            "OK|KEYMAP",
+            cancellationToken);
+
+        return string.Equals(response, "OK|KEYMAP", StringComparison.Ordinal);
+    }
+
+    public async Task<bool> ResetKeymapAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? response = await RequestLineAsync(
+            "RESET_KEYMAP",
+            "OK|KEYMAP_RESET",
+            cancellationToken);
+
+        return string.Equals(
+            response,
+            "OK|KEYMAP_RESET",
+            StringComparison.Ordinal);
+    }
+
     private void SendCommand(string command)
     {
         SerialPort? port = _port;
@@ -530,5 +696,6 @@ public sealed class PixelProCdcLink : IDeviceLink
     {
         DisconnectInternal();
         _connectGate.Dispose();
+        _commandGate.Dispose();
     }
 }
