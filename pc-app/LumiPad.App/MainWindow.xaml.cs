@@ -6329,7 +6329,7 @@ try {{
                 Text = $"K{i + 1}",
                 FontSize = 19,
                 FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center
             };
 
             var subText = new TextBlock
@@ -6337,7 +6337,7 @@ try {{
                 Text = "—",
                 FontSize = 11,
                 Foreground = TryFindResource("Muted") as System.Windows.Media.Brush,
-                HorizontalAlignment = HorizontalAlignment.Center,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
 
@@ -7131,7 +7131,7 @@ try {{
                 import.Macros is null ||
                 import.Macros.Length != 8)
             {
-                throw new InvalidDataException(
+                throw new System.IO.InvalidDataException(
                     "Invalid PIXEL PRO keymap file.");
             }
 
