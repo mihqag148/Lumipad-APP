@@ -821,6 +821,13 @@ public sealed class PixelProCdcLink : IDeviceLink
         if (!IsConnected)
             return false;
 
+        if (animation.EncodedGif is { Length: > 0 } encodedGif)
+        {
+            return await SendEncodedGifAsync(
+                encodedGif,
+                progress);
+        }
+
         bool staticImage =
             animation.PixelFormat == ScreensaverPixelFormat.Rgb565;
 
@@ -975,6 +982,158 @@ public sealed class PixelProCdcLink : IDeviceLink
                         port,
                         "OK|SAVER|READY",
                         TimeSpan.FromSeconds(8));
+
+                bool ready =
+                    string.Equals(
+                        finalAck,
+                        "OK|SAVER|READY",
+                        StringComparison.Ordinal);
+
+                if (ready)
+                    progress?.Report(100);
+
+                return ready;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    private async Task<bool> SendEncodedGifAsync(
+        byte[] gifBytes,
+        IProgress<int>? progress)
+    {
+        if (gifBytes.Length < 10 ||
+            gifBytes[0] != (byte)'G' ||
+            gifBytes[1] != (byte)'I' ||
+            gifBytes[2] != (byte)'F')
+        {
+            throw new InvalidDataException(
+                "Invalid GIF payload.");
+        }
+
+        int sourceWidth =
+            gifBytes[6] |
+            (gifBytes[7] << 8);
+
+        int sourceHeight =
+            gifBytes[8] |
+            (gifBytes[9] << 8);
+
+        bool fullPanel =
+            (sourceWidth ==
+                 PixelProScreensaverMediaService.PanelWidth &&
+             sourceHeight ==
+                 PixelProScreensaverMediaService.PanelHeight) ||
+            (sourceWidth ==
+                 PixelProScreensaverMediaService.NativePanelWidth &&
+             sourceHeight ==
+                 PixelProScreensaverMediaService.NativePanelHeight);
+
+        if (!fullPanel)
+        {
+            throw new InvalidOperationException(
+                "PIXEL PRO GIF must be 480×320 or 320×480.");
+        }
+
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 500;
+                port.WriteTimeout = 5000;
+
+                try { port.DiscardInBuffer(); } catch { }
+
+                string begin =
+                    $"SAVGIFBEGIN|{gifBytes.Length}|" +
+                    $"{sourceWidth}|{sourceHeight}";
+
+                Log("TX", begin);
+                port.WriteLine(begin);
+
+                string? beginAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVGIFBEGIN",
+                        TimeSpan.FromSeconds(8));
+
+                if (!string.Equals(
+                        beginAck,
+                        "OK|SAVGIFBEGIN",
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                const int RawChunkSize = 1024;
+
+                for (int offset = 0;
+                     offset < gifBytes.Length;
+                     offset += RawChunkSize)
+                {
+                    int len =
+                        Math.Min(
+                            RawChunkSize,
+                            gifBytes.Length - offset);
+
+                    string encoded =
+                        Convert.ToBase64String(
+                            gifBytes,
+                            offset,
+                            len);
+
+                    port.WriteLine(
+                        $"SAVGIFDATA|{offset}|{encoded}");
+
+                    int nextOffset = offset + len;
+
+                    string expected =
+                        $"OK|SAVGIFDATA|{nextOffset}";
+
+                    string? ack =
+                        await ReadExpectedLineAsync(
+                            port,
+                            expected,
+                            TimeSpan.FromSeconds(5));
+
+                    if (!string.Equals(
+                            ack,
+                            expected,
+                            StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+
+                    progress?.Report(
+                        (int)Math.Clamp(
+                            nextOffset * 95L /
+                            Math.Max(1, gifBytes.Length),
+                            0,
+                            95));
+                }
+
+                port.WriteLine("SAVGIFEND");
+
+                string? finalAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVER|READY",
+                        TimeSpan.FromSeconds(10));
 
                 bool ready =
                     string.Equals(
