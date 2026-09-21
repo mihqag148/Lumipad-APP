@@ -38,6 +38,7 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     public string FirmwareHello { get; private set; } = "";
     public int ProtocolVersion { get; private set; }
+    public string? LastScreensaverError { get; private set; }
 
     public bool SupportsDiagnostics => true;
     public bool SupportsMemoryInfo => true;
@@ -818,8 +819,13 @@ public sealed class PixelProCdcLink : IDeviceLink
         ScreensaverAnimation animation,
         IProgress<int>? progress = null)
     {
+        LastScreensaverError = null;
+
         if (!IsConnected)
+        {
+            LastScreensaverError = "PIXEL PRO is not connected.";
             return false;
+        }
 
         if (PixelProScreensaverMediaService.TryGetEncodedGif(
                 animation,
@@ -994,7 +1000,15 @@ public sealed class PixelProCdcLink : IDeviceLink
                         StringComparison.Ordinal);
 
                 if (ready)
+                {
                     progress?.Report(100);
+                }
+                else
+                {
+                    SetSaverProtocolError(
+                        finalAck,
+                        gifBytes);
+                }
 
                 return ready;
             }
@@ -1015,6 +1029,28 @@ public sealed class PixelProCdcLink : IDeviceLink
         ScreensaverScaleMode scaleMode,
         IProgress<int>? progress)
     {
+        (long Total, long Used, long Free, long Flash)? capacity =
+            await ReadSaverCapacityAsync();
+
+        if (capacity is not null)
+        {
+            long required =
+                gifBytes.LongLength + 4096;
+
+            if (required > capacity.Value.Free)
+            {
+                LastScreensaverError =
+                    $"GIF is {gifBytes.LongLength / 1048576.0:0.00} MB but PIXEL PRO media storage has only " +
+                    $"{capacity.Value.Free / 1048576.0:0.00} MB free " +
+                    $"({capacity.Value.Total / 1048576.0:0.00} MB total). " +
+                    "Use a smaller/optimized GIF or larger flash storage.";
+
+                Log("WARN", LastScreensaverError);
+                return false;
+            }
+        }
+
+
         if (gifBytes.Length < 10 ||
             gifBytes[0] != (byte)'G' ||
             gifBytes[1] != (byte)'I' ||
@@ -1079,6 +1115,9 @@ public sealed class PixelProCdcLink : IDeviceLink
                         "OK|SAVGIFBEGIN",
                         StringComparison.Ordinal))
                 {
+                    SetSaverProtocolError(
+                        beginAck,
+                        gifBytes);
                     return false;
                 }
 
@@ -1118,6 +1157,9 @@ public sealed class PixelProCdcLink : IDeviceLink
                             expected,
                             StringComparison.Ordinal))
                     {
+                        SetSaverProtocolError(
+                            ack,
+                            gifBytes);
                         return false;
                     }
 
@@ -1158,6 +1200,98 @@ public sealed class PixelProCdcLink : IDeviceLink
         {
             _commandGate.Release();
         }
+    }
+
+    private async Task<(long Total, long Used, long Free, long Flash)?>
+        ReadSaverCapacityAsync()
+    {
+        string? line =
+            await RequestLineAsync(
+                "SAVERINFO",
+                "SAVERINFO|");
+
+        if (line is null ||
+            !line.StartsWith(
+                "SAVERINFO|",
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        long total = 0;
+        long used = 0;
+        long free = 0;
+        long flash = 0;
+
+        foreach (string part in line.Split('|').Skip(1))
+        {
+            string[] kv = part.Split('=', 2);
+
+            if (kv.Length != 2 ||
+                !long.TryParse(kv[1], out long value))
+            {
+                continue;
+            }
+
+            switch (kv[0])
+            {
+                case "TOTAL": total = value; break;
+                case "USED": used = value; break;
+                case "FREE": free = value; break;
+                case "FLASH": flash = value; break;
+            }
+        }
+
+        return (total, used, free, flash);
+    }
+
+    private void SetSaverProtocolError(
+        string? response,
+        byte[] gifBytes)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            LastScreensaverError =
+                "PIXEL PRO did not answer the screensaver upload command.";
+            return;
+        }
+
+        if (response.StartsWith(
+                "ERR|NO_SPACE",
+                StringComparison.Ordinal))
+        {
+            long free = 0;
+            long need = gifBytes.LongLength;
+
+            foreach (string part in response.Split('|').Skip(2))
+            {
+                string[] kv = part.Split('=', 2);
+
+                if (kv.Length == 2 &&
+                    long.TryParse(kv[1], out long value))
+                {
+                    if (kv[0] == "FREE") free = value;
+                    if (kv[0] == "NEED") need = value;
+                }
+            }
+
+            LastScreensaverError =
+                $"GIF needs {need / 1048576.0:0.00} MB but PIXEL PRO has only " +
+                $"{free / 1048576.0:0.00} MB free for screensaver media.";
+            return;
+        }
+
+        if (response.StartsWith(
+                "ERR|FS_NOT_READY",
+                StringComparison.Ordinal))
+        {
+            LastScreensaverError =
+                "PIXEL PRO media storage is not ready.";
+            return;
+        }
+
+        LastScreensaverError =
+            $"PIXEL PRO rejected the GIF upload: {response}";
     }
 
     private async Task<string?> ReadExpectedLineAsync(
