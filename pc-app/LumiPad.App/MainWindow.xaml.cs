@@ -127,6 +127,24 @@ public partial class MainWindow : Window
     private bool _syncingPcMetricUi;
     private int[] _pcMonitorMetricSlots = [0, 3, 6, 9, 10, 11];
 
+    private sealed class PixelKeyEditor
+    {
+        public required int Index { get; init; }
+        public required ComboBox Action { get; init; }
+        public required CheckBox Ctrl { get; init; }
+        public required CheckBox Shift { get; init; }
+        public required CheckBox Alt { get; init; }
+        public required CheckBox Win { get; init; }
+        public required TextBlock Summary { get; init; }
+    }
+
+    private readonly List<PixelKeyEditor> _pixelKeyEditors = [];
+    private bool _pixelKeymapUiBuilt;
+    private bool _pixelKeymapLoading;
+
+    private static readonly PixelProKeyChoice[] PixelKeyChoices =
+        CreatePixelKeyChoices();
+
     private static readonly (int Id, string Name)[] PcMonitorMetricChoices =
     [
         (0, "CPU usage"),
@@ -156,6 +174,7 @@ public partial class MainWindow : Window
     {
         _serial = DeviceLinkFactory.Create(_activeProduct);
         InitializeComponent();
+        BuildPixelProKeymapUi();
         InitializeTrayIcon();
 
         // Keep the preview on an absolute playback timeline, just like the
