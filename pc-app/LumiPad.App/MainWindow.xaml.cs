@@ -178,6 +178,8 @@ public partial class MainWindow : Window
     private int _pixelImageJpegQuality = PixelProScreensaverMediaService.DefaultImageJpegQuality;
     private int _pixelRgbSelectedKey = -1; // -1 = all 8 keys
     private PixelRgbColor[][] _pixelRgbProfiles = CreateDefaultPixelRgbProfiles();
+    private int[] _pixelRgbEffects = Enumerable.Repeat(3, 20).ToArray();
+    private int _pixelRgbSpeed = 50;
 
     // This remains the RYNOR scale preference. PIXEL PRO uses fixed Center/no-upscale.
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
@@ -1807,6 +1809,8 @@ public partial class MainWindow : Window
         public int PixelGifMaxDurationSeconds { get; set; } = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
         public int PixelImageJpegQuality { get; set; } = PixelProScreensaverMediaService.DefaultImageJpegQuality;
         public PixelRgbColor[][]? PixelRgbProfiles { get; set; }
+        public int[]? PixelRgbEffects { get; set; }
+        public int PixelRgbSpeed { get; set; } = 50;
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public int RgbIdleDelaySeconds { get; set; } = 60;
@@ -1886,6 +1890,24 @@ public partial class MainWindow : Window
                         .ToArray();
             }
 
+            if (settings.PixelRgbEffects is { Length: >= 20 } savedEffects)
+            {
+                _pixelRgbEffects =
+                    savedEffects
+                        .Take(20)
+                        .Select(effect =>
+                            effect is >= 0 and <= 3
+                                ? effect
+                                : 3)
+                        .ToArray();
+            }
+
+            _pixelRgbSpeed =
+                Math.Clamp(
+                    settings.PixelRgbSpeed,
+                    10,
+                    100);
+
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
@@ -1957,6 +1979,8 @@ public partial class MainWindow : Window
                 PixelRgbProfiles = _pixelRgbProfiles
                     .Select(profile => profile.ToArray())
                     .ToArray(),
+                PixelRgbEffects = _pixelRgbEffects.ToArray(),
+                PixelRgbSpeed = _pixelRgbSpeed,
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
