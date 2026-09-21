@@ -822,6 +822,15 @@ public partial class MainWindow : Window
                             key,
                             profile,
                             layer)));
+
+            pixel.ActionTriggered += (actionId, key, profile, layer) =>
+                Dispatcher.BeginInvoke(
+                    new Action(async () =>
+                        await ExecutePixelActionAsync(
+                            actionId,
+                            key,
+                            profile,
+                            layer)));
         }
     }
 
@@ -5586,6 +5595,17 @@ try {{
         }
 
         RefreshPixelMacroActionCombo();
+
+        if (string.Equals(
+                _pixelCurrentCategory,
+                "Action",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RebuildPixelPalette();
+        }
+
+        UpdatePixelKeyVisuals();
+        UpdatePixelSelectedEditor();
     }
 
     private void LoadSelectedActionScriptUi(ActionScriptDefinition? script)
@@ -6792,12 +6812,9 @@ try {{
             }
 
             PixelProfileCombo.SelectedIndex = _pixelSelectedProfile;
-
-            if (PixelProfileNameTextBox is not null)
-            {
-                PixelProfileNameTextBox.Text =
-                    _pixelProfileCatalog.Names[_pixelSelectedProfile];
-            }
+            PixelProfileCombo.Text =
+                $"{_pixelSelectedProfile + 1:00} · " +
+                _pixelProfileCatalog.Names[_pixelSelectedProfile];
         }
         finally
         {
@@ -6892,34 +6909,51 @@ try {{
                 $"Đã bỏ Profile {removed + 1} khỏi danh sách.");
     }
 
-    private void PixelProfileNameTextBox_KeyDown(
+    private void PixelProfileCombo_KeyDown(
         object sender,
         System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key != Key.Enter)
             return;
 
-        CommitPixelProfileName();
+        CommitPixelProfileNameFromCombo();
         e.Handled = true;
         Keyboard.ClearFocus();
     }
 
-    private void PixelProfileNameTextBox_LostFocus(
+    private void PixelProfileCombo_LostKeyboardFocus(
         object sender,
-        RoutedEventArgs e) =>
-        CommitPixelProfileName();
+        KeyboardFocusChangedEventArgs e) =>
+        CommitPixelProfileNameFromCombo();
 
-    private void CommitPixelProfileName()
+    private void CommitPixelProfileNameFromCombo()
     {
-        if (PixelProfileNameTextBox is null)
+        if (PixelProfileCombo is null || _pixelViaUpdating)
             return;
 
-        string name = PixelProfileNameTextBox.Text.Trim();
+        string text = PixelProfileCombo.Text.Trim();
+        string prefix = $"{_pixelSelectedProfile + 1:00} ·";
+
+        string name =
+            text.StartsWith(prefix, StringComparison.Ordinal)
+                ? text[prefix.Length..].Trim()
+                : text;
+
         if (string.IsNullOrWhiteSpace(name))
             name = $"Profile {_pixelSelectedProfile + 1}";
 
         if (name.Length > 32)
             name = name[..32];
+
+        if (string.Equals(
+                _pixelProfileCatalog.Names[_pixelSelectedProfile],
+                name,
+                StringComparison.Ordinal))
+        {
+            PixelProfileCombo.Text =
+                $"{_pixelSelectedProfile + 1:00} · {name}";
+            return;
+        }
 
         _pixelProfileCatalog.Names[_pixelSelectedProfile] = name;
         PixelProProfileStore.Save(_pixelProfileCatalog);
@@ -6963,10 +6997,16 @@ try {{
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
 
-        if (PixelProfileNameTextBox is not null)
+        _pixelViaUpdating = true;
+        try
         {
-            PixelProfileNameTextBox.Text =
+            PixelProfileCombo.Text =
+                $"{_pixelSelectedProfile + 1:00} · " +
                 _pixelProfileCatalog.Names[_pixelSelectedProfile];
+        }
+        finally
+        {
+            _pixelViaUpdating = false;
         }
     }
 
@@ -6978,11 +7018,25 @@ try {{
         PixelKeyPalettePanel.Children.Clear();
 
         IEnumerable<PixelProKeyChoice> items =
-            PixelKeyChoices.Where(
-                x => string.Equals(
-                    x.Category,
-                    _pixelCurrentCategory,
-                    StringComparison.OrdinalIgnoreCase));
+            string.Equals(
+                _pixelCurrentCategory,
+                "Action",
+                StringComparison.OrdinalIgnoreCase)
+                ? _actionScripts
+                    .Where(x => x.ActionId is >= 1 and <= 32)
+                    .OrderBy(x => x.ActionId)
+                    .Select(x =>
+                        new PixelProKeyChoice(
+                            $"A{x.ActionId:00} · {x.Name}",
+                            PixelProKeyBindingType.Action,
+                            (ushort)x.ActionId,
+                            0,
+                            "Action"))
+                : PixelKeyChoices.Where(
+                    x => string.Equals(
+                        x.Category,
+                        _pixelCurrentCategory,
+                        StringComparison.OrdinalIgnoreCase));
 
         foreach (PixelProKeyChoice choice in items)
         {
@@ -7102,6 +7156,10 @@ try {{
 
             case PixelProKeyBindingType.Macro:
                 binding = PixelProKeyBinding.Macro((byte)choice.Code);
+                break;
+
+            case PixelProKeyBindingType.Action:
+                binding = PixelProKeyBinding.Action((byte)choice.Code);
                 break;
 
             case PixelProKeyBindingType.Transparent:
@@ -7269,7 +7327,7 @@ try {{
         return string.Join("+", names);
     }
 
-    private static string PixelBindingLabel(
+    private string PixelBindingLabel(
         PixelProKeyBinding binding)
     {
         if (binding.Type == PixelProKeyBindingType.Disabled)
@@ -7280,6 +7338,17 @@ try {{
 
         if (binding.Type == PixelProKeyBindingType.Macro)
             return $"M{binding.Code + 1}";
+
+        if (binding.Type == PixelProKeyBindingType.Action)
+        {
+            ActionScriptDefinition? action =
+                _actionScripts.FirstOrDefault(
+                    x => x.ActionId == binding.Code);
+
+            return action is null
+                ? $"Action {binding.Code:00}"
+                : $"A{binding.Code:00} · {action.Name}";
+        }
 
         if (binding.Type == PixelProKeyBindingType.Layer)
         {
@@ -7784,35 +7853,25 @@ try {{
         string tag = item.Tag?.ToString() ?? "";
         string type = tag.Split(':')[0];
 
-        PixelMacroStepHintText.Text =
-            type switch
-            {
-                "Action" =>
-                    "Enter Lumi Action ID 1–32.",
-                "Keys" =>
-                    "Example: Ctrl+Shift+S",
-                "Text" =>
-                    "Text to type.",
-                "Run" =>
-                    "Path or URI to open.",
-                "Delay" =>
-                    "Milliseconds, e.g. 100",
-                "Media" =>
-                    "PLAY, NEXT, PREV, STOP, MUTE, VOLUP, VOLDOWN",
-                "MouseWheel" =>
-                    "Wheel ticks, e.g. 1 or -1",
-                "MouseMove" =>
-                    "Relative dx,dy, e.g. 20,-10",
-                "MouseClick" =>
-                    "Mouse button click.",
-                _ =>
-                    "Choose a value."
-            };
-
         bool actionStep =
             type.Equals(
                 "Action",
                 StringComparison.OrdinalIgnoreCase);
+        bool keyStep =
+            type.Equals(
+                "Key",
+                StringComparison.OrdinalIgnoreCase);
+        bool delayStep =
+            type.Equals(
+                "Delay",
+                StringComparison.OrdinalIgnoreCase);
+
+        PixelMacroStepHintText.Text =
+            actionStep
+                ? "Choose a Lumi Action."
+                : keyStep
+                    ? "Click the key box and press one key. It adds ↓ / delay / key / delay / ↑."
+                    : "Enter delay in milliseconds.";
 
         if (PixelMacroActionCombo is not null)
             PixelMacroActionCombo.Visibility =
@@ -7820,17 +7879,34 @@ try {{
                     ? Visibility.Visible
                     : Visibility.Collapsed;
 
+        if (PixelMacroKeyInputPanel is not null)
+            PixelMacroKeyInputPanel.Visibility =
+                keyStep
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
         if (PixelMacroStepValueTextBox is not null)
+        {
             PixelMacroStepValueTextBox.Visibility =
-                actionStep
+                delayStep
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+            if (delayStep &&
+                string.IsNullOrWhiteSpace(PixelMacroStepValueTextBox.Text))
+            {
+                PixelMacroStepValueTextBox.Text = "100";
+            }
+        }
+
+        if (PixelMacroAddStepButton is not null)
+            PixelMacroAddStepButton.Visibility =
+                keyStep
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
         if (actionStep)
             RefreshPixelMacroActionCombo();
-
-        if (tag.StartsWith("MouseClick:", StringComparison.Ordinal))
-            PixelMacroStepValueTextBox.Text = tag.Split(':')[1];
     }
 
     private void PixelMacroAddStep_Click(
@@ -7842,6 +7918,16 @@ try {{
 
         string tag = item.Tag?.ToString() ?? "";
         string type = tag.Split(':')[0];
+
+        if (type.Equals("Key", StringComparison.OrdinalIgnoreCase))
+        {
+            PixelMacroStatusText.Text =
+                L(
+                    "Click the key box and press a key.",
+                    "Bấm ô Key rồi nhấn một phím.");
+            return;
+        }
+
         string value = PixelMacroStepValueTextBox?.Text?.Trim() ?? "";
 
         if (type.Equals("Action", StringComparison.OrdinalIgnoreCase))
@@ -7859,8 +7945,13 @@ try {{
             value = actionId.ToString();
         }
 
-        if (tag.StartsWith("MouseClick:", StringComparison.Ordinal))
-            value = tag.Split(':')[1];
+        if (type.Equals("Delay", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!int.TryParse(value, out int delay))
+                delay = 100;
+
+            value = Math.Clamp(delay, 0, 600_000).ToString();
+        }
 
         CurrentPixelMacro.Steps.Add(
             new ActionScriptStep
@@ -7898,6 +7989,36 @@ try {{
 
         PixelProMacroStore.Save(_pixelMacros);
         RefreshPixelMacroEditor();
+    }
+
+    private void PixelMacroNameTextBox_LostFocus(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_pixelViaUpdating)
+            return;
+
+        SaveCurrentPixelMacroName();
+    }
+
+    private void SaveCurrentPixelMacroName()
+    {
+        PixelProMacroDefinition macro = CurrentPixelMacro;
+        string name =
+            string.IsNullOrWhiteSpace(PixelMacroNameTextBox?.Text)
+                ? $"Macro {macro.Slot}"
+                : PixelMacroNameTextBox.Text.Trim();
+
+        if (name.Length > 40)
+            name = name[..40];
+
+        macro.Name = name;
+        PixelProMacroStore.Save(_pixelMacros);
+
+        if (PixelMacroNameTextBox is not null)
+            PixelMacroNameTextBox.Text = name;
+
+        PixelMacroList.Items.Refresh();
     }
 
     private void PixelMacroStepValue_LostFocus(
@@ -8046,12 +8167,7 @@ try {{
     {
         PixelProMacroDefinition macro = CurrentPixelMacro;
 
-        macro.Name =
-            string.IsNullOrWhiteSpace(PixelMacroNameTextBox?.Text)
-                ? $"Macro {macro.Slot}"
-                : PixelMacroNameTextBox.Text.Trim();
-
-        PixelProMacroStore.Save(_pixelMacros);
+        SaveCurrentPixelMacroName();
         BuildPixelMacroUi();
 
         PixelMacroList.SelectedIndex = macro.Slot - 1;
@@ -8117,6 +8233,96 @@ try {{
         object sender,
         RoutedEventArgs e) =>
         await ExecutePixelMacroAsync(_pixelSelectedMacroSlot);
+
+    private async Task ExecutePixelActionAsync(
+        int actionId,
+        int sourceKey = 0,
+        int profile = 0,
+        int layer = 0)
+    {
+        if (actionId is < 1 or > 32)
+            return;
+
+        ActionScriptDefinition? script =
+            _actionScripts.FirstOrDefault(
+                x => x.ActionId == actionId);
+
+        if (script is null)
+        {
+            AddLog(
+                "WARN",
+                "ACTION",
+                $"PIXEL PRO Action {actionId} has no script");
+            return;
+        }
+
+        if (!_runningActionIds.Add(actionId))
+        {
+            AddLog(
+                "WARN",
+                "ACTION",
+                $"PIXEL PRO Action {actionId} ignored because it is already running");
+            return;
+        }
+
+        try
+        {
+            AddLog(
+                "INFO",
+                "ACTION",
+                $"Run PIXEL PRO Action {actionId:00} from key {sourceKey}, profile {profile + 1}, layer {layer}");
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L(
+                        $"Triggered by PIXEL PRO K{sourceKey}…",
+                        $"Được kích hoạt bởi PIXEL PRO K{sourceKey}…");
+            }
+
+            await ActionScriptEngine.ExecuteAsync(
+                script,
+                step =>
+                {
+                    if (SelectedActionScript?.Id != script.Id ||
+                        ActionScriptStatusText is null)
+                    {
+                        return;
+                    }
+
+                    Dispatcher.Invoke(() =>
+                        ActionScriptStatusText.Text = step);
+                });
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L("Completed", "Hoàn tất");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "ERROR",
+                "ACTION",
+                $"PIXEL PRO Action {actionId} failed: {ex.Message}");
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L(
+                        $"Failed: {ex.Message}",
+                        $"Lỗi: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _runningActionIds.Remove(actionId);
+        }
+    }
 
     private async Task ExecutePixelMacroAsync(
         int slot,
