@@ -983,7 +983,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem x:Name="ZmkTab" Header="Device Config">
+            <TabItem x:Name="ConfiguratorTab" Header="Device Config">
                 <Grid Margin="0,14,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1003,15 +1003,15 @@
                                 <TextBlock x:Name="DeviceConfiguratorTitle"
                                            Text="Device Config"
                                            FontWeight="SemiBold" FontSize="16"/>
-                                <TextBlock x:Name="ZmkStatus"
+                                <TextBlock x:Name="ConfiguratorStatus"
                                            Text="Embedded device configurator"
                                            Foreground="{DynamicResource Muted}"
                                            FontSize="12"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <Button Content="Reload" Click="ReloadZmk_Click"/>
+                                <Button Content="Reload" Click="ReloadConfigurator_Click"/>
                                 <Button Content="Open in Edge"
-                                        Click="OpenZmkExternal_Click" Margin="0"/>
+                                        Click="OpenConfiguratorExternal_Click" Margin="0"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -1021,7 +1021,7 @@
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1" CornerRadius="18"
                             ClipToBounds="True">
-                        <wv2:WebView2 x:Name="ZmkWebView"/>
+                        <wv2:WebView2 x:Name="ConfiguratorWebView"/>
                     </Border>
                 </Grid>
             </TabItem>

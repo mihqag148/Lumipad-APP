@@ -34,7 +34,7 @@ public partial class MainWindow : Window
     private string _language = "en";
     private bool _allowExit;
     private bool _trayTipShown;
-    private bool _zmkInitialized;
+    private bool _configuratorInitialized;
     private string _loadedConfiguratorUrl = "";
     private bool _autoReconnectEnabled = true;
     private string _connectionPreference = "auto";
@@ -47,8 +47,8 @@ public partial class MainWindow : Window
         "https://api.github.com/repos/mihqag148/RYNOR-ONE/releases/latest";
     private const string PixelProFirmwareReleaseApi =
         "https://api.github.com/repos/mihqag148/PIXEL-PRO/releases/latest";
-    private const string PixelProZmkFirmwareAsset =
-        "PIXEL_PRO_ZMK.bin";
+    private const string PixelProNativeFirmwareAsset =
+        "PIXEL_PRO_merged.bin";
     private bool _updateBusy;
     private bool _checkingUpdates;
     private bool _appUpdateAvailable;
@@ -519,7 +519,7 @@ public partial class MainWindow : Window
 
     private UIElement CreateProductPreview(ProductDefinition product)
     {
-        if (product.Driver != DeviceDriverKind.PixelProZmkHid)
+        if (product.Driver != DeviceDriverKind.PixelProCdc)
             return CreateDialDeskPreview();
 
         var root = new Grid();
@@ -542,7 +542,7 @@ public partial class MainWindow : Window
         };
         stack.Children.Add(new TextBlock
         {
-            Text = "QMK",
+            Text = "native USB",
             Foreground = System.Windows.Media.Brushes.White,
             FontSize = 34,
             FontWeight = FontWeights.Bold,
@@ -550,7 +550,7 @@ public partial class MainWindow : Window
         });
         stack.Children.Add(new TextBlock
         {
-            Text = "RAW HID",
+            Text = "USB CDC",
             Foreground = new SolidColorBrush(MediaColor.FromRgb(255, 149, 0)),
             FontSize = 13,
             Margin = new Thickness(0, 8, 0, 0),
@@ -765,7 +765,7 @@ public partial class MainWindow : Window
             _serial = DeviceLinkFactory.Create(product);
             AttachDeviceLinkEvents(_serial);
 
-            _zmkInitialized = false;
+            _configuratorInitialized = false;
             _loadedConfiguratorUrl = "";
             UpdateDeviceConfiguratorUi();
             UpdateProductSpecificText();
@@ -1009,8 +1009,8 @@ public partial class MainWindow : Window
         ["1 hour"] = "1 giờ",
         ["2 hours"] = "2 giờ",
         ["Selected color"] = "Màu đã chọn",
-        ["ZMK Studio"] = "ZMK Studio",
-        ["Embedded zmk.studio"] = "ZMK Studio tích hợp",
+        ["Device Config"] = "Device Config",
+        ["Embedded native-usb.studio"] = "Device Config tích hợp",
         ["Reload"] = "Tải lại",
         ["Open in Edge"] = "Mở bằng Edge",
         ["Light mode"] = "Chế độ sáng",
@@ -2905,13 +2905,13 @@ public partial class MainWindow : Window
                         _activeProduct.Id,
                         ProductCatalog.PixelPro.Id,
                         StringComparison.OrdinalIgnoreCase) &&
-                    _serial is PixelProZmkLink;
+                    _serial is PixelProCdcLink;
 
                 FirmwareUpdateStateText.Text =
                     pixelBootstrapRequired
                         ? L(
-                            "ROM BOOT flash required; LumiPad will install ZMK automatically",
-                            "Cần nạp qua ROM BOOT; LumiPad sẽ tự cài ZMK")
+                            "ROM BOOT flash required; LumiPad will install native USB automatically",
+                            "Cần nạp qua ROM BOOT; LumiPad sẽ tự cài native USB")
                         : _serial.IsUsbConnected
                             ? L("Update available", "Có bản mới")
                             : L(
@@ -3285,9 +3285,9 @@ public partial class MainWindow : Window
     {
         var confirm = System.Windows.MessageBox.Show(
             L(
-                "Install or repair ZMK firmware on PIXEL PRO? LumiPad will download the latest PIXEL PRO ZMK image and the official Espressif flashing engine. Put the board into ROM BOOT mode when prompted.",
-                "Cài hoặc sửa firmware ZMK cho PIXEL PRO? LumiPad sẽ tự tải bản ZMK mới nhất và bộ nạp chính thức của Espressif. Đưa mạch vào ROM BOOT khi app yêu cầu."),
-            "PIXEL PRO · Install ZMK",
+                "Install or repair native USB firmware on PIXEL PRO? LumiPad will download the latest PIXEL PRO native USB image and the official Espressif flashing engine. Put the board into ROM BOOT mode when prompted.",
+                "Cài hoặc sửa firmware native USB cho PIXEL PRO? LumiPad sẽ tự tải bản native USB mới nhất và bộ nạp chính thức của Espressif. Đưa mạch vào ROM BOOT khi app yêu cầu."),
+            "PIXEL PRO · Install native USB",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -3300,12 +3300,12 @@ public partial class MainWindow : Window
         string workRoot =
             IO.Path.Combine(
                 IO.Path.GetTempPath(),
-                "LumiPad-PixelPro-ZMK-" +
+                "LumiPad-PixelPro-NativeUSB-" +
                 Guid.NewGuid().ToString("N"));
         string mergedPath =
             IO.Path.Combine(
                 workRoot,
-                PixelProZmkFirmwareAsset);
+                PixelProNativeFirmwareAsset);
 
         try
         {
@@ -3313,12 +3313,12 @@ public partial class MainWindow : Window
 
             UpdateStatusText.Text =
                 L(
-                    "Downloading latest PIXEL PRO ZMK firmware…",
-                    "Đang tải firmware ZMK mới nhất cho PIXEL PRO…");
+                    "Downloading latest PIXEL PRO native USB firmware…",
+                    "Đang tải firmware native USB mới nhất cho PIXEL PRO…");
 
             var firmware =
                 await FindLatestAssetAsync(
-                    PixelProZmkFirmwareAsset,
+                    PixelProNativeFirmwareAsset,
                     PixelProFirmwareReleaseApi);
 
             await DownloadFileAsync(
@@ -3402,7 +3402,7 @@ public partial class MainWindow : Window
             startInfo.ArgumentList.Add("--after");
             startInfo.ArgumentList.Add("hard-reset");
             startInfo.ArgumentList.Add("write-flash");
-            startInfo.ArgumentList.Add("0x1000");
+            startInfo.ArgumentList.Add("0x0");
             startInfo.ArgumentList.Add(mergedPath);
 
             using Process process =
@@ -3462,8 +3462,8 @@ public partial class MainWindow : Window
 
             UpdateStatusText.Text =
                 L(
-                    $"PIXEL PRO ZMK {firmware.Tag} installed. Reconnecting…",
-                    $"Đã nạp ZMK PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
+                    $"PIXEL PRO native USB {firmware.Tag} installed. Reconnecting…",
+                    $"Đã nạp native USB PIXEL PRO {firmware.Tag}. Đang kết nối lại…");
 
             _autoReconnectEnabled = true;
 
@@ -3479,9 +3479,9 @@ public partial class MainWindow : Window
             {
                 System.Windows.MessageBox.Show(
                     L(
-                        "ZMK flash completed and verified. If PIXEL PRO has not reconnected yet, press RESET once. LumiPad will keep trying the ZMK vendor HID interface automatically.",
-                        "Đã nạp và xác minh ZMK xong. Nếu PIXEL PRO chưa kết nối lại, nhấn RESET một lần. LumiPad sẽ tự tiếp tục dò ZMK vendor HID."),
-                    "PIXEL PRO ZMK install",
+                        "native USB flash completed and verified. If PIXEL PRO has not reconnected yet, press RESET once. LumiPad will keep trying the native USB CDC interface automatically.",
+                        "Đã nạp và xác minh native USB xong. Nếu PIXEL PRO chưa kết nối lại, nhấn RESET một lần. LumiPad sẽ tự tiếp tục dò native USB vendor HID."),
+                    "PIXEL PRO native USB install",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
@@ -3494,8 +3494,8 @@ public partial class MainWindow : Window
 
                 System.Windows.MessageBox.Show(
                     L(
-                        "ZMK installed and LumiPad connected through the dedicated PIXEL PRO vendor HID interface.",
-                        "ZMK đã cài và LumiPad đã kết nối qua giao diện vendor HID riêng của PIXEL PRO."),
+                        "native USB installed and LumiPad connected through the dedicated PIXEL PRO CDC interface.",
+                        "native USB đã cài và LumiPad đã kết nối qua giao diện vendor HID riêng của PIXEL PRO."),
                     "PIXEL PRO",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -3508,12 +3508,12 @@ public partial class MainWindow : Window
             _autoReconnectEnabled = true;
             UpdateStatusText.Text =
                 L(
-                    $"PIXEL PRO ZMK install failed: {ex.Message}",
-                    $"Cài ZMK PIXEL PRO lỗi: {ex.Message}");
+                    $"PIXEL PRO native USB install failed: {ex.Message}",
+                    $"Cài native USB PIXEL PRO lỗi: {ex.Message}");
             AddLog(
                 "ERROR",
                 "UPDATE",
-                $"PIXEL PRO ZMK install failed: {ex}");
+                $"PIXEL PRO native USB install failed: {ex}");
         }
         finally
         {
@@ -3534,14 +3534,14 @@ public partial class MainWindow : Window
 
     private async Task UpdatePixelProFirmwareAsync()
     {
-        if (_serial is not PixelProZmkLink)
+        if (_serial is not PixelProCdcLink)
         {
             throw new InvalidOperationException(
-                "PIXEL PRO ZMK vendor HID driver is not active.");
+                "PIXEL PRO native USB vendor HID driver is not active.");
         }
 
-        // PIXEL PRO ZMK phase 1 is recovered through the ESP32-S2 ROM BOOT
-        // loader. The Zephyr simple-boot image is written at 0x1000.
+        // PIXEL PRO native USB phase 1 is recovered through the ESP32-S2 ROM BOOT
+        // loader. The merged native USB image is written at 0x0.
         await BootstrapPixelProFirmwareAsync();
     }
 
@@ -5162,7 +5162,7 @@ try {{
                 ActionScriptIdText.Text =
                     script is null || script.ActionId <= 0
                         ? "Lumi Action —"
-                        : $"Lumi Action {script.ActionId} · ZMK Studio → Lumi Action → Action {script.ActionId}";
+                        : $"Lumi Action {script.ActionId} · Device Config → Lumi Action → Action {script.ActionId}";
             }
 
             ActionScriptStatusText.Text =
@@ -5365,8 +5365,8 @@ try {{
 
         ActionScriptStatusText.Text =
             L(
-                $"Assign Lumi Action {script.ActionId} to a key in ZMK Studio.",
-                $"Gán Lumi Action {script.ActionId} vào phím trong ZMK Studio.");
+                $"Assign Lumi Action {script.ActionId} to a key in Device Config.",
+                $"Gán Lumi Action {script.ActionId} vào phím trong Device Config.");
     }
 
     private void SaveActionScript_Click(object sender, RoutedEventArgs e)
@@ -6110,8 +6110,8 @@ try {{
     private string CurrentConfiguratorName() =>
         _activeProduct.Driver switch
         {
-            DeviceDriverKind.LumiZmk => "ZMK Studio",
-            DeviceDriverKind.PixelProZmkHid => "PIXEL PRO",
+            DeviceDriverKind.RynorSerial => "Device Config",
+            DeviceDriverKind.PixelProCdc => "PIXEL PRO",
             DeviceDriverKind.Esp32Companion => "Device Config",
             _ => "Device Config"
         };
@@ -6119,7 +6119,7 @@ try {{
     private string CurrentConfiguratorUrl() =>
         _activeProduct.Driver switch
         {
-            DeviceDriverKind.LumiZmk => "https://zmk.studio/",
+            DeviceDriverKind.RynorSerial => "",
             _ => ""
         };
 
@@ -6128,13 +6128,13 @@ try {{
         string name = CurrentConfiguratorName();
         string url = CurrentConfiguratorUrl();
 
-        ZmkTab.Header = name;
+        ConfiguratorTab.Header = name;
         if (DeviceConfiguratorTitle is not null)
             DeviceConfiguratorTitle.Text = name;
 
-        if (ZmkStatus is not null)
+        if (ConfiguratorStatus is not null)
         {
-            ZmkStatus.Text = string.IsNullOrWhiteSpace(url)
+            ConfiguratorStatus.Text = string.IsNullOrWhiteSpace(url)
                 ? L(
                     "PIXEL PRO phase 1 uses the LumiPad vendor HID link; no embedded configurator is required.",
                     "PIXEL PRO phase 1 dùng vendor HID của LumiPad; chưa cần trình cấu hình nhúng.")
@@ -6154,7 +6154,7 @@ try {{
         SetDeviceControlsEnabled(_serial.IsConnected);
         UpdateDeviceConfiguratorUi();
 
-        if (ZmkTab.IsSelected)
+        if (ConfiguratorTab.IsSelected)
             await EnsureDeviceConfiguratorAsync();
     }
 
@@ -6169,7 +6169,7 @@ try {{
             return;
 
         if (!force &&
-            _zmkInitialized &&
+            _configuratorInitialized &&
             string.Equals(
                 _loadedConfiguratorUrl,
                 url,
@@ -6180,34 +6180,34 @@ try {{
 
         try
         {
-            ZmkStatus.Text = L(
+            ConfiguratorStatus.Text = L(
                 $"Loading {url} …",
                 $"Đang tải {url} …");
 
-            await ZmkWebView.EnsureCoreWebView2Async();
-            ZmkWebView.Source = new Uri(url);
+            await ConfiguratorWebView.EnsureCoreWebView2Async();
+            ConfiguratorWebView.Source = new Uri(url);
             _loadedConfiguratorUrl = url;
-            _zmkInitialized = true;
+            _configuratorInitialized = true;
             await Task.Delay(750);
-            ZmkStatus.Text = $"{name} · {url}";
+            ConfiguratorStatus.Text = $"{name} · {url}";
         }
         catch (Exception ex)
         {
-            ZmkStatus.Text =
+            ConfiguratorStatus.Text =
                 $"WebView2 unavailable: {ex.Message}";
         }
     }
 
-    private async void ReloadZmk_Click(object sender, RoutedEventArgs e)
+    private async void ReloadConfigurator_Click(object sender, RoutedEventArgs e)
     {
-        _zmkInitialized = false;
+        _configuratorInitialized = false;
         await EnsureDeviceConfiguratorAsync(force: true);
 
-        if (ZmkWebView.CoreWebView2 is not null)
-            ZmkWebView.Reload();
+        if (ConfiguratorWebView.CoreWebView2 is not null)
+            ConfiguratorWebView.Reload();
     }
 
-    private async void OpenZmkExternal_Click(object sender, RoutedEventArgs e)
+    private async void OpenConfiguratorExternal_Click(object sender, RoutedEventArgs e)
     {
         string url = CurrentConfiguratorUrl();
         if (string.IsNullOrWhiteSpace(url))

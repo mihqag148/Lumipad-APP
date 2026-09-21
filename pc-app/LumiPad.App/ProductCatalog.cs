@@ -2,8 +2,8 @@ namespace LumiPad.App;
 
 public enum DeviceDriverKind
 {
-    LumiZmk,
-    PixelProZmkHid,
+    RynorSerial,
+    PixelProCdc,
     Esp32Companion
 }
 
@@ -29,19 +29,19 @@ public static class ProductCatalog
             "Wireless macro control desk",
             "DD-01",
             true,
-            DeviceDriverKind.LumiZmk);
+            DeviceDriverKind.RynorSerial);
 
 
     public static ProductDefinition PixelPro { get; } =
         new(
             "pixel-pro",
             "PIXEL PRO",
-            "USB ZMK macro control pad",
+            "ESP32-S2 USB HID + CDC macro control pad",
             "PP-01",
             false,
-            DeviceDriverKind.PixelProZmkHid,
-            0x1209,
-            0x0001,
+            DeviceDriverKind.PixelProCdc,
+            0x303A,
+            0x80C2,
             RawUsagePage: 0xFF00,
             RawUsageId: 0x0001,
             RawReportId: 0);
