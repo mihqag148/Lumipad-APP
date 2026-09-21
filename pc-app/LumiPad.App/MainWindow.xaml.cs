@@ -2186,6 +2186,13 @@ public partial class MainWindow : Window
         if (SleepKeyboardButton is not null)
             SleepKeyboardButton.IsEnabled = connected;
 
+        if (PixelKeymapSaveButton is not null)
+        {
+            PixelKeymapSaveButton.IsEnabled =
+                connected &&
+                _activeProduct.Driver == DeviceDriverKind.PixelProCdc;
+        }
+
         UpdateSettingsInfo();
         UpdateTransportIndicators();
         UpdateSleepButtonUi();
