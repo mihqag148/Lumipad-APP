@@ -8373,6 +8373,8 @@ try {{
             CreateDefaultPixelRgbProfile(
                 profile);
 
+        _pixelRgbEffects[profile] = 3;
+
         _pixelModifierPositions.ResetProfile(
             profile);
     }
@@ -8475,6 +8477,13 @@ try {{
             pixel.SetPixelRgbProfile(
                 created,
                 _pixelRgbProfiles[created]);
+
+            pixel.SetPixelRgbEffect(
+                created,
+                _pixelRgbEffects[created]);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
 
             pixel.SetProfileLayer(
                 created,
@@ -8596,9 +8605,16 @@ try {{
                 _pixelRgbProfiles[source]
                     .ToArray();
 
+            _pixelRgbEffects[destination] =
+                _pixelRgbEffects[source];
+
             pixel.SetPixelRgbProfile(
                 destination,
                 _pixelRgbProfiles[destination]);
+
+            pixel.SetPixelRgbEffect(
+                destination,
+                _pixelRgbEffects[destination]);
         }
 
         int vacated =
@@ -8623,6 +8639,10 @@ try {{
         pixel.SetPixelRgbProfile(
             vacated,
             _pixelRgbProfiles[vacated]);
+
+        pixel.SetPixelRgbEffect(
+            vacated,
+            _pixelRgbEffects[vacated]);
 
         _pixelModifierPositions.RemoveProfileAndShift(
             removed,
@@ -9752,6 +9772,13 @@ try {{
         pixel.SetPixelRgbProfile(
             profile,
             _pixelRgbProfiles[profile]);
+
+        pixel.SetPixelRgbEffect(
+            profile,
+            _pixelRgbEffects[profile]);
+
+        pixel.SetPixelRgbSpeed(
+            _pixelRgbSpeed);
 
         pixel.SetProfileLayer(
             profile,
