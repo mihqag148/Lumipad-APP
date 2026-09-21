@@ -7173,6 +7173,32 @@ try {{
                 new Thickness(
                     dynamic ? 2 : 1);
         }
+
+        if (PixelRgbDynamicPresets is not null)
+        {
+            foreach (System.Windows.Controls.Button preset in
+                     PixelRgbDynamicPresets.Children
+                         .OfType<System.Windows.Controls.Button>())
+            {
+                bool selectedEffect =
+                    dynamic &&
+                    int.TryParse(
+                        preset.Tag?.ToString(),
+                        out int presetEffect) &&
+                    presetEffect == effect;
+
+                preset.BorderBrush =
+                    TryFindResource(
+                        selectedEffect
+                            ? "Accent"
+                            : "Line")
+                    as System.Windows.Media.Brush;
+
+                preset.BorderThickness =
+                    new Thickness(
+                        selectedEffect ? 2 : 1);
+            }
+        }
     }
 
     private void PixelRgbKey_Click(
