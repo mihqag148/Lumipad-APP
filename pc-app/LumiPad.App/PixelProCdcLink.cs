@@ -55,20 +55,32 @@ public sealed class PixelProCdcLink : IDeviceLink
 
         string vid = $"VID_{product.UsbVendorId.Value:X4}";
         string pid = $"PID_{product.UsbProductId.Value:X4}";
+        var livePorts = SerialPort.GetPortNames()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT PNPDeviceID FROM Win32_PnPEntity WHERE PNPDeviceID IS NOT NULL");
+                "SELECT Name, PNPDeviceID FROM Win32_PnPEntity WHERE Name LIKE '%(COM%'");
 
             foreach (ManagementObject obj in searcher.Get())
             {
+                string name = Convert.ToString(obj["Name"]) ?? "";
                 string pnp = Convert.ToString(obj["PNPDeviceID"]) ?? "";
-                if (pnp.Contains(vid, StringComparison.OrdinalIgnoreCase) &&
-                    pnp.Contains(pid, StringComparison.OrdinalIgnoreCase))
+
+                if (!pnp.Contains(vid, StringComparison.OrdinalIgnoreCase) ||
+                    !pnp.Contains(pid, StringComparison.OrdinalIgnoreCase))
                 {
-                    return true;
+                    continue;
                 }
+
+                Match match = Regex.Match(
+                    name,
+                    @"\((COM\d+)\)",
+                    RegexOptions.IgnoreCase);
+
+                if (match.Success && livePorts.Contains(match.Groups[1].Value))
+                    return true;
             }
         }
         catch
