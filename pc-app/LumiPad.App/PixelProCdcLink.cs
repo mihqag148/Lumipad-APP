@@ -2019,7 +2019,7 @@ public sealed class PixelProCdcLink : IDeviceLink
             Math.Clamp(
                 effect,
                 0,
-                3);
+                9);
 
         SendCommand(
             $"RGB_EFFECT|{profile}|{effect}");
