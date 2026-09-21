@@ -155,15 +155,22 @@ public sealed class PixelProCdcLink : IDeviceLink
                         NewLine = "\n",
                         ReadTimeout = 250,
                         WriteTimeout = 1000,
-                        DtrEnable = true,
+                        // Open with both line-control signals low. Applying DTR
+                        // only after Open avoids Windows producing the
+                        // DTR/RTS transition sequence used by ESP32-S2 for
+                        // bootloader entry.
+                        DtrEnable = false,
                         RtsEnable = false
                     };
 
                     Log("INFO", $"Opening PIXEL PRO candidate {portName}");
                     candidate.Open();
 
+                    candidate.RtsEnable = false;
+                    candidate.DtrEnable = true;
+
                     // Give Windows usbser + the ESP32-S2 CDC task time to settle
-                    // after DTR becomes active.
+                    // after the safe DTR assertion.
                     await Task.Delay(350, cancellationToken);
 
                     candidate.DiscardInBuffer();
