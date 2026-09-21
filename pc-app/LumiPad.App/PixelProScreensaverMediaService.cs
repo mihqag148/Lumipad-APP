@@ -100,10 +100,6 @@ public static class PixelProScreensaverMediaService
                 "PIXEL PRO GIF canvas must be between 1×1 and 1024×1024.");
         }
 
-        bool nativePortrait =
-            image.Width == NativePanelWidth &&
-            image.Height == NativePanelHeight;
-
         var dimension =
             new FrameDimension(image.FrameDimensionsList[0]);
 
@@ -150,12 +146,6 @@ public static class PixelProScreensaverMediaService
             {
                 graphics.Clear(Drawing.Color.Black);
                 graphics.DrawImageUnscaled(image, 0, 0);
-            }
-
-            if (nativePortrait)
-            {
-                bitmap.RotateFlip(
-                    Drawing.RotateFlipType.Rotate90FlipNone);
             }
 
             using Drawing.Bitmap prepared =
