@@ -155,10 +155,10 @@ public sealed class PixelProCdcLink : IDeviceLink
                         NewLine = "\n",
                         ReadTimeout = 250,
                         WriteTimeout = 1000,
-                        // Open with both line-control signals low. Applying DTR
-                        // only after Open avoids Windows producing the
-                        // DTR/RTS transition sequence used by ESP32-S2 for
-                        // bootloader entry.
+                        // Start with both control lines low, then move only
+                        // through non-boot states after Open. Normal LumiPad
+                        // sessions keep DTR+RTS asserted; the ESP32-S2 boot
+                        // sequence is emitted only by TryEnterRomBootloaderAsync.
                         DtrEnable = false,
                         RtsEnable = false
                     };
@@ -166,12 +166,13 @@ public sealed class PixelProCdcLink : IDeviceLink
                     Log("INFO", $"Opening PIXEL PRO candidate {portName}");
                     candidate.Open();
 
-                    candidate.RtsEnable = false;
                     candidate.DtrEnable = true;
+                    await Task.Delay(20, cancellationToken);
+                    candidate.RtsEnable = true;
 
-                    // Give Windows usbser + the ESP32-S2 CDC task time to settle
-                    // after the safe DTR assertion.
-                    await Task.Delay(350, cancellationToken);
+                    // Give Windows usbser + TinyUSB time to settle with the
+                    // normal connected line state.
+                    await Task.Delay(330, cancellationToken);
 
                     candidate.DiscardInBuffer();
                     candidate.DiscardOutBuffer();
@@ -794,6 +795,44 @@ public sealed class PixelProCdcLink : IDeviceLink
         DisconnectInternal();
     }
 
+    private static void ClosePortWithoutBootloaderSequence(
+        SerialPort? port)
+    {
+        if (port is null)
+            return;
+
+        try
+        {
+            if (port.IsOpen)
+            {
+                // Clear any stale Arduino-ESP32 CDC reboot state without ever
+                // issuing the final !DTR/!RTS boot trigger. Finish at
+                // DTR+RTS=true so the subsequent Close cannot complete the
+                // four-state ROM-boot sequence.
+                port.DtrEnable = true;
+                port.RtsEnable = true;
+                Thread.Sleep(10);
+                port.DtrEnable = false;
+                Thread.Sleep(10);
+                port.DtrEnable = true;
+                Thread.Sleep(10);
+                port.RtsEnable = false;
+                Thread.Sleep(10);
+                port.RtsEnable = true;
+                Thread.Sleep(10);
+
+                port.Close();
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            try { port.Dispose(); } catch { }
+        }
+    }
+
     private void DisconnectInternal()
     {
         _readCts?.Cancel();
@@ -803,15 +842,8 @@ public sealed class PixelProCdcLink : IDeviceLink
         SerialPort? port = _port;
         _port = null;
 
-        try
-        {
-            if (port?.IsOpen == true)
-                port.Close();
-            port?.Dispose();
-        }
-        catch
-        {
-        }
+        ClosePortWithoutBootloaderSequence(
+            port);
 
         _readTask = null;
         _connectionName = "";
@@ -839,10 +871,15 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out byte[] encodedGif,
                 out ScreensaverScaleMode scaleMode))
         {
-            return await SendEncodedGifAsync(
-                encodedGif,
-                scaleMode,
-                progress);
+            // SerialPort.ReadLine is synchronous. Keep the complete GIF
+            // transfer state machine off the WPF dispatcher so multi-megabyte
+            // uploads cannot freeze the app window.
+            return await Task.Run(
+                    () => SendEncodedGifAsync(
+                        encodedGif,
+                        scaleMode,
+                        progress))
+                .ConfigureAwait(false);
         }
 
         bool staticImage =
@@ -1495,7 +1532,120 @@ public sealed class PixelProCdcLink : IDeviceLink
         return Task.CompletedTask;
     }
 
-    public Task EnterDfuAsync() => Task.CompletedTask;
+    public async Task<bool> TryEnterRomBootloaderAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConnected)
+            return false;
+
+        string? response =
+            await RequestLineAsync(
+                    "ARM_BOOTLOADER",
+                    "OK|BOOTLOADER_ARMED",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (!string.Equals(
+                response,
+                "OK|BOOTLOADER_ARMED",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        await _commandGate.WaitAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync()
+                .ConfigureAwait(false);
+
+            bool sequenceStarted = false;
+
+            try
+            {
+                // Arduino-ESP32's intentional CDC ROM-boot sequence:
+                // 01 -> 11 -> 10 -> 00 (DTR,RTS).
+                // Firmware keeps this disabled at all other times and only
+                // ARM_BOOTLOADER enables it for this update operation.
+                port.DtrEnable = false;
+                port.RtsEnable = true;
+                sequenceStarted = true;
+                await Task.Delay(
+                        40,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                port.DtrEnable = true;
+                await Task.Delay(
+                        40,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                port.RtsEnable = false;
+                await Task.Delay(
+                        40,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                port.DtrEnable = false;
+                await Task.Delay(
+                        250,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (IOException) when (sequenceStarted)
+            {
+                // Expected when the application USB device disappears and the
+                // ESP32-S2 ROM downloader enumerates in its place.
+            }
+            catch (InvalidOperationException) when (sequenceStarted)
+            {
+            }
+
+            SerialPort? oldPort = _port;
+            _port = null;
+
+            try
+            {
+                if (oldPort?.IsOpen == true)
+                    oldPort.Close();
+            }
+            catch
+            {
+            }
+
+            try { oldPort?.Dispose(); } catch { }
+
+            _readTask = null;
+            _connectionName = "";
+            FirmwareHello = "";
+            ProtocolVersion = 0;
+
+            return sequenceStarted;
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    public async Task EnterDfuAsync()
+    {
+        if (!await TryEnterRomBootloaderAsync()
+                .ConfigureAwait(false))
+        {
+            throw new InvalidOperationException(
+                "This PIXEL PRO firmware does not support automatic ROM BOOT. Use BOOT + RESET once to install the latest firmware.");
+        }
+    }
+
     public Task SleepKeyboardAsync() => Task.CompletedTask;
     public Task WakeKeyboardAsync() => Task.CompletedTask;
 
