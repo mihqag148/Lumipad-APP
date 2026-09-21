@@ -172,7 +172,7 @@ public partial class MainWindow : Window
     private int _pixelSelectedKey;
     private int _pixelSelectedMacroSlot = 1;
     private int _pixelMacroDragIndex = -1;
-    private Point _pixelMacroDragStartPoint;
+    private System.Windows.Point _pixelMacroDragStartPoint;
     private string _pixelCurrentCategory = "Basic";
     private bool _pixelViaUiBuilt;
     private bool _pixelViaUpdating;
@@ -8534,7 +8534,7 @@ try {{
 
     private void PixelMacroStepsList_PreviewMouseMove(
         object sender,
-        MouseEventArgs e)
+        System.Windows.Input.MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed ||
             _pixelMacroDragIndex < 0 ||
@@ -8543,7 +8543,7 @@ try {{
             return;
         }
 
-        Point current =
+        System.Windows.Point current =
             e.GetPosition(PixelMacroStepsList);
 
         if (Math.Abs(
@@ -8572,7 +8572,7 @@ try {{
 
     private void PixelMacroStepsList_DragOver(
         object sender,
-        DragEventArgs e)
+        System.Windows.DragEventArgs e)
     {
         e.Effects =
             e.Data.GetDataPresent(
