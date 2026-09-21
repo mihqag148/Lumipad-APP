@@ -1186,87 +1186,131 @@ public partial class MainWindow : Window
         foreach (var pair in _productCardVisuals)
         {
             ProductCardVisual visual = pair.Value;
-            bool active = string.Equals(
-                visual.Product.Id,
-                _activeProduct.Id,
-                StringComparison.OrdinalIgnoreCase);
-            bool connected = active && _serial.IsConnected;
+            IDeviceLink link =
+                LinkFor(visual.Product);
+
+            bool connected =
+                link.IsConnected;
 
             string connection = connected
-                ? _serial.IsUsbConnected
+                ? link.IsUsbConnected
                     ? L("Connected · USB", "Đã kết nối · USB")
-                    : _serial.IsBluetoothConnected
+                    : link.IsBluetoothConnected
                         ? L("Connected · Bluetooth", "Đã kết nối · Bluetooth")
                         : L("Connected", "Đã kết nối")
                 : L("Not connected", "Chưa kết nối");
 
             visual.ConnectionText.Text = connection;
             visual.ConnectionText.Foreground =
-                TryFindResource(connected ? "TextPrimary" : "Muted")
-                    as System.Windows.Media.Brush;
-
-            visual.Dot.Fill = new SolidColorBrush(
-                connected
-                    ? MediaColor.FromRgb(48, 209, 88)
-                    : MediaColor.FromRgb(99, 99, 102));
-
-            visual.BatteryText.Text =
-                !visual.Product.SupportsBattery
-                    ? ""
-                    : connected && _activeBatteryPercent.HasValue
-                        ? $"▰ {_activeBatteryPercent.Value}%"
-                        : "▰ --%";
-
-            visual.BatteryText.Foreground =
                 TryFindResource(
-                    connected && _activeBatteryPercent.HasValue
+                    connected
                         ? "TextPrimary"
                         : "Muted")
                     as System.Windows.Media.Brush;
 
+            visual.Dot.Fill =
+                new SolidColorBrush(
+                    connected
+                        ? MediaColor.FromRgb(
+                            48,
+                            209,
+                            88)
+                        : MediaColor.FromRgb(
+                            99,
+                            99,
+                            102));
+
+            int? battery =
+                _batteryByProduct.TryGetValue(
+                    visual.Product.Id,
+                    out int? value)
+                    ? value
+                    : null;
+
+            visual.BatteryText.Text =
+                !visual.Product.SupportsBattery
+                    ? ""
+                    : connected && battery.HasValue
+                        ? $"▰ {battery.Value}%"
+                        : "▰ --%";
+
+            visual.BatteryText.Foreground =
+                TryFindResource(
+                    connected && battery.HasValue
+                        ? "TextPrimary"
+                        : "Muted")
+                    as System.Windows.Media.Brush;
+
+            bool active =
+                IsActiveProduct(
+                    visual.Product);
+
             visual.Card.BorderBrush =
-                TryFindResource(connected ? "Accent" : "Line")
+                TryFindResource(
+                    active
+                        ? "Accent"
+                        : connected
+                            ? "TextPrimary"
+                            : "Line")
                     as System.Windows.Media.Brush;
         }
 
         if (ProductHubStatusText is not null)
         {
-            ProductHubStatusText.Text = _serial.IsConnected
-                ? L(
-                    $"{_activeProduct.Name} is online · {_serial.ConnectionName}",
-                    $"{_activeProduct.Name} đang trực tuyến · {_serial.ConnectionName}")
-                : L(
-                    $"Searching for {_activeProduct.Name}…",
-                    $"Đang tìm {_activeProduct.Name}…");
+            string[] online =
+                ProductCatalog.All
+                    .Select(product =>
+                    {
+                        IDeviceLink link =
+                            LinkFor(product);
+
+                        return link.IsConnected
+                            ? $"{product.Name}: {link.ConnectionName}"
+                            : $"{product.Name}: {L("Not connected", "Chưa kết nối")}";
+                    })
+                    .ToArray();
+
+            ProductHubStatusText.Text =
+                string.Join("  ·  ", online);
         }
 
         if (ProductHubVersionText is not null)
         {
-            var version = System.Reflection.Assembly
-                .GetExecutingAssembly().GetName().Version;
-            ProductHubVersionText.Text = version is null
-                ? "v--"
-                : $"v{version.Major}.{version.Minor}.{version.Build}";
+            var version =
+                System.Reflection.Assembly
+                    .GetExecutingAssembly()
+                    .GetName()
+                    .Version;
+
+            ProductHubVersionText.Text =
+                version is null
+                    ? "v--"
+                    : $"v{version.Major}.{version.Minor}.{version.Build}";
         }
     }
 
     private async Task UpdateProductOverviewAsync()
     {
-        if (!_serial.IsConnected)
+        foreach (ProductDefinition product in ProductCatalog.All)
         {
-            _activeBatteryPercent = null;
-            UpdateProductHubUi();
-            return;
-        }
+            IDeviceLink link =
+                LinkFor(product);
 
-        try
-        {
-            int? battery = await _serial.ReadBatteryPercentAsync();
-            if (battery.HasValue)
-                _activeBatteryPercent = battery.Value;
-        }
-        catch
-        {
+            if (!link.IsConnected ||
+                !product.SupportsBattery)
+            {
+                _batteryByProduct[product.Id] = null;
+                continue;
+            }
+
+            try
+            {
+                _batteryByProduct[product.Id] =
+                    await link.ReadBatteryPercentAsync();
+            }
+            catch
+            {
+            }
         }
 
         UpdateProductHubUi();
@@ -1909,7 +1953,17 @@ public partial class MainWindow : Window
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
         _pcMonitorService.Dispose();
-        _serial.Dispose();
+
+        foreach (IDeviceLink link in _deviceLinks.Values.Distinct())
+        {
+            try
+            {
+                link.Dispose();
+            }
+            catch
+            {
+            }
+        }
 
         if (_trayIcon is not null)
         {
@@ -2853,89 +2907,163 @@ public partial class MainWindow : Window
         UpdateProductHubUi();
     }
 
-    private async Task AutoReconnectLoopAsync(CancellationToken token)
+    private async Task AutoReconnectLoopAsync(
+        CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(3000, token);
+                await Task.Delay(
+                    3000,
+                    token);
 
-                if (!_autoReconnectEnabled)
-                    continue;
-
-                if (_serial.IsConnected)
+                foreach (ProductDefinition product in ProductCatalog.All)
                 {
-                    // In default Auto mode, a plugged USB cable always wins
-                    // over the Bluetooth companion link. Promote without
-                    // clearing media state or re-uploading the screensaver.
-                    if (_connectionPreference == "auto" &&
-                        _serial.IsBluetoothConnected)
+                    if (!_autoReconnectByProduct.TryGetValue(
+                            product.Id,
+                            out bool autoReconnect) ||
+                        !autoReconnect)
                     {
-                        var promoted =
-                            await _serial.PromoteToUsbIfAvailableAsync(token);
+                        continue;
+                    }
 
-                        if (promoted is not null)
+                    IDeviceLink link =
+                        LinkFor(product);
+
+                    string preference =
+                        _connectionPreferences.TryGetValue(
+                            product.Id,
+                            out string? storedPreference)
+                            ? storedPreference
+                            : "auto";
+
+                    if (link.IsConnected)
+                    {
+                        if (preference == "auto" &&
+                            link.IsBluetoothConnected)
                         {
-                            DeviceStatus.Text = promoted;
-                            DeviceDot.Fill =
-                                new SolidColorBrush(
-                                    MediaColor.FromRgb(48, 209, 88));
-                            BottomStatus.Text =
-                                L("USB detected and selected automatically.",
-                                  "Đã phát hiện USB và tự động chuyển sang USB.");
-                            AddLog(
-                                "INFO",
-                                "LINK",
-                                $"Auto-promoted to {promoted}");
-                            SetDeviceControlsEnabled(true);
-                            SendAllRgb();
-                            SendPowerTiming();
-                            await UpdateMemoryUsageAsync();
-                            await UpdatePanelInfoAsync();
-                            UpdateTransportIndicators();
-                            await UpdateProductOverviewAsync();
+                            string? promoted =
+                                await link.PromoteToUsbIfAvailableAsync(
+                                    token);
+
+                            if (promoted is not null)
+                            {
+                                AddLog(
+                                    "INFO",
+                                    product.Name,
+                                    $"Auto-promoted to {promoted}");
+
+                                if (IsActiveProduct(product))
+                                {
+                                    DeviceStatus.Text =
+                                        promoted;
+
+                                    DeviceDot.Fill =
+                                        new SolidColorBrush(
+                                            MediaColor.FromRgb(
+                                                48,
+                                                209,
+                                                88));
+
+                                    BottomStatus.Text =
+                                        L(
+                                            "USB detected and selected automatically.",
+                                            "Đã phát hiện USB và tự động chuyển sang USB.");
+
+                                    SetDeviceControlsEnabled(true);
+                                    SendAllRgb();
+                                    SendPowerTiming();
+                                    await UpdateMemoryUsageAsync();
+                                    await UpdatePanelInfoAsync();
+                                    UpdateTransportIndicators();
+                                }
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    string? connection =
+                        preference switch
+                        {
+                            "usb" =>
+                                await link.ConnectUsbAsync(token),
+                            "bluetooth" =>
+                                await link.ConnectBluetoothAsync(token),
+                            _ =>
+                                await link.AutoDetectAsync(token)
+                        };
+
+                    if (connection is null)
+                        continue;
+
+                    _sleepingByProduct[product.Id] = false;
+
+                    if (product.SupportsBattery)
+                    {
+                        try
+                        {
+                            _batteryByProduct[product.Id] =
+                                await link.ReadBatteryPercentAsync();
+                        }
+                        catch
+                        {
                         }
                     }
 
-                    continue;
+                    AddLog(
+                        "INFO",
+                        product.Name,
+                        $"Reconnected: {connection}");
+
+                    if (IsActiveProduct(product))
+                    {
+                        DeviceStatus.Text = connection;
+                        DeviceDot.Fill =
+                            new SolidColorBrush(
+                                MediaColor.FromRgb(
+                                    48,
+                                    209,
+                                    88));
+
+                        BottomStatus.Text =
+                            connection.StartsWith(
+                                "Bluetooth",
+                                StringComparison.Ordinal)
+                                ? L(
+                                    "Reconnected wirelessly after wake.",
+                                    "Đã kết nối lại Bluetooth sau khi wake.")
+                                : L(
+                                    "Reconnected over USB.",
+                                    "Đã kết nối lại qua USB.");
+
+                        SetDeviceControlsEnabled(true);
+                        _lastAppliedAutoProfile = -1;
+                        PollAutoProfile(force: true);
+                        SendAllRgb();
+                        SendPowerTiming();
+                        await UpdateMemoryUsageAsync();
+                        await UpdatePanelInfoAsync();
+                        await RestoreScreensaverAfterReconnectAsync();
+                        UpdateTransportIndicators();
+                        UpdateSleepButtonUi();
+                        await CheckForUpdatesAsync(silent: true);
+                    }
                 }
 
-                var connection = _connectionPreference switch
-                {
-                    "usb" => await _serial.ConnectUsbAsync(token),
-                    "bluetooth" => await _serial.ConnectBluetoothAsync(token),
-                    _ => await _serial.AutoDetectAsync(token)
-                };
-                if (connection is null)
-                    continue;
-
-                _keyboardSleeping = false;
-                DeviceStatus.Text = connection;
-                DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
-                BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
-                    ? L("Reconnected wirelessly after wake.", "Đã kết nối lại Bluetooth sau khi wake.")
-                    : L("Reconnected over USB.", "Đã kết nối lại qua USB.");
-
-                SetDeviceControlsEnabled(true);
-                _lastAppliedAutoProfile = -1;
-                PollAutoProfile(force: true);
-                SendAllRgb();
-                SendPowerTiming();
-                await UpdateMemoryUsageAsync();
-                await UpdatePanelInfoAsync();
-                await RestoreScreensaverAfterReconnectAsync();
-                UpdateTransportIndicators();
-                UpdateSleepButtonUi();
                 await UpdateProductOverviewAsync();
-                await CheckForUpdatesAsync(silent: true);
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch
+            catch (Exception ex)
             {
+                AddLog(
+                    "WARN",
+                    "APP",
+                    $"Parallel reconnect loop: {ex.Message}");
             }
         }
     }
