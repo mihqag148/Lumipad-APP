@@ -8888,7 +8888,7 @@ try {{
                 _pixelProfileMaps[_pixelSelectedProfile][_pixelSelectedLayer][i];
 
             visual.MainText.Text = $"K{i + 1}";
-            visual.SubText.Text = PixelBindingLabel(binding);
+            visual.SubText.Text = PixelBindingLabel(binding, i);
 
             bool selected = i == _pixelSelectedKey;
             visual.Button.BorderBrush =
@@ -8915,7 +8915,7 @@ try {{
         }
 
         if (PixelSelectedBindingText is not null)
-            PixelSelectedBindingText.Text = PixelBindingLabel(binding);
+            PixelSelectedBindingText.Text = PixelBindingLabel(binding, _pixelSelectedKey);
 
         _pixelViaUpdating = true;
         try
@@ -8942,177 +8942,316 @@ try {{
             _pixelViaUpdating = false;
         }
 
-        ApplyPixelModifierPanelPosition();
+        ApplyPixelModifierOrder();
     }
 
-    private string PixelModifierPositionKey() =>
-        $"{_pixelSelectedProfile}:{_pixelSelectedLayer}:{_pixelSelectedKey}";
-
-    private void ApplyPixelModifierPanelPosition()
+    private void ApplyPixelModifierOrder()
     {
-        if (PixelModifierCanvas is null ||
-            PixelModifiersPanel is null)
-        {
+        if (PixelModifierOrderPanel is null)
             return;
-        }
 
-        PixelProModifierPosition pos =
-            _pixelModifierPositions.Get(
+        var cards =
+            new Dictionary<
+                string,
+                System.Windows.Controls.Border>(
+                StringComparer.Ordinal)
+            {
+                ["Ctrl"] = PixelModifierCtrlCard,
+                ["Shift"] = PixelModifierShiftCard,
+                ["Alt"] = PixelModifierAltCard,
+                ["Win"] = PixelModifierWinCard
+            };
+
+        IReadOnlyList<string> order =
+            _pixelModifierPositions.GetOrder(
                 _pixelSelectedProfile,
                 _pixelSelectedLayer,
                 _pixelSelectedKey);
 
-        double maxLeft =
-            Math.Max(
-                0,
-                PixelModifierCanvas.ActualWidth -
-                Math.Max(0, PixelModifiersPanel.ActualWidth));
+        PixelModifierOrderPanel.Children.Clear();
 
-        double maxTop =
-            Math.Max(
-                0,
-                PixelModifierCanvas.ActualHeight -
-                Math.Max(0, PixelModifiersPanel.ActualHeight));
+        for (int index = 0;
+             index < order.Count;
+             index++)
+        {
+            if (!cards.TryGetValue(
+                    order[index],
+                    out System.Windows.Controls.Border? card))
+            {
+                continue;
+            }
 
-        Canvas.SetLeft(
-            PixelModifiersPanel,
-            Math.Clamp(pos.Left, 0, maxLeft));
+            card.Margin =
+                index ==
+                    order.Count - 1
+                    ? new Thickness(0)
+                    : new Thickness(
+                        0,
+                        0,
+                        5,
+                        0);
 
-        Canvas.SetTop(
-            PixelModifiersPanel,
-            Math.Clamp(pos.Top, 0, maxTop));
+            PixelModifierOrderPanel.Children.Add(
+                card);
+        }
     }
 
-    private void PixelModifiersPanel_PreviewMouseLeftButtonDown(
+    private System.Windows.Controls.Border? FindPixelModifierCard(
+        string? name)
+    {
+        if (string.IsNullOrWhiteSpace(
+                name))
+        {
+            return null;
+        }
+
+        if (string.Equals(
+                name,
+                "Ctrl",
+                StringComparison.Ordinal))
+        {
+            return PixelModifierCtrlCard;
+        }
+
+        if (string.Equals(
+                name,
+                "Shift",
+                StringComparison.Ordinal))
+        {
+            return PixelModifierShiftCard;
+        }
+
+        if (string.Equals(
+                name,
+                "Alt",
+                StringComparison.Ordinal))
+        {
+            return PixelModifierAltCard;
+        }
+
+        if (string.Equals(
+                name,
+                "Win",
+                StringComparison.Ordinal))
+        {
+            return PixelModifierWinCard;
+        }
+
+        return null;
+    }
+
+    private void PixelModifierHandle_PreviewMouseLeftButtonDown(
         object sender,
         MouseButtonEventArgs e)
     {
-        if (PixelModifierCanvas is null ||
-            PixelModifiersPanel is null)
+        if (sender is not TextBlock handle ||
+            PixelModifierOrderPanel is null)
         {
             return;
         }
 
-        if (e.OriginalSource is DependencyObject source &&
-            PixelMacroFindAncestor<System.Windows.Controls.CheckBox>(source) is not null)
-        {
-            return;
-        }
+        _pixelModifierDragCard =
+            FindPixelModifierCard(
+                handle.Tag?.ToString());
 
-        _pixelModifierDragging = true;
+        if (_pixelModifierDragCard is null)
+            return;
+
+        _pixelModifierOrderDragging =
+            false;
+
         _pixelModifierDragStart =
-            e.GetPosition(PixelModifierCanvas);
+            e.GetPosition(
+                PixelModifierOrderPanel);
 
-        _pixelModifierStartLeft =
-            double.IsNaN(Canvas.GetLeft(PixelModifiersPanel))
-                ? 0
-                : Canvas.GetLeft(PixelModifiersPanel);
-
-        _pixelModifierStartTop =
-            double.IsNaN(Canvas.GetTop(PixelModifiersPanel))
-                ? 0
-                : Canvas.GetTop(PixelModifiersPanel);
-
-        PixelModifiersPanel.CaptureMouse();
+        handle.CaptureMouse();
         e.Handled = true;
     }
 
-    private void PixelModifiersPanel_PreviewMouseMove(
+    private void PixelModifierHandle_PreviewMouseMove(
         object sender,
         System.Windows.Input.MouseEventArgs e)
     {
-        if (!_pixelModifierDragging ||
-            e.LeftButton != MouseButtonState.Pressed ||
-            PixelModifierCanvas is null ||
-            PixelModifiersPanel is null)
+        if (_pixelModifierDragCard is null ||
+            PixelModifierOrderPanel is null ||
+            e.LeftButton !=
+                MouseButtonState.Pressed)
         {
             return;
         }
 
         System.Windows.Point current =
-            e.GetPosition(PixelModifierCanvas);
+            e.GetPosition(
+                PixelModifierOrderPanel);
 
-        double left =
-            _pixelModifierStartLeft +
-            current.X - _pixelModifierDragStart.X;
+        if (!_pixelModifierOrderDragging)
+        {
+            if (Math.Abs(
+                    current.X -
+                    _pixelModifierDragStart.X) <
+                4)
+            {
+                return;
+            }
 
-        double top =
-            _pixelModifierStartTop +
-            current.Y - _pixelModifierDragStart.Y;
+            _pixelModifierOrderDragging =
+                true;
+        }
 
-        double maxLeft =
-            Math.Max(
-                0,
-                PixelModifierCanvas.ActualWidth -
-                PixelModifiersPanel.ActualWidth);
+        int currentIndex =
+            PixelModifierOrderPanel.Children.IndexOf(
+                _pixelModifierDragCard);
 
-        double maxTop =
-            Math.Max(
-                0,
-                PixelModifierCanvas.ActualHeight -
-                PixelModifiersPanel.ActualHeight);
+        if (currentIndex < 0)
+            return;
 
-        Canvas.SetLeft(
-            PixelModifiersPanel,
-            Math.Clamp(left, 0, maxLeft));
+        int targetIndex =
+            PixelModifierOrderPanel.Children.Count - 1;
 
-        Canvas.SetTop(
-            PixelModifiersPanel,
-            Math.Clamp(top, 0, maxTop));
+        for (int index = 0;
+             index <
+                 PixelModifierOrderPanel.Children.Count;
+             index++)
+        {
+            if (PixelModifierOrderPanel.Children[index]
+                is not FrameworkElement item)
+            {
+                continue;
+            }
+
+            System.Windows.Point center =
+                item.TranslatePoint(
+                    new System.Windows.Point(
+                        item.ActualWidth / 2.0,
+                        0),
+                    PixelModifierOrderPanel);
+
+            if (current.X < center.X)
+            {
+                targetIndex =
+                    index;
+                break;
+            }
+        }
+
+        if (targetIndex !=
+            currentIndex)
+        {
+            PixelModifierOrderPanel.Children.Remove(
+                _pixelModifierDragCard);
+
+            targetIndex =
+                Math.Clamp(
+                    targetIndex,
+                    0,
+                    PixelModifierOrderPanel.Children.Count);
+
+            PixelModifierOrderPanel.Children.Insert(
+                targetIndex,
+                _pixelModifierDragCard);
+        }
 
         e.Handled = true;
     }
 
-    private void PixelModifiersPanel_PreviewMouseLeftButtonUp(
+    private void PixelModifierHandle_PreviewMouseLeftButtonUp(
         object sender,
         MouseButtonEventArgs e)
     {
-        if (!_pixelModifierDragging ||
-            PixelModifiersPanel is null)
+        if (sender is TextBlock handle)
+        {
+            handle.ReleaseMouseCapture();
+        }
+
+        if (_pixelModifierDragCard is null ||
+            PixelModifierOrderPanel is null)
         {
             return;
         }
 
-        _pixelModifierDragging = false;
-        PixelModifiersPanel.ReleaseMouseCapture();
+        if (_pixelModifierOrderDragging)
+        {
+            string[] order =
+                PixelModifierOrderPanel.Children
+                    .OfType<
+                        System.Windows.Controls.Border>()
+                    .Select(
+                        card =>
+                            card.Tag?.ToString() ??
+                            "")
+                    .Where(
+                        value =>
+                            !string.IsNullOrWhiteSpace(
+                                value))
+                    .ToArray();
 
-        double left =
-            double.IsNaN(Canvas.GetLeft(PixelModifiersPanel))
-                ? 0
-                : Canvas.GetLeft(PixelModifiersPanel);
+            _pixelModifierPositions.SetOrder(
+                _pixelSelectedProfile,
+                _pixelSelectedLayer,
+                _pixelSelectedKey,
+                order);
 
-        double top =
-            double.IsNaN(Canvas.GetTop(PixelModifiersPanel))
-                ? 0
-                : Canvas.GetTop(PixelModifiersPanel);
+            PixelProKeyEditorUiStore.Save(
+                _pixelModifierPositions);
 
-        _pixelModifierPositions.Set(
-            _pixelSelectedProfile,
-            _pixelSelectedLayer,
-            _pixelSelectedKey,
-            left,
-            top);
+            UpdatePixelKeyVisuals();
+            UpdatePixelSelectedEditor();
+        }
 
-        PixelProKeyEditorUiStore.Save(
-            _pixelModifierPositions);
+        _pixelModifierDragCard =
+            null;
+
+        _pixelModifierOrderDragging =
+            false;
 
         e.Handled = true;
     }
 
-    private static string ModifierPrefix(byte modifiers)
+    private string ModifierPrefix(
+        byte modifiers,
+        int keyIndex)
     {
-        var names = new List<string>();
+        var names =
+            new List<string>();
 
-        if ((modifiers & 0x01) != 0) names.Add("Ctrl");
-        if ((modifiers & 0x02) != 0) names.Add("Shift");
-        if ((modifiers & 0x04) != 0) names.Add("Alt");
-        if ((modifiers & 0x08) != 0) names.Add("Win");
+        IReadOnlyList<string> order =
+            _pixelModifierPositions.GetOrder(
+                _pixelSelectedProfile,
+                _pixelSelectedLayer,
+                keyIndex);
 
-        return string.Join("+", names);
+        foreach (string name in order)
+        {
+            bool enabled =
+                name switch
+                {
+                    "Ctrl" =>
+                        (modifiers &
+                         0x01) != 0,
+                    "Shift" =>
+                        (modifiers &
+                         0x02) != 0,
+                    "Alt" =>
+                        (modifiers &
+                         0x04) != 0,
+                    "Win" =>
+                        (modifiers &
+                         0x08) != 0,
+                    _ => false
+                };
+
+            if (enabled)
+                names.Add(name);
+        }
+
+        return string.Join(
+            "+",
+            names);
     }
 
     private string PixelBindingLabel(
-        PixelProKeyBinding binding)
+        PixelProKeyBinding binding,
+        int keyIndex)
     {
         if (binding.Type == PixelProKeyBindingType.Disabled)
             return "Disabled";
@@ -9157,21 +9296,32 @@ try {{
 
         string baseLabel =
             known?.Label ??
-            (binding.Type == PixelProKeyBindingType.Keyboard
-                ? $"KC_{binding.Code}"
-                : $"CC_{binding.Code}");
+            (binding.Type ==
+                PixelProKeyBindingType.Keyboard
+                    ? $"KC_{binding.Code}"
+                    : $"CC_{binding.Code}");
 
-        if (binding.Type != PixelProKeyBindingType.Keyboard)
+        if (binding.Type !=
+            PixelProKeyBindingType.Keyboard)
+        {
             return baseLabel;
+        }
 
-        string modifiers = ModifierPrefix(binding.Modifiers);
+        string modifiers =
+            ModifierPrefix(
+                binding.Modifiers,
+                keyIndex);
 
         if (binding.Code == 0)
-            return string.IsNullOrWhiteSpace(modifiers)
+        {
+            return string.IsNullOrWhiteSpace(
+                    modifiers)
                 ? "Disabled"
                 : modifiers;
+        }
 
-        return string.IsNullOrWhiteSpace(modifiers)
+        return string.IsNullOrWhiteSpace(
+                modifiers)
             ? baseLabel
             : $"{modifiers}+{baseLabel}";
     }
