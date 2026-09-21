@@ -2207,7 +2207,23 @@ public partial class MainWindow : Window
             _syncingMediaUi = false;
         }
 
-        _serial.SendNowPlaying(data);
+        foreach (IDeviceLink link in _deviceLinks.Values)
+        {
+            if (!link.IsConnected)
+                continue;
+
+            try
+            {
+                link.SendNowPlaying(data);
+            }
+            catch (Exception ex)
+            {
+                AddLog(
+                    "WARN",
+                    "MEDIA",
+                    $"Now Playing send failed on {link.ConnectionName}: {ex.Message}");
+            }
+        }
     }
 
     private void ClearNowPlaying()
@@ -2249,7 +2265,19 @@ public partial class MainWindow : Window
             _syncingMediaUi = false;
         }
 
-        _serial.ClearNowPlaying();
+        foreach (IDeviceLink link in _deviceLinks.Values)
+        {
+            if (!link.IsConnected)
+                continue;
+
+            try
+            {
+                link.ClearNowPlaying();
+            }
+            catch
+            {
+            }
+        }
     }
 
     private void SetMediaModeButton(
