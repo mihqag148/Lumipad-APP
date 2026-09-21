@@ -1279,8 +1279,13 @@ public partial class MainWindow : Window
                     : L("Save to profile", "Lưu vào profile");
 
         if (RgbSpeedSlider is not null)
-            RgbSpeedSlider.IsEnabled =
-                !pixel;
+        {
+            RgbSpeedSlider.IsEnabled = true;
+            RgbSpeedSlider.Value =
+                pixel
+                    ? _pixelRgbSpeed
+                    : _rgbSpeed;
+        }
 
         UpdatePixelRgbUi();
     }
@@ -6871,6 +6876,13 @@ try {{
                 pixel.SetPixelRgbProfile(
                     profile,
                     _pixelRgbProfiles[profile]);
+
+                pixel.SetPixelRgbEffect(
+                    profile,
+                    _pixelRgbEffects[profile]);
+
+                pixel.SetPixelRgbSpeed(
+                    _pixelRgbSpeed);
             }
 
             BottomStatus.Text =
@@ -7115,6 +7127,52 @@ try {{
                         ? 3
                         : 1);
         }
+
+        int effect =
+            _pixelRgbEffects[
+                Math.Clamp(
+                    profile,
+                    0,
+                    _pixelRgbEffects.Length - 1)];
+
+        bool dynamic =
+            effect != 3;
+
+        if (PixelRgbDynamicPresets is not null)
+        {
+            PixelRgbDynamicPresets.Visibility =
+                dynamic
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+
+        if (PixelRgbStaticModeButton is not null)
+        {
+            PixelRgbStaticModeButton.BorderBrush =
+                TryFindResource(
+                    dynamic
+                        ? "Line"
+                        : "Accent")
+                as System.Windows.Media.Brush;
+
+            PixelRgbStaticModeButton.BorderThickness =
+                new Thickness(
+                    dynamic ? 1 : 2);
+        }
+
+        if (PixelRgbDynamicModeButton is not null)
+        {
+            PixelRgbDynamicModeButton.BorderBrush =
+                TryFindResource(
+                    dynamic
+                        ? "Accent"
+                        : "Line")
+                as System.Windows.Media.Brush;
+
+            PixelRgbDynamicModeButton.BorderThickness =
+                new Thickness(
+                    dynamic ? 2 : 1);
+        }
     }
 
     private void PixelRgbKey_Click(
@@ -7180,6 +7238,16 @@ try {{
                     _g,
                     _b);
 
+            _pixelRgbEffects[profile] = 3;
+
+            if (_serial is PixelProCdcLink modePixel &&
+                modePixel.IsConnected)
+            {
+                modePixel.SetPixelRgbEffect(
+                    profile,
+                    3);
+            }
+
             if (_pixelRgbSelectedKey < 0)
             {
                 for (int key = 0; key < 8; key++)
@@ -7237,6 +7305,99 @@ try {{
         _g = color.G;
         _b = color.B;
         ApplySelectedRgbColor(true);
+    }
+
+    private void PixelRgbMode_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            sender is not System.Windows.Controls.Button button)
+        {
+            return;
+        }
+
+        string mode =
+            button.Tag?.ToString() ??
+            "Static";
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbEffects.Length - 1);
+
+        int effect =
+            string.Equals(
+                mode,
+                "Dynamic",
+                StringComparison.OrdinalIgnoreCase)
+                ? (_pixelRgbEffects[profile] == 3
+                    ? 0
+                    : _pixelRgbEffects[profile])
+                : 3;
+
+        _pixelRgbEffects[profile] =
+            effect;
+
+        SaveAppSettings();
+
+        if (_serial is PixelProCdcLink pixel &&
+            pixel.IsConnected)
+        {
+            pixel.SetPixelRgbEffect(
+                profile,
+                effect);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
+        }
+
+        UpdatePixelRgbUi();
+    }
+
+    private void PixelRgbPreset_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            sender is not System.Windows.Controls.Button button ||
+            !int.TryParse(
+                button.Tag?.ToString(),
+                out int effect))
+        {
+            return;
+        }
+
+        effect =
+            Math.Clamp(
+                effect,
+                0,
+                2);
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbEffects.Length - 1);
+
+        _pixelRgbEffects[profile] =
+            effect;
+
+        SaveAppSettings();
+
+        if (_serial is PixelProCdcLink pixel &&
+            pixel.IsConnected)
+        {
+            pixel.SetPixelRgbEffect(
+                profile,
+                effect);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
+        }
+
+        UpdatePixelRgbUi();
     }
 
     private void RgbMode_Click(object sender, RoutedEventArgs e)
@@ -7306,9 +7467,24 @@ try {{
 
         if (_uiReady)
         {
-            _rgbSpeed = value;
-            SaveAppSettings();
-            _serial.SetSpeed(value);
+            if (IsPixelProActive)
+            {
+                _pixelRgbSpeed = value;
+                SaveAppSettings();
+
+                if (_serial is PixelProCdcLink pixel &&
+                    pixel.IsConnected)
+                {
+                    pixel.SetPixelRgbSpeed(
+                        value);
+                }
+            }
+            else
+            {
+                _rgbSpeed = value;
+                SaveAppSettings();
+                _serial.SetSpeed(value);
+            }
         }
     }
 
@@ -7336,6 +7512,13 @@ try {{
             pixel.SetPixelRgbProfile(
                 profile,
                 _pixelRgbProfiles[profile]);
+
+            pixel.SetPixelRgbEffect(
+                profile,
+                _pixelRgbEffects[profile]);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
 
             pixel.SetEnabled(
                 _rgbEnabled);
