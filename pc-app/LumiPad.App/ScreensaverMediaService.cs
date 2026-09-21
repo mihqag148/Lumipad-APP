@@ -31,7 +31,13 @@ public sealed record ScreensaverAnimation(
     ScreensaverPixelFormat PixelFormat,
     int FrameIntervalMs,
     IReadOnlyList<int> FrameDurationsMs,
-    IReadOnlyList<byte[]> Frames);
+    IReadOnlyList<byte[]> Frames)
+{
+    // PIXEL PRO can keep the original GIF file compressed and send it
+    // directly to the device. RYNOR ONE leaves this null and continues to
+    // use the existing pre-decoded frame pipeline unchanged.
+    public byte[]? EncodedGif { get; init; }
+}
 
 public static class ScreensaverMediaService
 {
