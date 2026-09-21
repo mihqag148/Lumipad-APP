@@ -8100,22 +8100,109 @@ try {{
 
             for (int i = 0; i < _pixelProfileCatalog.Count; i++)
             {
-                PixelProfileCombo.Items.Add(new ComboBoxItem
-                {
-                    Content = $"{i + 1:00} · {_pixelProfileCatalog.Names[i]}",
-                    Tag = i
-                });
+                PixelProfileCombo.Items.Add(
+                    new ComboBoxItem
+                    {
+                        Content =
+                            $"{i + 1:00} · {_pixelProfileCatalog.Names[i]}",
+                        Tag = i
+                    });
             }
 
-            PixelProfileCombo.SelectedIndex = _pixelSelectedProfile;
-            PixelProfileCombo.Text =
-                $"{_pixelSelectedProfile + 1:00} · " +
-                _pixelProfileCatalog.Names[_pixelSelectedProfile];
+            PixelProfileCombo.SelectedIndex =
+                _pixelSelectedProfile;
+
+            if (PixelProfileRenameTextBox is not null)
+            {
+                PixelProfileRenameTextBox.Visibility =
+                    Visibility.Collapsed;
+            }
+
+            PixelProfileCombo.Visibility =
+                Visibility.Visible;
+            _pixelProfileRenameActive = false;
         }
         finally
         {
             _pixelViaUpdating = false;
         }
+    }
+
+    private void SetPixelProfileDefaults(
+        int profile)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                19);
+
+        PixelProKeyBinding[][] defaults =
+            CreateDefaultPixelProfileLayers();
+
+        for (int layer = 0; layer < 4; layer++)
+        {
+            _pixelProfileMaps[profile][layer] =
+                defaults[layer].ToArray();
+
+            _pixelLayerLoaded[profile, layer] =
+                true;
+        }
+
+        _pixelRgbProfiles[profile] =
+            CreateDefaultPixelRgbProfile(
+                profile);
+
+        _pixelModifierPositions.ResetProfile(
+            profile);
+    }
+
+    private void ReindexAutoProfilesAfterPixelDelete(
+        int removedProfile,
+        int newCount)
+    {
+        int fallback =
+            Math.Clamp(
+                removedProfile,
+                0,
+                Math.Max(0, newCount - 1));
+
+        if (_autoProfileSettings.DefaultPixelProfile ==
+            removedProfile)
+        {
+            _autoProfileSettings.DefaultPixelProfile =
+                fallback;
+        }
+        else if (_autoProfileSettings.DefaultPixelProfile >
+                 removedProfile)
+        {
+            _autoProfileSettings.DefaultPixelProfile--;
+        }
+
+        foreach (AutoProfileMapping mapping in
+                 _autoProfileSettings.Mappings)
+        {
+            if (mapping.PixelProfileIndex ==
+                removedProfile)
+            {
+                mapping.PixelProfileIndex =
+                    fallback;
+            }
+            else if (mapping.PixelProfileIndex >
+                     removedProfile)
+            {
+                mapping.PixelProfileIndex--;
+            }
+
+            mapping.PixelProfileIndex =
+                Math.Clamp(
+                    mapping.PixelProfileIndex,
+                    0,
+                    Math.Max(0, newCount - 1));
+        }
+
+        AutoProfileService.Save(
+            _autoProfileSettings);
     }
 
     private async void PixelAddProfile_Click(
@@ -8131,27 +8218,60 @@ try {{
             return;
         }
 
-        _pixelProfileCatalog.Count++;
-        int created = _pixelProfileCatalog.Count - 1;
-        _pixelProfileCatalog.Names[created] =
-            $"Profile {_pixelProfileCatalog.Count}";
-        PixelProProfileStore.Save(_pixelProfileCatalog);
+        int created =
+            _pixelProfileCatalog.Count;
 
-        _pixelSelectedProfile = created;
+        _pixelProfileCatalog.Count++;
+        _pixelProfileCatalog.Names[created] =
+            $"Profile {created + 1}";
+
+        SetPixelProfileDefaults(
+            created);
+
+        PixelProProfileStore.Save(
+            _pixelProfileCatalog);
+
+        PixelProKeyEditorUiStore.Save(
+            _pixelModifierPositions);
+
+        SaveAppSettings();
+
+        _pixelSelectedProfile =
+            created;
+
         RefreshPixelProfileCombo();
 
-        if (_serial is PixelProCdcLink pixel && pixel.IsConnected)
+        if (_serial is PixelProCdcLink pixel &&
+            pixel.IsConnected)
         {
             for (int layer = 0; layer < 4; layer++)
-                await LoadPixelLayerAsync(created, layer);
+            {
+                await pixel.SetKeymapAsync(
+                    created,
+                    layer,
+                    _pixelProfileMaps[created][layer]);
+            }
 
-            pixel.SetProfileLayer(created, _pixelSelectedLayer);
+            pixel.SetPixelRgbProfile(
+                created,
+                _pixelRgbProfiles[created]);
+
+            pixel.SetProfileLayer(
+                created,
+                _pixelSelectedLayer);
         }
 
+        _pixelRgbSelectedKey = -1;
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
+        UpdatePixelRgbUi();
         RefreshAutoProfileMappingsUi();
         RefreshAutoProfileDefaultSelectors();
+
+        PixelKeymapStatusText.Text =
+            L(
+                $"Profile {created + 1} created with defaults.",
+                $"Đã tạo Profile {created + 1} với cấu hình mặc định.");
     }
 
     private async void PixelRemoveProfile_Click(
@@ -8167,124 +8287,283 @@ try {{
             return;
         }
 
-        int removed = _pixelProfileCatalog.Count - 1;
-        _pixelProfileCatalog.Count--;
-        _pixelProfileCatalog.Names[removed] =
-            $"Profile {removed + 1}";
-        PixelProProfileStore.Save(_pixelProfileCatalog);
+        if (_serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected)
+        {
+            PixelKeymapStatusText.Text =
+                L(
+                    "Connect PIXEL PRO before deleting a profile so the remaining profiles can be shifted safely.",
+                    "Hãy kết nối PIXEL PRO trước khi xoá profile để dồn các profile còn lại chính xác.");
+            return;
+        }
 
-        _pixelSelectedProfile =
+        int oldCount =
+            _pixelProfileCatalog.Count;
+
+        int removed =
             Math.Clamp(
                 _pixelSelectedProfile,
                 0,
+                oldCount - 1);
+
+        PixelKeymapStatusText.Text =
+            L(
+                $"Deleting Profile {removed + 1}…",
+                $"Đang xoá Profile {removed + 1}…");
+
+        // Load the source profiles before shifting them down.
+        for (int profile = removed + 1;
+             profile < oldCount;
+             profile++)
+        {
+            for (int layer = 0;
+                 layer < 4;
+                 layer++)
+            {
+                if (!_pixelLayerLoaded[
+                        profile,
+                        layer])
+                {
+                    await LoadPixelLayerAsync(
+                        profile,
+                        layer);
+                }
+            }
+
+            PixelRgbColor[]? colors =
+                await pixel.GetPixelRgbProfileAsync(
+                    profile);
+
+            if (colors is { Length: 8 })
+            {
+                _pixelRgbProfiles[profile] =
+                    colors.ToArray();
+            }
+        }
+
+        // Remove exactly the selected profile. Everything after it keeps its
+        // relative order and shifts up by one slot.
+        for (int destination = removed;
+             destination < oldCount - 1;
+             destination++)
+        {
+            int source =
+                destination + 1;
+
+            _pixelProfileCatalog.Names[destination] =
+                _pixelProfileCatalog.Names[source];
+
+            for (int layer = 0;
+                 layer < 4;
+                 layer++)
+            {
+                _pixelProfileMaps[destination][layer] =
+                    _pixelProfileMaps[source][layer]
+                        .ToArray();
+
+                _pixelLayerLoaded[
+                    destination,
+                    layer] =
+                    true;
+
+                await pixel.SetKeymapAsync(
+                    destination,
+                    layer,
+                    _pixelProfileMaps[destination][layer]);
+            }
+
+            _pixelRgbProfiles[destination] =
+                _pixelRgbProfiles[source]
+                    .ToArray();
+
+            pixel.SetPixelRgbProfile(
+                destination,
+                _pixelRgbProfiles[destination]);
+        }
+
+        int vacated =
+            oldCount - 1;
+
+        SetPixelProfileDefaults(
+            vacated);
+
+        _pixelProfileCatalog.Names[vacated] =
+            $"Profile {vacated + 1}";
+
+        for (int layer = 0;
+             layer < 4;
+             layer++)
+        {
+            await pixel.SetKeymapAsync(
+                vacated,
+                layer,
+                _pixelProfileMaps[vacated][layer]);
+        }
+
+        pixel.SetPixelRgbProfile(
+            vacated,
+            _pixelRgbProfiles[vacated]);
+
+        _pixelModifierPositions.RemoveProfileAndShift(
+            removed,
+            oldCount);
+
+        _pixelProfileCatalog.Count =
+            oldCount - 1;
+
+        ReindexAutoProfilesAfterPixelDelete(
+            removed,
+            _pixelProfileCatalog.Count);
+
+        PixelProProfileStore.Save(
+            _pixelProfileCatalog);
+
+        PixelProKeyEditorUiStore.Save(
+            _pixelModifierPositions);
+
+        SaveAppSettings();
+
+        _pixelSelectedProfile =
+            Math.Min(
+                removed,
                 _pixelProfileCatalog.Count - 1);
+
+        _pixelRgbSelectedKey = -1;
 
         RefreshPixelProfileCombo();
 
-        if (_serial is PixelProCdcLink pixel && pixel.IsConnected)
-        {
-            for (int layer = 0; layer < 4; layer++)
-            {
-                if (!_pixelLayerLoaded[_pixelSelectedProfile, layer])
-                    await LoadPixelLayerAsync(_pixelSelectedProfile, layer);
-            }
-
-            pixel.SetProfileLayer(
-                _pixelSelectedProfile,
-                _pixelSelectedLayer);
-        }
+        pixel.SetProfileLayer(
+            _pixelSelectedProfile,
+            _pixelSelectedLayer);
 
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
+        UpdatePixelRgbUi();
         RefreshAutoProfileMappingsUi();
         RefreshAutoProfileDefaultSelectors();
 
         PixelKeymapStatusText.Text =
             L(
-                $"Profile {removed + 1} removed from the quick list.",
-                $"Đã bỏ Profile {removed + 1} khỏi danh sách.");
+                $"Deleted Profile {removed + 1}. Now editing Profile {_pixelSelectedProfile + 1}.",
+                $"Đã xoá Profile {removed + 1}. Hiện đang chỉnh Profile {_pixelSelectedProfile + 1}.");
     }
 
     private void PixelRenameProfile_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (PixelProfileCombo is null)
+        if (PixelProfileCombo is null ||
+            PixelProfileRenameTextBox is null)
+        {
             return;
+        }
 
-        PixelProfileCombo.IsDropDownOpen = false;
-        PixelProfileCombo.Focus();
+        _pixelProfileRenameActive =
+            true;
 
-        Dispatcher.BeginInvoke(
-            new Action(() =>
-            {
-                if (PixelProfileCombo.Template.FindName(
-                        "PART_EditableTextBox",
-                        PixelProfileCombo) is System.Windows.Controls.TextBox editor)
-                {
-                    editor.Focus();
-                    editor.SelectAll();
-                }
-            }),
-            System.Windows.Threading.DispatcherPriority.Input);
+        PixelProfileCombo.Visibility =
+            Visibility.Collapsed;
+
+        PixelProfileRenameTextBox.Text =
+            _pixelProfileCatalog.Names[
+                _pixelSelectedProfile];
+
+        PixelProfileRenameTextBox.Visibility =
+            Visibility.Visible;
+
+        PixelProfileRenameTextBox.Focus();
+        PixelProfileRenameTextBox.SelectAll();
     }
 
-    private void PixelProfileCombo_KeyDown(
+    private void PixelProfileRenameTextBox_KeyDown(
         object sender,
         System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != Key.Enter)
+        if (!_pixelProfileRenameActive)
             return;
 
-        CommitPixelProfileNameFromCombo();
-        e.Handled = true;
-        Keyboard.ClearFocus();
+        if (e.Key == Key.Enter)
+        {
+            CommitPixelProfileRename();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            CancelPixelProfileRename();
+            e.Handled = true;
+        }
     }
 
-    private void PixelProfileCombo_LostKeyboardFocus(
+    private void PixelProfileRenameTextBox_LostKeyboardFocus(
         object sender,
-        KeyboardFocusChangedEventArgs e) =>
-        CommitPixelProfileNameFromCombo();
-
-    private void CommitPixelProfileNameFromCombo()
+        KeyboardFocusChangedEventArgs e)
     {
-        if (PixelProfileCombo is null || _pixelViaUpdating)
-            return;
+        if (_pixelProfileRenameActive)
+            CommitPixelProfileRename();
+    }
 
-        string text = PixelProfileCombo.Text.Trim();
-        string prefix = $"{_pixelSelectedProfile + 1:00} ·";
+    private void CancelPixelProfileRename()
+    {
+        _pixelProfileRenameActive =
+            false;
+
+        if (PixelProfileRenameTextBox is not null)
+        {
+            PixelProfileRenameTextBox.Visibility =
+                Visibility.Collapsed;
+        }
+
+        if (PixelProfileCombo is not null)
+        {
+            PixelProfileCombo.Visibility =
+                Visibility.Visible;
+            PixelProfileCombo.Focus();
+        }
+    }
+
+    private void CommitPixelProfileRename()
+    {
+        if (!_pixelProfileRenameActive ||
+            PixelProfileRenameTextBox is null)
+        {
+            return;
+        }
 
         string name =
-            text.StartsWith(prefix, StringComparison.Ordinal)
-                ? text[prefix.Length..].Trim()
-                : text;
+            PixelProfileRenameTextBox.Text
+                .Trim();
 
-        if (string.IsNullOrWhiteSpace(name))
-            name = $"Profile {_pixelSelectedProfile + 1}";
+        if (string.IsNullOrWhiteSpace(
+                name))
+        {
+            name =
+                $"Profile {_pixelSelectedProfile + 1}";
+        }
 
         if (name.Length > 32)
             name = name[..32];
 
-        if (string.Equals(
-                _pixelProfileCatalog.Names[_pixelSelectedProfile],
-                name,
-                StringComparison.Ordinal))
-        {
-            PixelProfileCombo.Text =
-                $"{_pixelSelectedProfile + 1:00} · {name}";
-            return;
-        }
+        _pixelProfileCatalog.Names[
+            _pixelSelectedProfile] =
+            name;
 
-        _pixelProfileCatalog.Names[_pixelSelectedProfile] = name;
-        PixelProProfileStore.Save(_pixelProfileCatalog);
+        PixelProProfileStore.Save(
+            _pixelProfileCatalog);
+
+        _pixelProfileRenameActive =
+            false;
+
         RefreshPixelProfileCombo();
         RefreshAutoProfileMappingsUi();
         RefreshAutoProfileDefaultSelectors();
+        UpdatePixelRgbUi();
 
         PixelKeymapStatusText.Text =
             L(
-                $"Profile renamed to {name}.",
-                $"Đã đổi tên profile thành {name}.");
+                $"Profile {_pixelSelectedProfile + 1} renamed to {name}.",
+                $"Đã đổi tên Profile {_pixelSelectedProfile + 1} thành {name}.");
     }
 
     private async void PixelProfileCombo_SelectionChanged(
@@ -8299,14 +8578,26 @@ try {{
         }
 
         _pixelSelectedProfile =
-            Math.Clamp(profile, 0, _pixelProfileCatalog.Count - 1);
+            Math.Clamp(
+                profile,
+                0,
+                _pixelProfileCatalog.Count - 1);
 
-        if (_serial is PixelProCdcLink pixel && pixel.IsConnected)
+        if (_serial is PixelProCdcLink pixel &&
+            pixel.IsConnected)
         {
-            for (int layer = 0; layer < 4; layer++)
+            for (int layer = 0;
+                 layer < 4;
+                 layer++)
             {
-                if (!_pixelLayerLoaded[_pixelSelectedProfile, layer])
-                    await LoadPixelLayerAsync(_pixelSelectedProfile, layer);
+                if (!_pixelLayerLoaded[
+                        _pixelSelectedProfile,
+                        layer])
+                {
+                    await LoadPixelLayerAsync(
+                        _pixelSelectedProfile,
+                        layer);
+                }
             }
 
             pixel.SetProfileLayer(
@@ -8319,7 +8610,8 @@ try {{
 
             if (colors is { Length: 8 })
             {
-                _pixelRgbProfiles[_pixelSelectedProfile] =
+                _pixelRgbProfiles[
+                    _pixelSelectedProfile] =
                     colors.ToArray();
             }
         }
@@ -8340,17 +8632,10 @@ try {{
         UpdatePixelRgbUi();
         SaveAppSettings();
 
-        _pixelViaUpdating = true;
-        try
-        {
-            PixelProfileCombo.Text =
-                $"{_pixelSelectedProfile + 1:00} · " +
-                _pixelProfileCatalog.Names[_pixelSelectedProfile];
-        }
-        finally
-        {
-            _pixelViaUpdating = false;
-        }
+        PixelKeymapStatusText.Text =
+            L(
+                $"Profile {_pixelSelectedProfile + 1} · Layer {_pixelSelectedLayer}",
+                $"Profile {_pixelSelectedProfile + 1} · Layer {_pixelSelectedLayer}");
     }
 
     private void RebuildPixelPalette()
