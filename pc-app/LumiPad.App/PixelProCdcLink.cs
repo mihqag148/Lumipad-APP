@@ -41,8 +41,8 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     public bool SupportsDiagnostics => true;
     public bool SupportsMemoryInfo => true;
-    public bool SupportsPanelInfo => false;
-    public bool SupportsSaverState => false;
+    public bool SupportsPanelInfo => true;
+    public bool SupportsSaverState => true;
     public bool SupportsProfileSwitch => true;
     public bool SupportsActions => false;
     public bool SupportsVariableArtwork => false;
@@ -814,20 +814,284 @@ public sealed class PixelProCdcLink : IDeviceLink
     public void SendNowPlaying(NowPlayingData data) { }
     public void ClearNowPlaying() { }
 
-    public Task<bool> SendScreensaverAnimationAsync(
+    public async Task<bool> SendScreensaverAnimationAsync(
         ScreensaverAnimation animation,
-        IProgress<int>? progress = null) =>
-        Task.FromResult(false);
+        IProgress<int>? progress = null)
+    {
+        if (!IsConnected)
+            return false;
 
-    public void ClearScreensaverAnimation() { }
-    public Task<string?> GetScreensaverStateAsync() =>
-        Task.FromResult<string?>(null);
-    public Task ShowScreensaverNowAsync(bool pcMonitor) =>
-        Task.CompletedTask;
-    public Task SetScreensaverSourceAsync(bool pcMonitor) =>
-        Task.CompletedTask;
-    public void SetScreensaverSource(bool pcMonitor) { }
-    public void SetScreensaverDelay(int seconds) { }
+        bool staticImage =
+            animation.PixelFormat == ScreensaverPixelFormat.Rgb565;
+
+        bool valid =
+            staticImage
+                ? animation.Frames.Count == 1 &&
+                  animation.Width ==
+                      PixelProScreensaverMediaService.PanelWidth &&
+                  animation.Height ==
+                      PixelProScreensaverMediaService.PanelHeight &&
+                  animation.Frames[0].Length ==
+                      PixelProScreensaverMediaService.PanelWidth *
+                      PixelProScreensaverMediaService.PanelHeight * 2
+                : animation.PixelFormat ==
+                      ScreensaverPixelFormat.Rgb332 &&
+                  animation.Frames.Count is >= 1 and <=
+                      PixelProScreensaverMediaService.MaxFrames &&
+                  animation.Width ==
+                      PixelProScreensaverMediaService.Width &&
+                  animation.Height ==
+                      PixelProScreensaverMediaService.Height &&
+                  animation.Frames.All(
+                      x => x.Length ==
+                           PixelProScreensaverMediaService.Width *
+                           PixelProScreensaverMediaService.Height);
+
+        if (!valid)
+            throw new InvalidOperationException(
+                "Invalid PIXEL PRO screensaver format.");
+
+        int[] durations =
+            Enumerable.Range(0, animation.Frames.Count)
+                .Select(i =>
+                    animation.FrameDurationsMs.Count ==
+                    animation.Frames.Count
+                        ? animation.FrameDurationsMs[i]
+                        : animation.FrameIntervalMs)
+                .Select(ms =>
+                    Math.Clamp(
+                        ms,
+                        PixelProScreensaverMediaService.MinFrameIntervalMs,
+                        5000))
+                .ToArray();
+
+        string format = staticImage ? "RGB565" : "RGB332";
+        string durationCsv = string.Join(",", durations);
+
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 300;
+                port.WriteTimeout = 3000;
+                try { port.DiscardInBuffer(); } catch { }
+
+                string begin =
+                    $"SAVBEGIN|{animation.Frames.Count}|" +
+                    $"{animation.Width}|{animation.Height}|" +
+                    $"{format}|{durationCsv}";
+
+                Log("TX", begin);
+                port.WriteLine(begin);
+
+                string? beginAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVBEGIN",
+                        TimeSpan.FromSeconds(5));
+
+                if (!string.Equals(
+                        beginAck,
+                        "OK|SAVBEGIN",
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                const int RawChunkSize = 300;
+
+                long totalBytes =
+                    animation.Frames.Sum(
+                        frame => (long)frame.Length);
+
+                long sentBytes = 0;
+
+                for (int frameIndex = 0;
+                     frameIndex < animation.Frames.Count;
+                     frameIndex++)
+                {
+                    byte[] frame =
+                        animation.Frames[frameIndex];
+
+                    for (int offset = 0;
+                         offset < frame.Length;
+                         offset += RawChunkSize)
+                    {
+                        int len =
+                            Math.Min(
+                                RawChunkSize,
+                                frame.Length - offset);
+
+                        string encoded =
+                            Convert.ToBase64String(
+                                frame,
+                                offset,
+                                len);
+
+                        port.WriteLine(
+                            $"SAVDATA|{frameIndex}|{offset}|{encoded}");
+
+                        sentBytes += len;
+
+                        progress?.Report(
+                            (int)Math.Clamp(
+                                sentBytes * 95 / Math.Max(1, totalBytes),
+                                0,
+                                95));
+
+                        if (((offset / RawChunkSize) & 0x0F) == 0x0F)
+                            await Task.Yield();
+                    }
+
+                    string expected =
+                        $"OK|SAVFRAME|{frameIndex}";
+
+                    string? frameAck =
+                        await ReadExpectedLineAsync(
+                            port,
+                            expected,
+                            TimeSpan.FromSeconds(8));
+
+                    if (!string.Equals(
+                            frameAck,
+                            expected,
+                            StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                }
+
+                port.WriteLine("SAVEND");
+
+                string? finalAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVER|READY",
+                        TimeSpan.FromSeconds(8));
+
+                bool ready =
+                    string.Equals(
+                        finalAck,
+                        "OK|SAVER|READY",
+                        StringComparison.Ordinal);
+
+                if (ready)
+                    progress?.Report(100);
+
+                return ready;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    private async Task<string?> ReadExpectedLineAsync(
+        SerialPort port,
+        string expectedPrefix,
+        TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                string line =
+                    port.ReadLine()
+                        .Trim('\0', '\r', '\n', ' ');
+
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                Log("CDC", line);
+
+                if (line.StartsWith(
+                        expectedPrefix,
+                        StringComparison.Ordinal))
+                {
+                    return line;
+                }
+
+                if (line.StartsWith(
+                        "ERR|",
+                        StringComparison.Ordinal))
+                {
+                    return line;
+                }
+            }
+            catch (TimeoutException)
+            {
+                await Task.Delay(5);
+            }
+        }
+
+        return null;
+    }
+
+    public void ClearScreensaverAnimation() =>
+        SendCommand("SAVCLEAR");
+
+    public async Task<string?> GetScreensaverStateAsync()
+    {
+        string? line =
+            await RequestLineAsync(
+                "SAVERSTATE",
+                "SAVERSTATE|");
+
+        if (line is null ||
+            !line.StartsWith(
+                "SAVERSTATE|",
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return line["SAVERSTATE|".Length..];
+    }
+
+    public async Task ShowScreensaverNowAsync(bool pcMonitor)
+    {
+        if (pcMonitor)
+            return;
+
+        _ = await RequestLineAsync(
+            "SAVSHOW",
+            "OK|SAVSHOW");
+    }
+
+    public async Task SetScreensaverSourceAsync(bool pcMonitor)
+    {
+        if (pcMonitor)
+            return;
+
+        _ = await RequestLineAsync(
+            "SAVSOURCE|MEDIA",
+            "OK|SAVSOURCE");
+    }
+
+    public void SetScreensaverSource(bool pcMonitor)
+    {
+        if (!pcMonitor)
+            SendCommand("SAVSOURCE|MEDIA");
+    }
+
+    public void SetScreensaverDelay(int seconds) =>
+        SendCommand(
+            $"SAVDELAY|{Math.Clamp(seconds, 0, 86400)}");
     public void SetSleepTimeout(int seconds) { }
     public void SetRgbIdleTimeout(int seconds) { }
     public void SetDeepSleepTimeout(int seconds) { }
@@ -839,9 +1103,36 @@ public sealed class PixelProCdcLink : IDeviceLink
     public Task<int?> ReadBatteryPercentAsync() =>
         Task.FromResult<int?>(null);
 
-    public Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
-        ReadPanelInfoAsync() =>
-        Task.FromResult<(string, int, int, int)?>(null);
+    public async Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
+        ReadPanelInfoAsync()
+    {
+        string? line =
+            await RequestLineAsync(
+                "PANEL",
+                "PANEL|");
+
+        if (line is null ||
+            !line.StartsWith("PANEL|", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string[] parts = line.Split('|');
+
+        if (parts.Length != 5 ||
+            !int.TryParse(parts[2], out int refreshHz) ||
+            !int.TryParse(parts[3], out int busHz) ||
+            !int.TryParse(parts[4], out int gifMaxFps))
+        {
+            return null;
+        }
+
+        return (
+            parts[1],
+            refreshHz,
+            busHz,
+            gifMaxFps);
+    }
 
     public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
     {

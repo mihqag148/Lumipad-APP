@@ -211,13 +211,11 @@ public partial class MainWindow : Window
         InitializeTrayIcon();
 
         // Keep the preview on an absolute playback timeline, just like the
-        // firmware. If the UI thread is briefly late, skip a stale frame
-        // instead of stretching the whole GIF and drifting out of sync.
-        // Output cadence is fixed at 25 Hz (40 ms). The desired source frame
-        // is still selected from the GIF's original timeline, so low-FPS GIFs
-        // repeat frames and high-FPS GIFs drop frames instead of changing speed.
+        // firmware. RYNOR ONE keeps its existing 25 FPS converter. PIXEL PRO
+        // uses its own 480x320/60 FPS media profile without changing RYNOR.
         _screensaverPreviewTimer.Interval =
-            TimeSpan.FromMilliseconds(ScreensaverMediaService.MinFrameIntervalMs);
+            TimeSpan.FromMilliseconds(
+                ScreensaverMediaService.MinFrameIntervalMs);
         _screensaverPreviewTimer.Tick += (_, _) =>
         {
             if (_screensaverAnimation is null ||
@@ -250,8 +248,13 @@ public partial class MainWindow : Window
                         ? _screensaverAnimation.FrameDurationsMs[i]
                         : _screensaverAnimation.FrameIntervalMs;
 
+                int minFrameIntervalMs =
+                    IsPixelProActive
+                        ? PixelProScreensaverMediaService.MinFrameIntervalMs
+                        : ScreensaverMediaService.MinFrameIntervalMs;
+
                 duration = Math.Max(
-                    ScreensaverMediaService.MinFrameIntervalMs,
+                    minFrameIntervalMs,
                     duration);
 
                 frameStart = boundary;
@@ -875,6 +878,12 @@ public partial class MainWindow : Window
 
             await DetectAsync();
 
+            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+                System.IO.File.Exists(_screensaverMediaPath))
+            {
+                await PrepareScreensaverMediaAsync();
+            }
+
         }
         catch (Exception ex)
         {
@@ -890,6 +899,7 @@ public partial class MainWindow : Window
     private void UpdateProductSpecificText()
     {
         string productName = _activeProduct.Name;
+        UpdateScreensaverProductUi();
 
         if (WorkspaceProductTitle is not null)
             WorkspaceProductTitle.Text = productName;
@@ -902,9 +912,21 @@ public partial class MainWindow : Window
             _screensaverAnimation is null)
         {
             ScreensaverMediaInfo.Text =
-                L(
-                    $"Converted to a lightweight loop for {productName}.",
-                    $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
+                IsPixelProActive
+                    ? L(
+                        "ILI9486 480×320 · 3:2 · static RGB565 · GIF up to 60 FPS.",
+                        "ILI9486 480×320 · 3:2 · ảnh tĩnh RGB565 · GIF tối đa 60 FPS.")
+                    : L(
+                        $"Converted to a lightweight loop for {productName}.",
+                        $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
+        }
+
+        if (PanelInfoText is not null)
+        {
+            PanelInfoText.Text =
+                IsPixelProActive
+                    ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
+                    : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
         }
 
         if (LumiActionDescriptionText is not null)
@@ -925,6 +947,46 @@ public partial class MainWindow : Window
         if (SettingsDeviceTitleText is not null)
             SettingsDeviceTitleText.Text =
                 L($"{productName} status", $"Trạng thái {productName}");
+    }
+
+    private void UpdateScreensaverProductUi()
+    {
+        bool pixel = IsPixelProActive;
+
+        if (ScreensaverPreviewBorder is not null)
+        {
+            ScreensaverPreviewBorder.Width = 360;
+            ScreensaverPreviewBorder.Height =
+                pixel ? 240 : 193.5;
+        }
+
+        if (ScreensaverPreviewSurface is not null)
+        {
+            ScreensaverPreviewSurface.Width =
+                pixel
+                    ? PixelProScreensaverMediaService.PanelWidth
+                    : ScreensaverMediaService.StaticWidth;
+
+            ScreensaverPreviewSurface.Height =
+                pixel
+                    ? PixelProScreensaverMediaService.PanelHeight
+                    : ScreensaverMediaService.StaticHeight;
+        }
+
+        if (ScreensaverPreviewHint is not null &&
+            _screensaverAnimation is null)
+        {
+            ScreensaverPreviewHint.Text =
+                pixel
+                    ? "480 × 320 · ILI9486 · Choose a GIF or image"
+                    : "320 × 172 · Choose a GIF or image";
+        }
+
+        _screensaverPreviewTimer.Interval =
+            TimeSpan.FromMilliseconds(
+                pixel
+                    ? PixelProScreensaverMediaService.MinFrameIntervalMs
+                    : ScreensaverMediaService.MinFrameIntervalMs);
     }
 
     private void UpdateProductHubUi()
@@ -2460,8 +2522,12 @@ public partial class MainWindow : Window
 
     private async Task UpdatePanelInfoAsync()
     {
-        const string fallback =
-            "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+        bool pixel = IsPixelProActive;
+
+        string fallback =
+            pixel
+                ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
+                : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
 
         if (!_serial.IsConnected)
         {
@@ -2473,6 +2539,14 @@ public partial class MainWindow : Window
         if (info is null)
         {
             PanelInfoText.Text = fallback;
+            return;
+        }
+
+        if (pixel)
+        {
+            PanelInfoText.Text =
+                $"{info.Value.Panel} · 480×320 landscape · i8080 8-bit · " +
+                $"refresh cap {info.Value.RefreshHz} Hz · GIF ≤{info.Value.GifMaxFps} FPS";
             return;
         }
 
@@ -6261,10 +6335,22 @@ try {{
         {
             var scaleMode = SelectedScreensaverScaleMode();
 
+            bool pixel = IsPixelProActive;
+
             _screensaverAnimation =
-                await ScreensaverMediaService.LoadAsync(
-                    _screensaverMediaPath,
-                    scaleMode);
+                pixel
+                    ? await PixelProScreensaverMediaService.LoadAsync(
+                        _screensaverMediaPath,
+                        scaleMode)
+                    : await ScreensaverMediaService.LoadAsync(
+                        _screensaverMediaPath,
+                        scaleMode);
+
+            _screensaverPreviewTimer.Interval =
+                TimeSpan.FromMilliseconds(
+                    pixel
+                        ? PixelProScreensaverMediaService.MinFrameIntervalMs
+                        : ScreensaverMediaService.MinFrameIntervalMs);
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
 
@@ -6285,9 +6371,13 @@ try {{
             else
             {
                 ScreensaverMediaInfo.Text =
-                    L(
-                        $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
-                        $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
+                    pixel
+                        ? L(
+                            $"{_screensaverAnimation.Frames.Count} stored GIF frames · 240×160 -> 480×320 integer 2× · ILI9486 · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
+                            $"{_screensaverAnimation.Frames.Count} khung GIF lưu · 240×160 -> 480×320 phóng nguyên 2× · ILI9486 · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}")
+                        : L(
+                            $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
+                            $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
 
                 ScreensaverPreviewImage.Source =
                     CreateRgb332Bitmap(
@@ -6310,8 +6400,13 @@ try {{
             }
 
             ScreensaverSendStatus.Text =
-                L("Ready. Send once to store the lightweight loop in LumiPad flash.",
-                  "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
+                pixel
+                    ? L(
+                        "Ready. Send over USB to store the PIXEL PRO loop in PSRAM.",
+                        "Đã sẵn sàng. Gửi qua USB để lưu vòng lặp PIXEL PRO vào PSRAM.")
+                    : L(
+                        "Ready. Send once to store the lightweight loop in LumiPad flash.",
+                        "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
             SetScreensaverUploadState(
                 L("Ready to upload", "Sẵn sàng tải lên"),
                 MediaColor.FromRgb(255, 159, 10));
@@ -6357,8 +6452,13 @@ try {{
             L("Uploading…", "Đang tải lên…"),
             MediaColor.FromRgb(255, 159, 10));
         ScreensaverSendStatus.Text =
-            L("Sending frames… Bluetooth can take a little while.",
-              "Đang gửi frame… Bluetooth có thể mất một lúc.");
+            IsPixelProActive
+                ? L(
+                    "Sending frames to PIXEL PRO over native USB…",
+                    "Đang gửi frame tới PIXEL PRO qua USB native…")
+                : L(
+                    "Sending frames… Bluetooth can take a little while.",
+                    "Đang gửi frame… Bluetooth có thể mất một lúc.");
 
         var progress = new Progress<int>(value =>
         {
@@ -6463,8 +6563,13 @@ try {{
         ScreensaverPreviewHint.Visibility = Visibility.Visible;
         ScreensaverFileName.Text = L("No file selected", "Chưa chọn tệp");
         ScreensaverMediaInfo.Text =
-            L("Converted to a lightweight loop for LumiPad.",
-              "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
+            IsPixelProActive
+                ? L(
+                    "PIXEL PRO media uses the ILI9486 480×320 3:2 canvas.",
+                    "Media PIXEL PRO dùng khung ILI9486 480×320 tỉ lệ 3:2.")
+                : L(
+                    "Converted to a lightweight loop for LumiPad.",
+                    "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
         ScreensaverSendProgress.Value = 0;
         SetScreensaverUploadState(
             L("Not uploaded", "Chưa tải lên"),
@@ -6499,8 +6604,13 @@ try {{
                     L("Stored on keyboard", "Đã lưu trên bàn phím"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    L("Screensaver is already stored in keyboard flash.",
-                      "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
+                    IsPixelProActive
+                        ? L(
+                            "Screensaver is already loaded in PIXEL PRO PSRAM.",
+                            "Bảo vệ màn hình đã có sẵn trong PSRAM của PIXEL PRO.")
+                        : L(
+                            "Screensaver is already stored in keyboard flash.",
+                            "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
                 AddLog(
                     "INFO",
                     "SAVER",
@@ -6548,8 +6658,13 @@ try {{
                     L("Uploaded & verified", "Đã tải lên và xác nhận"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    L("Custom screensaver restored because keyboard flash was empty.",
-                      "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
+                    IsPixelProActive
+                        ? L(
+                            "PIXEL PRO screensaver restored to PSRAM after reconnect.",
+                            "Đã khôi phục bảo vệ màn hình PIXEL PRO vào PSRAM sau khi kết nối lại.")
+                        : L(
+                            "Custom screensaver restored because keyboard flash was empty.",
+                            "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
             }
         }
         catch (Exception ex)
