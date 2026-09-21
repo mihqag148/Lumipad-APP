@@ -176,6 +176,7 @@ public partial class MainWindow : Window
     private int _pixelGifMaxFps = PixelProScreensaverMediaService.DefaultGifMaxFps;
     private int _pixelGifMaxDurationSeconds = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
     private int _pixelImageJpegQuality = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+    private ScreensaverScaleMode _pixelMediaScaleMode = ScreensaverScaleMode.Fill;
     private int _pixelRgbSelectedKey = -1; // -1 = all 8 keys
     private PixelRgbColor[][] _pixelRgbProfiles = CreateDefaultPixelRgbProfiles();
     private int[] _pixelRgbEffects = Enumerable.Repeat(3, 20).ToArray();
@@ -1158,38 +1159,33 @@ public partial class MainWindow : Window
 
         if (ScreensaverPreviewBorder is not null)
         {
-            ScreensaverPreviewBorder.Width = 360;
+            ScreensaverPreviewBorder.Width =
+                pixel ? 480 : 360;
+
             ScreensaverPreviewBorder.Height =
-                pixel ? 240 : 193.5;
+                pixel ? 320 : 193.5;
         }
 
         if (ScreensaverPreviewSurface is not null)
         {
-            // The preview viewport is 360×240 for PIXEL PRO. Do not make the
-            // child surface 480×320 inside it or WPF clips the source and
-            // makes the preview look 1.33× zoomed.
             ScreensaverPreviewSurface.Width =
                 pixel
-                    ? 360
+                    ? PixelProScreensaverMediaService.PanelWidth
                     : ScreensaverMediaService.StaticWidth;
 
             ScreensaverPreviewSurface.Height =
                 pixel
-                    ? 240
+                    ? PixelProScreensaverMediaService.PanelHeight
                     : ScreensaverMediaService.StaticHeight;
         }
 
         if (ScreensaverPreviewImage is not null)
         {
             ScreensaverPreviewImage.Stretch =
-                pixel
-                    ? System.Windows.Media.Stretch.Uniform
-                    : System.Windows.Media.Stretch.Fill;
+                System.Windows.Media.Stretch.Fill;
 
             ScreensaverPreviewImage.StretchDirection =
-                pixel
-                    ? System.Windows.Controls.StretchDirection.DownOnly
-                    : System.Windows.Controls.StretchDirection.Both;
+                System.Windows.Controls.StretchDirection.Both;
         }
 
         if (ScreensaverPreviewHint is not null &&
@@ -1219,8 +1215,8 @@ public partial class MainWindow : Window
                     ? PixelProScreensaverMediaService.MinFrameIntervalMs
                     : ScreensaverMediaService.MinFrameIntervalMs);
 
-        // Do not touch _screensaverScaleMode here: it belongs to RYNOR ONE.
-        // PIXEL PRO has its own fixed Center/no-upscale media rule.
+        // RYNOR keeps _screensaverScaleMode. PIXEL PRO uses its separate
+        // Fill/Center selector and always previews a logical 480×320 canvas.
     }
 
     private void UpdateRgbProductUi()
@@ -1829,6 +1825,7 @@ public partial class MainWindow : Window
         public int PixelGifMaxFps { get; set; } = PixelProScreensaverMediaService.DefaultGifMaxFps;
         public int PixelGifMaxDurationSeconds { get; set; } = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
         public int PixelImageJpegQuality { get; set; } = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+        public ScreensaverScaleMode PixelMediaScaleMode { get; set; } = ScreensaverScaleMode.Fill;
         public PixelRgbColor[][]? PixelRgbProfiles { get; set; }
         public int[]? PixelRgbEffects { get; set; }
         public int PixelRgbSpeed { get; set; } = 50;
@@ -1897,6 +1894,12 @@ public partial class MainWindow : Window
                     settings.PixelImageJpegQuality,
                     90,
                     100);
+
+            _pixelMediaScaleMode =
+                settings.PixelMediaScaleMode ==
+                    ScreensaverScaleMode.Center
+                    ? ScreensaverScaleMode.Center
+                    : ScreensaverScaleMode.Fill;
 
             if (settings.PixelRgbProfiles is { Length: >= 20 } savedPixelRgb &&
                 savedPixelRgb.Take(20).All(profile => profile is { Length: >= 8 }))
@@ -1997,6 +2000,7 @@ public partial class MainWindow : Window
                 PixelGifMaxFps = _pixelGifMaxFps,
                 PixelGifMaxDurationSeconds = _pixelGifMaxDurationSeconds,
                 PixelImageJpegQuality = _pixelImageJpegQuality,
+                PixelMediaScaleMode = _pixelMediaScaleMode,
                 PixelRgbProfiles = _pixelRgbProfiles
                     .Select(profile => profile.ToArray())
                     .ToArray(),
@@ -2047,6 +2051,8 @@ public partial class MainWindow : Window
             SelectComboTag(PixelGifFpsCombo, _pixelGifMaxFps.ToString());
         if (PixelGifDurationCombo is not null)
             SelectComboTag(PixelGifDurationCombo, _pixelGifMaxDurationSeconds.ToString());
+        if (PixelMediaScaleCombo is not null)
+            SelectComboTag(PixelMediaScaleCombo, _pixelMediaScaleMode.ToString());
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, _screensaverSource);
 
@@ -7623,7 +7629,7 @@ try {{
     private ScreensaverScaleMode SelectedScreensaverScaleMode()
     {
         if (IsPixelProActive)
-            return ScreensaverScaleMode.Center;
+            return _pixelMediaScaleMode;
 
         if (ScreensaverScaleCombo.SelectedItem is ComboBoxItem item &&
             Enum.TryParse<ScreensaverScaleMode>(
@@ -7684,6 +7690,18 @@ try {{
                     : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
         }
 
+        if (PixelMediaScaleCombo?.SelectedValue is string scaleText &&
+            Enum.TryParse<ScreensaverScaleMode>(
+                scaleText,
+                true,
+                out ScreensaverScaleMode parsedScale))
+        {
+            _pixelMediaScaleMode =
+                parsedScale == ScreensaverScaleMode.Center
+                    ? ScreensaverScaleMode.Center
+                    : ScreensaverScaleMode.Fill;
+        }
+
         SaveAppSettings();
 
         if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
@@ -7715,7 +7733,7 @@ try {{
                 pixel
                     ? await PixelProScreensaverMediaService.LoadAsync(
                         _screensaverMediaPath,
-                        ScreensaverScaleMode.Center,
+                        _pixelMediaScaleMode,
                         _pixelGifMaxFps,
                         _pixelGifMaxDurationSeconds,
                         _pixelImageJpegQuality)
