@@ -690,9 +690,8 @@
                                         Click="PixelKeymapImport_Click"/>
                                 <Button Content="Export"
                                         Click="PixelKeymapExport_Click"/>
-                                <Button Content="Reload"
-                                        Click="PixelKeymapReload_Click"/>
                                 <Button Content="Reset"
+                                        ToolTip="Reset current profile to default"
                                         Click="PixelKeymapReset_Click"
                                         Margin="0"/>
                             </StackPanel>
@@ -719,17 +718,21 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,10,0"/>
-                                        <ComboBox x:Name="PixelProfileCombo"
-                                                  Width="200"
-                                                  IsEditable="True"
-                                                  IsTextSearchEnabled="False"
-                                                  StaysOpenOnEdit="True"
-                                                  MaxDropDownHeight="360"
-                                                  ToolTip="Select profile"
-                                                  SelectionChanged="PixelProfileCombo_SelectionChanged"
-                                                  KeyDown="PixelProfileCombo_KeyDown"
-                                                  LostKeyboardFocus="PixelProfileCombo_LostKeyboardFocus"
-                                                  Margin="0,0,6,0"/>
+                                        <Grid Width="200"
+                                              Margin="0,0,6,0">
+                                            <ComboBox x:Name="PixelProfileCombo"
+                                                      IsEditable="False"
+                                                      MaxDropDownHeight="360"
+                                                      ToolTip="Select profile"
+                                                      SelectionChanged="PixelProfileCombo_SelectionChanged"/>
+                                            <TextBox x:Name="PixelProfileRenameTextBox"
+                                                     Visibility="Collapsed"
+                                                     VerticalContentAlignment="Center"
+                                                     MaxLength="32"
+                                                     ToolTip="Rename current profile"
+                                                     KeyDown="PixelProfileRenameTextBox_KeyDown"
+                                                     LostKeyboardFocus="PixelProfileRenameTextBox_LostKeyboardFocus"/>
+                                        </Grid>
                                         <Button Content="✎"
                                                 Width="32"
                                                 Height="32"
@@ -748,7 +751,7 @@
                                                 Width="32"
                                                 Height="32"
                                                 Padding="0"
-                                                ToolTip="Remove last profile"
+                                                ToolTip="Delete current profile"
                                                 Click="PixelRemoveProfile_Click"
                                                 Margin="0,0,18,0"/>
                                         <TextBlock Text="LAYER"
@@ -870,58 +873,120 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    Margin="0,2,0,14"/>
 
-                                        <TextBlock Text="MODIFIERS · drag to move"
+                                        <TextBlock Text="MODIFIERS · drag the ⋮ handles to reorder"
                                                    FontSize="10"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Muted}"/>
 
-                                        <Canvas x:Name="PixelModifierCanvas"
-                                                Height="150"
+                                        <Border x:Name="PixelModifiersPanel"
                                                 Margin="0,6,0,10"
-                                                Background="Transparent">
-                                            <Border x:Name="PixelModifiersPanel"
-                                                    Canvas.Left="0"
-                                                    Canvas.Top="0"
-                                                    Width="190"
-                                                    Background="{DynamicResource Card2}"
-                                                    BorderBrush="{DynamicResource Line}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="10"
-                                                    Padding="9"
-                                                    Cursor="SizeAll"
-                                                    PreviewMouseLeftButtonDown="PixelModifiersPanel_PreviewMouseLeftButtonDown"
-                                                    PreviewMouseMove="PixelModifiersPanel_PreviewMouseMove"
-                                                    PreviewMouseLeftButtonUp="PixelModifiersPanel_PreviewMouseLeftButtonUp">
-                                                <StackPanel>
-                                                    <TextBlock Text="Modifiers"
-                                                               FontSize="10"
-                                                               Foreground="{DynamicResource Muted}"
-                                                               Margin="0,0,0,6"/>
-                                                    <WrapPanel>
-                                                        <CheckBox x:Name="PixelSelectedCtrl"
-                                                                  Content="Ctrl"
-                                                                  Margin="0,0,10,6"
-                                                                  Checked="PixelSelectedModifier_Changed"
-                                                                  Unchecked="PixelSelectedModifier_Changed"/>
-                                                        <CheckBox x:Name="PixelSelectedShift"
-                                                                  Content="Shift"
-                                                                  Margin="0,0,10,6"
-                                                                  Checked="PixelSelectedModifier_Changed"
-                                                                  Unchecked="PixelSelectedModifier_Changed"/>
-                                                        <CheckBox x:Name="PixelSelectedAlt"
-                                                                  Content="Alt"
-                                                                  Margin="0,0,10,6"
-                                                                  Checked="PixelSelectedModifier_Changed"
-                                                                  Unchecked="PixelSelectedModifier_Changed"/>
-                                                        <CheckBox x:Name="PixelSelectedWin"
-                                                                  Content="Win"
-                                                                  Margin="0,0,0,6"
-                                                                  Checked="PixelSelectedModifier_Changed"
-                                                                  Unchecked="PixelSelectedModifier_Changed"/>
-                                                    </WrapPanel>
+                                                Background="{DynamicResource Card2}"
+                                                BorderBrush="{DynamicResource Line}"
+                                                BorderThickness="1"
+                                                CornerRadius="10"
+                                                Padding="9">
+                                            <StackPanel>
+                                                <TextBlock Text="Order is visual; checked modifiers are sent together."
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           Margin="0,0,0,8"
+                                                           TextWrapping="Wrap"/>
+                                                <StackPanel x:Name="PixelModifierOrderPanel"
+                                                            Orientation="Horizontal">
+                                                    <Border x:Name="PixelModifierCtrlCard"
+                                                            Tag="Ctrl"
+                                                            Background="{DynamicResource ControlBg}"
+                                                            BorderBrush="{DynamicResource Line}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7"
+                                                            Padding="5"
+                                                            Margin="0,0,5,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="⋮"
+                                                                       Tag="Ctrl"
+                                                                       Cursor="SizeWE"
+                                                                       FontSize="15"
+                                                                       Margin="0,0,3,0"
+                                                                       PreviewMouseLeftButtonDown="PixelModifierHandle_PreviewMouseLeftButtonDown"
+                                                                       PreviewMouseMove="PixelModifierHandle_PreviewMouseMove"
+                                                                       PreviewMouseLeftButtonUp="PixelModifierHandle_PreviewMouseLeftButtonUp"/>
+                                                            <CheckBox x:Name="PixelSelectedCtrl"
+                                                                      Content="Ctrl"
+                                                                      Checked="PixelSelectedModifier_Changed"
+                                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <Border x:Name="PixelModifierShiftCard"
+                                                            Tag="Shift"
+                                                            Background="{DynamicResource ControlBg}"
+                                                            BorderBrush="{DynamicResource Line}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7"
+                                                            Padding="5"
+                                                            Margin="0,0,5,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="⋮"
+                                                                       Tag="Shift"
+                                                                       Cursor="SizeWE"
+                                                                       FontSize="15"
+                                                                       Margin="0,0,3,0"
+                                                                       PreviewMouseLeftButtonDown="PixelModifierHandle_PreviewMouseLeftButtonDown"
+                                                                       PreviewMouseMove="PixelModifierHandle_PreviewMouseMove"
+                                                                       PreviewMouseLeftButtonUp="PixelModifierHandle_PreviewMouseLeftButtonUp"/>
+                                                            <CheckBox x:Name="PixelSelectedShift"
+                                                                      Content="Shift"
+                                                                      Checked="PixelSelectedModifier_Changed"
+                                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <Border x:Name="PixelModifierAltCard"
+                                                            Tag="Alt"
+                                                            Background="{DynamicResource ControlBg}"
+                                                            BorderBrush="{DynamicResource Line}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7"
+                                                            Padding="5"
+                                                            Margin="0,0,5,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="⋮"
+                                                                       Tag="Alt"
+                                                                       Cursor="SizeWE"
+                                                                       FontSize="15"
+                                                                       Margin="0,0,3,0"
+                                                                       PreviewMouseLeftButtonDown="PixelModifierHandle_PreviewMouseLeftButtonDown"
+                                                                       PreviewMouseMove="PixelModifierHandle_PreviewMouseMove"
+                                                                       PreviewMouseLeftButtonUp="PixelModifierHandle_PreviewMouseLeftButtonUp"/>
+                                                            <CheckBox x:Name="PixelSelectedAlt"
+                                                                      Content="Alt"
+                                                                      Checked="PixelSelectedModifier_Changed"
+                                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <Border x:Name="PixelModifierWinCard"
+                                                            Tag="Win"
+                                                            Background="{DynamicResource ControlBg}"
+                                                            BorderBrush="{DynamicResource Line}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7"
+                                                            Padding="5">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="⋮"
+                                                                       Tag="Win"
+                                                                       Cursor="SizeWE"
+                                                                       FontSize="15"
+                                                                       Margin="0,0,3,0"
+                                                                       PreviewMouseLeftButtonDown="PixelModifierHandle_PreviewMouseLeftButtonDown"
+                                                                       PreviewMouseMove="PixelModifierHandle_PreviewMouseMove"
+                                                                       PreviewMouseLeftButtonUp="PixelModifierHandle_PreviewMouseLeftButtonUp"/>
+                                                            <CheckBox x:Name="PixelSelectedWin"
+                                                                      Content="Win"
+                                                                      Checked="PixelSelectedModifier_Changed"
+                                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                                        </StackPanel>
+                                                    </Border>
                                                 </StackPanel>
-                                            </Border>
-                                        </Canvas>
+                                            </StackPanel>
+                                        </Border>
 
                                         <Border Height="1"
                                                 Background="{DynamicResource Line}"
