@@ -178,6 +178,8 @@ public partial class MainWindow : Window
     private int _pixelImageJpegQuality = PixelProScreensaverMediaService.DefaultImageJpegQuality;
     private int _pixelRgbSelectedKey = -1; // -1 = all 8 keys
     private PixelRgbColor[][] _pixelRgbProfiles = CreateDefaultPixelRgbProfiles();
+    private int[] _pixelRgbEffects = Enumerable.Repeat(3, 20).ToArray();
+    private int _pixelRgbSpeed = 50;
 
     // This remains the RYNOR scale preference. PIXEL PRO uses fixed Center/no-upscale.
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
@@ -1106,8 +1108,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · GIF target ≤1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
-                        "ILI9486 480×320 · GIF mục tiêu ≤1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
+                        "ILI9486 480×320 · GIF soft target ≈1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
+                        "ILI9486 480×320 · GIF mục tiêu mềm ≈1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -1163,15 +1165,31 @@ public partial class MainWindow : Window
 
         if (ScreensaverPreviewSurface is not null)
         {
+            // The preview viewport is 360×240 for PIXEL PRO. Do not make the
+            // child surface 480×320 inside it or WPF clips the source and
+            // makes the preview look 1.33× zoomed.
             ScreensaverPreviewSurface.Width =
                 pixel
-                    ? PixelProScreensaverMediaService.PanelWidth
+                    ? 360
                     : ScreensaverMediaService.StaticWidth;
 
             ScreensaverPreviewSurface.Height =
                 pixel
-                    ? PixelProScreensaverMediaService.PanelHeight
+                    ? 240
                     : ScreensaverMediaService.StaticHeight;
+        }
+
+        if (ScreensaverPreviewImage is not null)
+        {
+            ScreensaverPreviewImage.Stretch =
+                pixel
+                    ? System.Windows.Media.Stretch.Uniform
+                    : System.Windows.Media.Stretch.Fill;
+
+            ScreensaverPreviewImage.StretchDirection =
+                pixel
+                    ? System.Windows.Controls.StretchDirection.DownOnly
+                    : System.Windows.Controls.StretchDirection.Both;
         }
 
         if (ScreensaverPreviewHint is not null &&
@@ -1260,12 +1278,17 @@ public partial class MainWindow : Window
         if (RgbSaveProfileButton is not null)
             RgbSaveProfileButton.Content =
                 pixel
-                    ? L("Save 8 keys to keymap profile", "Lưu 8 phím vào profile keymap")
+                    ? L("Save RGB + mode to keymap profile", "Lưu RGB + chế độ vào profile keymap")
                     : L("Save to profile", "Lưu vào profile");
 
         if (RgbSpeedSlider is not null)
-            RgbSpeedSlider.IsEnabled =
-                !pixel;
+        {
+            RgbSpeedSlider.IsEnabled = true;
+            RgbSpeedSlider.Value =
+                pixel
+                    ? _pixelRgbSpeed
+                    : _rgbSpeed;
+        }
 
         UpdatePixelRgbUi();
     }
@@ -1807,6 +1830,8 @@ public partial class MainWindow : Window
         public int PixelGifMaxDurationSeconds { get; set; } = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
         public int PixelImageJpegQuality { get; set; } = PixelProScreensaverMediaService.DefaultImageJpegQuality;
         public PixelRgbColor[][]? PixelRgbProfiles { get; set; }
+        public int[]? PixelRgbEffects { get; set; }
+        public int PixelRgbSpeed { get; set; } = 50;
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public int RgbIdleDelaySeconds { get; set; } = 60;
@@ -1886,6 +1911,24 @@ public partial class MainWindow : Window
                         .ToArray();
             }
 
+            if (settings.PixelRgbEffects is { Length: >= 20 } savedEffects)
+            {
+                _pixelRgbEffects =
+                    savedEffects
+                        .Take(20)
+                        .Select(effect =>
+                            effect is >= 0 and <= 3
+                                ? effect
+                                : 3)
+                        .ToArray();
+            }
+
+            _pixelRgbSpeed =
+                Math.Clamp(
+                    settings.PixelRgbSpeed,
+                    10,
+                    100);
+
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
@@ -1957,6 +2000,8 @@ public partial class MainWindow : Window
                 PixelRgbProfiles = _pixelRgbProfiles
                     .Select(profile => profile.ToArray())
                     .ToArray(),
+                PixelRgbEffects = _pixelRgbEffects.ToArray(),
+                PixelRgbSpeed = _pixelRgbSpeed,
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
@@ -6834,6 +6879,13 @@ try {{
                 pixel.SetPixelRgbProfile(
                     profile,
                     _pixelRgbProfiles[profile]);
+
+                pixel.SetPixelRgbEffect(
+                    profile,
+                    _pixelRgbEffects[profile]);
+
+                pixel.SetPixelRgbSpeed(
+                    _pixelRgbSpeed);
             }
 
             BottomStatus.Text =
@@ -7078,6 +7130,78 @@ try {{
                         ? 3
                         : 1);
         }
+
+        int effect =
+            _pixelRgbEffects[
+                Math.Clamp(
+                    profile,
+                    0,
+                    _pixelRgbEffects.Length - 1)];
+
+        bool dynamic =
+            effect != 3;
+
+        if (PixelRgbDynamicPresets is not null)
+        {
+            PixelRgbDynamicPresets.Visibility =
+                dynamic
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+
+        if (PixelRgbStaticModeButton is not null)
+        {
+            PixelRgbStaticModeButton.BorderBrush =
+                TryFindResource(
+                    dynamic
+                        ? "Line"
+                        : "Accent")
+                as System.Windows.Media.Brush;
+
+            PixelRgbStaticModeButton.BorderThickness =
+                new Thickness(
+                    dynamic ? 1 : 2);
+        }
+
+        if (PixelRgbDynamicModeButton is not null)
+        {
+            PixelRgbDynamicModeButton.BorderBrush =
+                TryFindResource(
+                    dynamic
+                        ? "Accent"
+                        : "Line")
+                as System.Windows.Media.Brush;
+
+            PixelRgbDynamicModeButton.BorderThickness =
+                new Thickness(
+                    dynamic ? 2 : 1);
+        }
+
+        if (PixelRgbDynamicPresets is not null)
+        {
+            foreach (System.Windows.Controls.Button preset in
+                     PixelRgbDynamicPresets.Children
+                         .OfType<System.Windows.Controls.Button>())
+            {
+                bool selectedEffect =
+                    dynamic &&
+                    int.TryParse(
+                        preset.Tag?.ToString(),
+                        out int presetEffect) &&
+                    presetEffect == effect;
+
+                preset.BorderBrush =
+                    TryFindResource(
+                        selectedEffect
+                            ? "Accent"
+                            : "Line")
+                    as System.Windows.Media.Brush;
+
+                preset.BorderThickness =
+                    new Thickness(
+                        selectedEffect ? 2 : 1);
+            }
+        }
     }
 
     private void PixelRgbKey_Click(
@@ -7143,6 +7267,16 @@ try {{
                     _g,
                     _b);
 
+            _pixelRgbEffects[profile] = 3;
+
+            if (_serial is PixelProCdcLink modePixel &&
+                modePixel.IsConnected)
+            {
+                modePixel.SetPixelRgbEffect(
+                    profile,
+                    3);
+            }
+
             if (_pixelRgbSelectedKey < 0)
             {
                 for (int key = 0; key < 8; key++)
@@ -7200,6 +7334,99 @@ try {{
         _g = color.G;
         _b = color.B;
         ApplySelectedRgbColor(true);
+    }
+
+    private void PixelRgbMode_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            sender is not System.Windows.Controls.Button button)
+        {
+            return;
+        }
+
+        string mode =
+            button.Tag?.ToString() ??
+            "Static";
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbEffects.Length - 1);
+
+        int effect =
+            string.Equals(
+                mode,
+                "Dynamic",
+                StringComparison.OrdinalIgnoreCase)
+                ? (_pixelRgbEffects[profile] == 3
+                    ? 0
+                    : _pixelRgbEffects[profile])
+                : 3;
+
+        _pixelRgbEffects[profile] =
+            effect;
+
+        SaveAppSettings();
+
+        if (_serial is PixelProCdcLink pixel &&
+            pixel.IsConnected)
+        {
+            pixel.SetPixelRgbEffect(
+                profile,
+                effect);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
+        }
+
+        UpdatePixelRgbUi();
+    }
+
+    private void PixelRgbPreset_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            sender is not System.Windows.Controls.Button button ||
+            !int.TryParse(
+                button.Tag?.ToString(),
+                out int effect))
+        {
+            return;
+        }
+
+        effect =
+            Math.Clamp(
+                effect,
+                0,
+                2);
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbEffects.Length - 1);
+
+        _pixelRgbEffects[profile] =
+            effect;
+
+        SaveAppSettings();
+
+        if (_serial is PixelProCdcLink pixel &&
+            pixel.IsConnected)
+        {
+            pixel.SetPixelRgbEffect(
+                profile,
+                effect);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
+        }
+
+        UpdatePixelRgbUi();
     }
 
     private void RgbMode_Click(object sender, RoutedEventArgs e)
@@ -7269,9 +7496,24 @@ try {{
 
         if (_uiReady)
         {
-            _rgbSpeed = value;
-            SaveAppSettings();
-            _serial.SetSpeed(value);
+            if (IsPixelProActive)
+            {
+                _pixelRgbSpeed = value;
+                SaveAppSettings();
+
+                if (_serial is PixelProCdcLink pixel &&
+                    pixel.IsConnected)
+                {
+                    pixel.SetPixelRgbSpeed(
+                        value);
+                }
+            }
+            else
+            {
+                _rgbSpeed = value;
+                SaveAppSettings();
+                _serial.SetSpeed(value);
+            }
         }
     }
 
@@ -7299,6 +7541,13 @@ try {{
             pixel.SetPixelRgbProfile(
                 profile,
                 _pixelRgbProfiles[profile]);
+
+            pixel.SetPixelRgbEffect(
+                profile,
+                _pixelRgbEffects[profile]);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
 
             pixel.SetEnabled(
                 _rgbEnabled);
@@ -7536,14 +7785,27 @@ try {{
                                 100.0)
                             : 0;
 
+                    bool overTarget =
+                        pixelGifInfo.StoredBytes >
+                        PixelProScreensaverMediaService.TargetGifBytes;
+
+                    string targetState =
+                        overTarget
+                            ? L(
+                                " · above 1 MiB soft target; flash space checked on upload",
+                                " · vượt mục tiêu mềm 1 MiB; sẽ kiểm tra flash khi tải")
+                            : L(
+                                " · within 1 MiB soft target",
+                                " · trong mục tiêu mềm 1 MiB");
+
                     pixelGifSummary =
                         pixelGifInfo.Optimized
                             ? L(
-                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} source resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color adaptive palette · saved {savedPercent:0.#}%",
-                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên độ phân giải {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette thích ứng 256 màu · giảm {savedPercent:0.#}%")
+                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color palette · no upscale · saved {savedPercent:0.#}%{targetState}",
+                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette 256 màu · không phóng lớn · giảm {savedPercent:0.#}%{targetState}")
                             : L(
-                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale",
-                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn");
+                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale{targetState}",
+                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn{targetState}");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -8153,6 +8415,8 @@ try {{
             CreateDefaultPixelRgbProfile(
                 profile);
 
+        _pixelRgbEffects[profile] = 3;
+
         _pixelModifierPositions.ResetProfile(
             profile);
     }
@@ -8255,6 +8519,13 @@ try {{
             pixel.SetPixelRgbProfile(
                 created,
                 _pixelRgbProfiles[created]);
+
+            pixel.SetPixelRgbEffect(
+                created,
+                _pixelRgbEffects[created]);
+
+            pixel.SetPixelRgbSpeed(
+                _pixelRgbSpeed);
 
             pixel.SetProfileLayer(
                 created,
@@ -8376,9 +8647,16 @@ try {{
                 _pixelRgbProfiles[source]
                     .ToArray();
 
+            _pixelRgbEffects[destination] =
+                _pixelRgbEffects[source];
+
             pixel.SetPixelRgbProfile(
                 destination,
                 _pixelRgbProfiles[destination]);
+
+            pixel.SetPixelRgbEffect(
+                destination,
+                _pixelRgbEffects[destination]);
         }
 
         int vacated =
@@ -8403,6 +8681,10 @@ try {{
         pixel.SetPixelRgbProfile(
             vacated,
             _pixelRgbProfiles[vacated]);
+
+        pixel.SetPixelRgbEffect(
+            vacated,
+            _pixelRgbEffects[vacated]);
 
         _pixelModifierPositions.RemoveProfileAndShift(
             removed,
@@ -9532,6 +9814,13 @@ try {{
         pixel.SetPixelRgbProfile(
             profile,
             _pixelRgbProfiles[profile]);
+
+        pixel.SetPixelRgbEffect(
+            profile,
+            _pixelRgbEffects[profile]);
+
+        pixel.SetPixelRgbSpeed(
+            _pixelRgbSpeed);
 
         pixel.SetProfileLayer(
             profile,
