@@ -4535,6 +4535,87 @@ try {{
             _ => $"PROFILE {index + 1}"
         };
 
+    private string PixelProfileName(int index)
+    {
+        _pixelProfileCatalog.Normalize();
+        index = Math.Clamp(index, 0, _pixelProfileCatalog.Count - 1);
+        return _pixelProfileCatalog.Names[index];
+    }
+
+    private bool IsPixelProActive =>
+        _activeProduct.Driver == DeviceDriverKind.PixelProCdc;
+
+    private void RefreshAutoProfileDefaultSelectors()
+    {
+        if (AutoProfileDefaultCombo is null)
+            return;
+
+        _syncingAutoProfileUi = true;
+        try
+        {
+            AutoProfileDefaultCombo.Items.Clear();
+
+            if (IsPixelProActive)
+            {
+                _pixelProfileCatalog.Normalize();
+
+                for (int i = 0; i < _pixelProfileCatalog.Count; i++)
+                {
+                    AutoProfileDefaultCombo.Items.Add(new ComboBoxItem
+                    {
+                        Content = $"{i + 1:00} · {PixelProfileName(i)}",
+                        Tag = i.ToString()
+                    });
+                }
+
+                AutoProfileDefaultCombo.SelectedValue =
+                    Math.Clamp(
+                        _autoProfileSettings.DefaultPixelProfile,
+                        0,
+                        _pixelProfileCatalog.Count - 1)
+                    .ToString();
+
+                if (AutoProfileDefaultLayerCombo is not null)
+                {
+                    AutoProfileDefaultLayerCombo.Visibility =
+                        Visibility.Visible;
+                    AutoProfileDefaultLayerCombo.SelectedValue =
+                        Math.Clamp(
+                            _autoProfileSettings.DefaultLayer,
+                            0,
+                            3)
+                        .ToString();
+                }
+            }
+            else
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    AutoProfileDefaultCombo.Items.Add(new ComboBoxItem
+                    {
+                        Content = ProfileName(i),
+                        Tag = i.ToString()
+                    });
+                }
+
+                AutoProfileDefaultCombo.SelectedValue =
+                    Math.Clamp(
+                        _autoProfileSettings.DefaultProfile,
+                        0,
+                        4)
+                    .ToString();
+
+                if (AutoProfileDefaultLayerCombo is not null)
+                    AutoProfileDefaultLayerCombo.Visibility =
+                        Visibility.Collapsed;
+            }
+        }
+        finally
+        {
+            _syncingAutoProfileUi = false;
+        }
+    }
+
     private void ApplyAutoProfileUiState()
     {
         _autoProfileSettings.EnsureNormalized();
@@ -4542,12 +4623,7 @@ try {{
         if (AutoProfileEnabledCheckBox is not null)
             AutoProfileEnabledCheckBox.IsChecked = _autoProfileSettings.Enabled;
 
-        if (AutoProfileDefaultCombo is not null)
-        {
-            AutoProfileDefaultCombo.SelectedValue =
-                Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4).ToString();
-        }
-
+        RefreshAutoProfileDefaultSelectors();
         RefreshAutoProfileMappingsUi();
         RefreshRunningAppsUi();
     }
@@ -4561,6 +4637,7 @@ try {{
             AutoProfileEnabledCheckBox.IsChecked == true;
         AutoProfileService.Save(_autoProfileSettings);
         _lastAppliedAutoProfile = -1;
+        _lastAppliedAutoLayer = -1;
         _lastForegroundAppPath = null;
         PollAutoProfile(force: true);
     }
@@ -4569,18 +4646,55 @@ try {{
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (AutoProfileDefaultCombo?.SelectedItem is not ComboBoxItem item ||
+        if (_syncingAutoProfileUi ||
+            AutoProfileDefaultCombo?.SelectedItem is not ComboBoxItem item ||
             !int.TryParse(item.Tag?.ToString(), out int profile))
         {
             return;
         }
 
-        _autoProfileSettings.DefaultProfile = Math.Clamp(profile, 0, 4);
+        if (IsPixelProActive)
+        {
+            _autoProfileSettings.DefaultPixelProfile =
+                Math.Clamp(
+                    profile,
+                    0,
+                    Math.Max(0, _pixelProfileCatalog.Count - 1));
+        }
+        else
+        {
+            _autoProfileSettings.DefaultProfile =
+                Math.Clamp(profile, 0, 4);
+        }
 
         if (_uiReady)
         {
             AutoProfileService.Save(_autoProfileSettings);
             _lastAppliedAutoProfile = -1;
+            _lastAppliedAutoLayer = -1;
+            PollAutoProfile(force: true);
+        }
+    }
+
+    private void AutoProfileDefaultLayerCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_syncingAutoProfileUi ||
+            AutoProfileDefaultLayerCombo?.SelectedItem is not ComboBoxItem item ||
+            !int.TryParse(item.Tag?.ToString(), out int layer))
+        {
+            return;
+        }
+
+        _autoProfileSettings.DefaultLayer =
+            Math.Clamp(layer, 0, 3);
+
+        if (_uiReady)
+        {
+            AutoProfileService.Save(_autoProfileSettings);
+            _lastAppliedAutoProfile = -1;
+            _lastAppliedAutoLayer = -1;
             PollAutoProfile(force: true);
         }
     }
@@ -4643,8 +4757,9 @@ try {{
             if (_autoProfileSettings.Mappings.Count >= 10)
             {
                 AutoProfileStatusText.Text =
-                    L("Maximum 10 application profiles.",
-                      "Tối đa 10 profile ứng dụng.");
+                    L(
+                        "Maximum 10 application profiles.",
+                        "Tối đa 10 profile ứng dụng.");
                 return;
             }
 
@@ -4662,9 +4777,20 @@ try {{
 
             _autoProfileSettings.Mappings.Add(new AutoProfileMapping
             {
-                Name = string.IsNullOrWhiteSpace(name) ? "Application" : name,
+                Name =
+                    string.IsNullOrWhiteSpace(name)
+                        ? "Application"
+                        : name,
                 ExecutablePath = path,
-                ProfileIndex = Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4)
+                ProfileIndex =
+                    Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4),
+                PixelProfileIndex =
+                    Math.Clamp(
+                        _autoProfileSettings.DefaultPixelProfile,
+                        0,
+                        Math.Max(0, _pixelProfileCatalog.Count - 1)),
+                LayerIndex =
+                    Math.Clamp(_autoProfileSettings.DefaultLayer, 0, 3)
             });
 
             AutoProfileService.Save(_autoProfileSettings);
@@ -4674,10 +4800,12 @@ try {{
         RefreshAutoProfileMappingsUi();
         RefreshRunningAppsUi();
         _lastAppliedAutoProfile = -1;
+        _lastAppliedAutoLayer = -1;
         PollAutoProfile(force: true);
     }
 
-    private System.Windows.Controls.ComboBox CreateProfileSelector(int selectedProfile)
+    private System.Windows.Controls.ComboBox CreateProfileSelector(
+        int selectedProfile)
     {
         var combo = new System.Windows.Controls.ComboBox
         {
@@ -4695,7 +4823,64 @@ try {{
             });
         }
 
-        combo.SelectedValue = Math.Clamp(selectedProfile, 0, 4).ToString();
+        combo.SelectedValue =
+            Math.Clamp(selectedProfile, 0, 4).ToString();
+        return combo;
+    }
+
+    private System.Windows.Controls.ComboBox CreatePixelProfileSelector(
+        int selectedProfile)
+    {
+        _pixelProfileCatalog.Normalize();
+
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Width = 154,
+            SelectedValuePath = "Tag",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        for (int i = 0; i < _pixelProfileCatalog.Count; i++)
+        {
+            combo.Items.Add(new ComboBoxItem
+            {
+                Content = $"{i + 1:00} · {PixelProfileName(i)}",
+                Tag = i.ToString()
+            });
+        }
+
+        combo.SelectedValue =
+            Math.Clamp(
+                selectedProfile,
+                0,
+                _pixelProfileCatalog.Count - 1)
+            .ToString();
+
+        return combo;
+    }
+
+    private static System.Windows.Controls.ComboBox CreateLayerSelector(
+        int selectedLayer)
+    {
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Width = 72,
+            SelectedValuePath = "Tag",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        for (int layer = 0; layer < 4; layer++)
+        {
+            combo.Items.Add(new ComboBoxItem
+            {
+                Content = $"L{layer}",
+                Tag = layer.ToString()
+            });
+        }
+
+        combo.SelectedValue =
+            Math.Clamp(selectedLayer, 0, 3).ToString();
+
         return combo;
     }
 
@@ -4716,9 +4901,13 @@ try {{
         {
             AutoProfileMappingsPanel.Children.Add(new TextBlock
             {
-                Text = L(
-                    "Add an application from the list on the right, then choose one of your existing profiles here.",
-                    "Thêm ứng dụng từ danh sách bên phải, sau đó chọn một profile có sẵn tại đây."),
+                Text = IsPixelProActive
+                    ? L(
+                        "Add an app, then choose a PIXEL PRO keymap profile and layer.",
+                        "Thêm ứng dụng rồi chọn profile keymap và layer của PIXEL PRO.")
+                    : L(
+                        "Add an application from the list on the right, then choose one of your existing profiles here.",
+                        "Thêm ứng dụng từ danh sách bên phải, sau đó chọn một profile có sẵn tại đây."),
                 Foreground =
                     TryFindResource("Muted") as System.Windows.Media.Brush,
                 TextWrapping = TextWrapping.Wrap,
@@ -4730,6 +4919,8 @@ try {{
         foreach (AutoProfileMapping mapping in
                  _autoProfileSettings.Mappings.ToArray())
         {
+            bool pixel = IsPixelProActive;
+
             var row = new Border
             {
                 Background =
@@ -4750,8 +4941,17 @@ try {{
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
-                Width = new GridLength(178)
+                Width = new GridLength(pixel ? 164 : 178)
             });
+
+            if (pixel)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition
+                {
+                    Width = new GridLength(82)
+                });
+            }
+
             grid.ColumnDefinitions.Add(new ColumnDefinition
             {
                 Width = GridLength.Auto
@@ -4781,7 +4981,7 @@ try {{
                 Foreground =
                     TryFindResource("Muted") as System.Windows.Media.Brush,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = 470,
+                MaxWidth = 430,
                 FontSize = 11,
                 Margin = new Thickness(0, 3, 0, 0)
             });
@@ -4789,8 +4989,10 @@ try {{
             grid.Children.Add(text);
 
             System.Windows.Controls.ComboBox profile =
-                CreateProfileSelector(mapping.ProfileIndex);
-            profile.Width = 166;
+                pixel
+                    ? CreatePixelProfileSelector(mapping.PixelProfileIndex)
+                    : CreateProfileSelector(mapping.ProfileIndex);
+
             profile.Tag = mapping;
             profile.Margin = new Thickness(0, 0, 8, 0);
             profile.SelectionChanged += (_, _) =>
@@ -4804,13 +5006,60 @@ try {{
                     return;
                 }
 
-                current.ProfileIndex = Math.Clamp(index, 0, 4);
+                if (pixel)
+                {
+                    current.PixelProfileIndex =
+                        Math.Clamp(
+                            index,
+                            0,
+                            Math.Max(0, _pixelProfileCatalog.Count - 1));
+                }
+                else
+                {
+                    current.ProfileIndex =
+                        Math.Clamp(index, 0, 4);
+                }
+
                 AutoProfileService.Save(_autoProfileSettings);
                 _lastAppliedAutoProfile = -1;
+                _lastAppliedAutoLayer = -1;
                 PollAutoProfile(force: true);
             };
             Grid.SetColumn(profile, 2);
             grid.Children.Add(profile);
+
+            int removeColumn = 3;
+
+            if (pixel)
+            {
+                System.Windows.Controls.ComboBox layer =
+                    CreateLayerSelector(mapping.LayerIndex);
+                layer.Tag = mapping;
+                layer.Margin = new Thickness(0, 0, 8, 0);
+                layer.SelectionChanged += (_, _) =>
+                {
+                    if (layer.Tag is not AutoProfileMapping current ||
+                        layer.SelectedItem is not ComboBoxItem selected ||
+                        !int.TryParse(
+                            selected.Tag?.ToString(),
+                            out int index))
+                    {
+                        return;
+                    }
+
+                    current.LayerIndex =
+                        Math.Clamp(index, 0, 3);
+
+                    AutoProfileService.Save(_autoProfileSettings);
+                    _lastAppliedAutoProfile = -1;
+                    _lastAppliedAutoLayer = -1;
+                    PollAutoProfile(force: true);
+                };
+
+                Grid.SetColumn(layer, 3);
+                grid.Children.Add(layer);
+                removeColumn = 4;
+            }
 
             var remove = new System.Windows.Controls.Button
             {
@@ -4832,9 +5081,10 @@ try {{
                 RefreshAutoProfileMappingsUi();
                 RefreshRunningAppsUi();
                 _lastAppliedAutoProfile = -1;
+                _lastAppliedAutoLayer = -1;
                 PollAutoProfile(force: true);
             };
-            Grid.SetColumn(remove, 3);
+            Grid.SetColumn(remove, removeColumn);
             grid.Children.Add(remove);
 
             row.Child = grid;
