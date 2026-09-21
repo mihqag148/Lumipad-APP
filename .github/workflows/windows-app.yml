@@ -75,7 +75,8 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag already exists; preserved."; exit 0 }
           Compress-Archive -Path dist/app/* -DestinationPath dist/LumiPad-Windows-x64.zip
-          @{ version = $version; appVersion = $version; commit = $env:GITHUB_SHA; app = 'LumiPad-Windows-x64.zip' } |
-            ConvertTo-Json | Set-Content dist/release-manifest.json -Encoding utf8
-          gh release create $tag --target $env:GITHUB_SHA --title "LumiPad $version" --notes 'Standalone LumiPad Windows app for RYNOR ONE and PIXEL PRO. Firmware releases remain in the device repositories.' dist/LumiPad-Windows-x64.zip dist/release-manifest.json
+          # Do not attach a manifest. Older LumiPad builds treat a manifest CDN
+          # failure as a failed update check; the GitHub release tag itself is
+          # sufficient and is now the authoritative app-version source.
+          gh release create $tag --target $env:GITHUB_SHA --title "LumiPad $version" --notes 'Standalone LumiPad Windows app for RYNOR ONE and PIXEL PRO. Firmware releases remain in the device repositories.' dist/LumiPad-Windows-x64.zip
           if ($LASTEXITCODE -ne 0) { throw 'App release failed' }

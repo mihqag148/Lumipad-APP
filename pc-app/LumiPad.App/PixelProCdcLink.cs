@@ -823,10 +823,12 @@ public sealed class PixelProCdcLink : IDeviceLink
 
         if (PixelProScreensaverMediaService.TryGetEncodedGif(
                 animation,
-                out byte[] encodedGif))
+                out byte[] encodedGif,
+                out ScreensaverScaleMode scaleMode))
         {
             return await SendEncodedGifAsync(
                 encodedGif,
+                scaleMode,
                 progress);
         }
 
@@ -1010,6 +1012,7 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     private async Task<bool> SendEncodedGifAsync(
         byte[] gifBytes,
+        ScreensaverScaleMode scaleMode,
         IProgress<int>? progress)
     {
         if (gifBytes.Length < 10 ||
@@ -1029,21 +1032,17 @@ public sealed class PixelProCdcLink : IDeviceLink
             gifBytes[8] |
             (gifBytes[9] << 8);
 
-        bool fullPanel =
-            (sourceWidth ==
-                 PixelProScreensaverMediaService.PanelWidth &&
-             sourceHeight ==
-                 PixelProScreensaverMediaService.PanelHeight) ||
-            (sourceWidth ==
-                 PixelProScreensaverMediaService.NativePanelWidth &&
-             sourceHeight ==
-                 PixelProScreensaverMediaService.NativePanelHeight);
-
-        if (!fullPanel)
+        if (sourceWidth <= 0 ||
+            sourceHeight <= 0 ||
+            sourceWidth > 1024 ||
+            sourceHeight > 1024)
         {
             throw new InvalidOperationException(
-                "PIXEL PRO GIF must be 480×320 or 320×480.");
+                "PIXEL PRO GIF canvas must be between 1×1 and 1024×1024.");
         }
+
+        string scaleToken =
+            scaleMode.ToString().ToUpperInvariant();
 
         await _commandGate.WaitAsync();
         try
@@ -1063,7 +1062,8 @@ public sealed class PixelProCdcLink : IDeviceLink
 
                 string begin =
                     $"SAVGIFBEGIN|{gifBytes.Length}|" +
-                    $"{sourceWidth}|{sourceHeight}";
+                    $"{sourceWidth}|{sourceHeight}|" +
+                    $"{scaleToken}";
 
                 Log("TX", begin);
                 port.WriteLine(begin);

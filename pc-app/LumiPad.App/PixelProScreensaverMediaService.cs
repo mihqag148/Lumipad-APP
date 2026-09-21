@@ -16,6 +16,7 @@ public static class PixelProScreensaverMediaService
     private sealed class EncodedGifHolder
     {
         public required byte[] Bytes { get; init; }
+        public ScreensaverScaleMode ScaleMode { get; init; }
     }
 
     private static readonly ConditionalWeakTable<
@@ -49,7 +50,7 @@ public static class PixelProScreensaverMediaService
 
         return ext switch
         {
-            ".gif" => await Task.Run(() => LoadGif(path)),
+            ".gif" => await Task.Run(() => LoadGif(path, scaleMode)),
             ".png" or ".jpg" or ".jpeg" or ".bmp" =>
                 await Task.Run(() => LoadStaticImage(path, scaleMode)),
             _ => throw new NotSupportedException(
@@ -73,7 +74,9 @@ public static class PixelProScreensaverMediaService
             new[] { ToRgb565(bitmap, scaleMode) });
     }
 
-    private static ScreensaverAnimation LoadGif(string path)
+    private static ScreensaverAnimation LoadGif(
+        string path,
+        ScreensaverScaleMode scaleMode)
     {
         byte[] encoded = File.ReadAllBytes(path);
 
@@ -82,26 +85,24 @@ public static class PixelProScreensaverMediaService
             encoded[1] != (byte)'I' ||
             encoded[2] != (byte)'F')
         {
-            throw new InvalidDataException("The selected file is not a valid GIF.");
+            throw new InvalidDataException(
+                "The selected file is not a valid GIF.");
         }
 
         using var image = Drawing.Image.FromFile(path);
 
-        bool landscape =
-            image.Width == PanelWidth &&
-            image.Height == PanelHeight;
+        if (image.Width <= 0 ||
+            image.Height <= 0 ||
+            image.Width > 1024 ||
+            image.Height > 1024)
+        {
+            throw new NotSupportedException(
+                "PIXEL PRO GIF canvas must be between 1×1 and 1024×1024.");
+        }
 
         bool nativePortrait =
             image.Width == NativePanelWidth &&
             image.Height == NativePanelHeight;
-
-        if (!landscape && !nativePortrait)
-        {
-            throw new NotSupportedException(
-                "PIXEL PRO GIF must be full panel resolution: " +
-                "480×320 landscape or native 320×480. " +
-                "GIF is sent directly without 2× scaling.");
-        }
 
         var dimension =
             new FrameDimension(image.FrameDimensionsList[0]);
@@ -157,7 +158,15 @@ public static class PixelProScreensaverMediaService
                     Drawing.RotateFlipType.Rotate90FlipNone);
             }
 
-            previewFrames.Add(ToRgb332Full(bitmap));
+            using Drawing.Bitmap prepared =
+                Resize(
+                    bitmap,
+                    PanelWidth,
+                    PanelHeight,
+                    scaleMode);
+
+            previewFrames.Add(
+                ToRgb332Full(prepared));
         }
 
         int averageDelayMs =
@@ -180,7 +189,8 @@ public static class PixelProScreensaverMediaService
             animation,
             new EncodedGifHolder
             {
-                Bytes = encoded
+                Bytes = encoded,
+                ScaleMode = scaleMode
             });
 
         return animation;
@@ -188,17 +198,20 @@ public static class PixelProScreensaverMediaService
 
     public static bool TryGetEncodedGif(
         ScreensaverAnimation animation,
-        out byte[] bytes)
+        out byte[] bytes,
+        out ScreensaverScaleMode scaleMode)
     {
         if (EncodedGifs.TryGetValue(
                 animation,
                 out EncodedGifHolder? holder))
         {
             bytes = holder.Bytes;
+            scaleMode = holder.ScaleMode;
             return true;
         }
 
         bytes = Array.Empty<byte>();
+        scaleMode = ScreensaverScaleMode.Fill;
         return false;
     }
 
