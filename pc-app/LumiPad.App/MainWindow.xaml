@@ -530,6 +530,311 @@
                 </Grid>
             </TabItem>
 
+            <TabItem x:Name="ConfiguratorTab" Header="Device Config">
+                <Grid Margin="0,14,0,0">
+                    <Grid x:Name="RynorConfiguratorPanel">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Background="{DynamicResource Card2}"
+                                BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                                CornerRadius="18" Padding="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="DeviceConfiguratorTitle"
+                                               Text="Device Config"
+                                               FontWeight="SemiBold" FontSize="16"/>
+                                    <TextBlock x:Name="ConfiguratorStatus"
+                                               Text="Embedded device configurator"
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button Content="Reload" Click="ReloadConfigurator_Click"/>
+                                    <Button Content="Open in Edge"
+                                            Click="OpenConfiguratorExternal_Click" Margin="0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Background="White"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1" CornerRadius="18"
+                                ClipToBounds="True">
+                            <wv2:WebView2 x:Name="ConfiguratorWebView"/>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PixelProKeymapPanel"
+                          Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="12"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="12"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="12"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="PIXEL PRO · KEYMAP"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="Configure"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Margin="0,3,0,0"/>
+                                <TextBlock Text="VIA-style live keymap editor"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="12"
+                                           Margin="0,3,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Bottom">
+                                <Button Content="Import"
+                                        Click="PixelKeymapImport_Click"/>
+                                <Button Content="Export"
+                                        Click="PixelKeymapExport_Click"/>
+                                <Button Content="Reload"
+                                        Click="PixelKeymapReload_Click"/>
+                                <Button Content="Reset"
+                                        Click="PixelKeymapReset_Click"
+                                        Margin="0"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Grid.Row="2"
+                                Background="#101114"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="18"
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="12"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="LAYER"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,12,0"/>
+                                        <Button Content="0" Tag="0"
+                                                Width="38" Height="32" Padding="0"
+                                                Click="PixelLayerButton_Click"/>
+                                        <Button Content="1" Tag="1"
+                                                Width="38" Height="32" Padding="0"
+                                                Click="PixelLayerButton_Click"/>
+                                        <Button Content="2" Tag="2"
+                                                Width="38" Height="32" Padding="0"
+                                                Click="PixelLayerButton_Click"/>
+                                        <Button Content="3" Tag="3"
+                                                Width="38" Height="32" Padding="0"
+                                                Click="PixelLayerButton_Click"/>
+                                    </StackPanel>
+
+                                    <CheckBox x:Name="PixelMatrixTestCheckBox"
+                                              Content="Test Matrix"
+                                              IsChecked="True"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <UniformGrid x:Name="PixelViaKeyboardGrid"
+                                             Grid.Row="2"
+                                             Rows="2"
+                                             Columns="4"
+                                             HorizontalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="280"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Padding="10">
+                                <ListBox x:Name="PixelKeyCategoryList"
+                                         SelectionChanged="PixelKeyCategoryList_SelectionChanged"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         SelectedIndex="0">
+                                    <ListBoxItem Content="Basic" Tag="Basic"/>
+                                    <ListBoxItem Content="Media" Tag="Media"/>
+                                    <ListBoxItem Content="Modifiers" Tag="Modifiers"/>
+                                    <ListBoxItem Content="Layers" Tag="Layers"/>
+                                    <ListBoxItem Content="Macro" Tag="Macro"/>
+                                    <ListBoxItem Content="Special" Tag="Special"/>
+                                </ListBox>
+                            </Border>
+
+                            <Border Grid.Column="2"
+                                    Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Padding="14">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="8"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid>
+                                        <TextBlock x:Name="PixelPaletteTitleText"
+                                                   Text="BASIC"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                        <TextBlock Text="Select a keycode"
+                                                   HorizontalAlignment="Right"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Grid>
+                                    <ScrollViewer Grid.Row="2"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <WrapPanel x:Name="PixelKeyPalettePanel"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="4"
+                                    Background="{DynamicResource Card}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Padding="16">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel>
+                                        <TextBlock Text="SELECTED KEY"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                        <TextBlock x:Name="PixelSelectedKeyTitle"
+                                                   Text="K1"
+                                                   FontSize="24"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,4,0,0"/>
+                                        <TextBlock x:Name="PixelSelectedBindingText"
+                                                   Text="A"
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,2,0,14"/>
+
+                                        <TextBlock Text="MODIFIERS"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                        <WrapPanel Margin="0,8,0,14">
+                                            <CheckBox x:Name="PixelSelectedCtrl"
+                                                      Content="Ctrl"
+                                                      Margin="0,0,12,8"
+                                                      Checked="PixelSelectedModifier_Changed"
+                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                            <CheckBox x:Name="PixelSelectedShift"
+                                                      Content="Shift"
+                                                      Margin="0,0,12,8"
+                                                      Checked="PixelSelectedModifier_Changed"
+                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                            <CheckBox x:Name="PixelSelectedAlt"
+                                                      Content="Alt"
+                                                      Margin="0,0,12,8"
+                                                      Checked="PixelSelectedModifier_Changed"
+                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                            <CheckBox x:Name="PixelSelectedWin"
+                                                      Content="Win"
+                                                      Margin="0,0,0,8"
+                                                      Checked="PixelSelectedModifier_Changed"
+                                                      Unchecked="PixelSelectedModifier_Changed"/>
+                                        </WrapPanel>
+
+                                        <Border Height="1"
+                                                Background="{DynamicResource Line}"
+                                                Margin="0,0,0,14"/>
+
+                                        <StackPanel x:Name="PixelMacroEditorPanel">
+                                            <TextBlock Text="MACROS"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                            <ComboBox x:Name="PixelMacroSlotCombo"
+                                                      SelectionChanged="PixelMacroSlotCombo_SelectionChanged"
+                                                      Margin="0,8,0,8">
+                                                <ComboBoxItem Content="M0" Tag="0"/>
+                                                <ComboBoxItem Content="M1" Tag="1"/>
+                                                <ComboBoxItem Content="M2" Tag="2"/>
+                                                <ComboBoxItem Content="M3" Tag="3"/>
+                                                <ComboBoxItem Content="M4" Tag="4"/>
+                                                <ComboBoxItem Content="M5" Tag="5"/>
+                                                <ComboBoxItem Content="M6" Tag="6"/>
+                                                <ComboBoxItem Content="M7" Tag="7"/>
+                                            </ComboBox>
+                                            <TextBox x:Name="PixelMacroTextBox"
+                                                     AcceptsReturn="False"
+                                                     MaxLength="80"
+                                                     Margin="0,0,0,8"/>
+                                            <Button Content="Save Macro"
+                                                    Click="PixelMacroSave_Click"
+                                                    Margin="0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+
+                        <Grid Grid.Row="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="PixelKeymapStatusText"
+                                       Text="Connect PIXEL PRO to load the keymap."
+                                       Foreground="{DynamicResource Muted}"
+                                       VerticalAlignment="Center"/>
+                            <Button x:Name="PixelKeymapSaveButton"
+                                    Grid.Column="1"
+                                    Content="Save to PIXEL PRO"
+                                    Click="PixelKeymapSave_Click"
+                                    IsEnabled="False"
+                                    Margin="0"/>
+                        </Grid>
+                    </Grid>                    </Grid>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="RGB">
                 <Grid Margin="0,14,0,0">
                     <Border x:Name="RgbDevicePanel"
@@ -812,470 +1117,6 @@
                             </StackPanel>
                         </Grid>
                     </Border>
-                </Grid>
-            </TabItem>
-
-
-
-                        <TabItem Header="Auto Profile">
-                <Grid Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.15*"/>
-                        <ColumnDefinition Width="18"/>
-                        <ColumnDefinition Width="0.85*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Border Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="24"
-                            Padding="22">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="14"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="AUTO PROFILE"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="Link Game/App"
-                                               FontSize="24"
-                                               FontWeight="SemiBold"
-                                               Margin="0,6,0,0"/>
-                                    <TextBlock x:Name="AutoProfileStatusText"
-                                               Text="Watching active application"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-                                <TextBlock x:Name="AutoProfileMappingCountText"
-                                           Grid.Column="1"
-                                           Text="0 / 10 linked apps"
-                                           Foreground="{DynamicResource Muted}"
-                                           VerticalAlignment="Center"/>
-                                <CheckBox x:Name="AutoProfileEnabledCheckBox"
-                                          Grid.Column="3"
-                                          Content="Enabled"
-                                          VerticalAlignment="Center"
-                                          Checked="AutoProfileEnabled_Changed"
-                                          Unchecked="AutoProfileEnabled_Changed"/>
-                            </Grid>
-
-                            <Border Grid.Row="2"
-                                    Background="{DynamicResource Card2}"
-                                    BorderBrush="{DynamicResource Line}"
-                                    BorderThickness="1"
-                                    CornerRadius="12"
-                                    Padding="12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="48"/>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="190"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Border Width="40"
-                                            Height="40"
-                                            CornerRadius="10"
-                                            Background="{DynamicResource ControlBg}"
-                                            BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1"
-                                            VerticalAlignment="Center">
-                                        <TextBlock Text="▦"
-                                                   FontSize="20"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource Muted}"/>
-                                    </Border>
-
-                                    <StackPanel Grid.Column="1"
-                                                VerticalAlignment="Center"
-                                                Margin="4,0,14,0">
-                                        <TextBlock Text="Default"
-                                                   FontSize="15"
-                                                   FontWeight="SemiBold"/>
-                                        <TextBlock Text="Fallback when no linked app is active"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   Margin="0,3,0,0"/>
-                                    </StackPanel>
-
-                                    <ComboBox x:Name="AutoProfileDefaultCombo"
-                                              Grid.Column="2"
-                                              SelectedValuePath="Tag"
-                                              VerticalAlignment="Center"
-                                              SelectionChanged="AutoProfileDefaultCombo_SelectionChanged">
-                                        <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
-                                        <ComboBoxItem Content="MEDIA" Tag="1"/>
-                                        <ComboBoxItem Content="FUSION 360" Tag="2"/>
-                                        <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
-                                        <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
-                                    </ComboBox>
-                                </Grid>
-                            </Border>
-
-                            <ScrollViewer Grid.Row="4"
-                                          VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel x:Name="AutoProfileMappingsPanel"/>
-                            </ScrollViewer>
-                        </Grid>
-                    </Border>
-
-                    <Border Grid.Column="2"
-                            Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1"
-                            CornerRadius="24"
-                            Padding="22">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="14"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="APPLICATIONS"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock Text="Add game/app"
-                                               FontSize="22"
-                                               FontWeight="SemiBold"
-                                               Margin="0,6,0,0"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1"
-                                            Orientation="Horizontal"
-                                            VerticalAlignment="Center">
-                                    <Button Content="Select Application"
-                                            Click="SelectAutoProfileApplication_Click"/>
-                                    <Button Content="Refresh"
-                                            Click="RefreshRunningApps_Click"
-                                            Margin="0"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <ScrollViewer Grid.Row="2"
-                                          VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel x:Name="RunningAppsPanel"/>
-                            </ScrollViewer>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </TabItem>
-
-            <TabItem x:Name="ConfiguratorTab" Header="Device Config">
-                <Grid Margin="0,14,0,0">
-                    <Grid x:Name="RynorConfiguratorPanel">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="10"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <Border Background="{DynamicResource Card2}"
-                                BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                                CornerRadius="18" Padding="12">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock x:Name="DeviceConfiguratorTitle"
-                                               Text="Device Config"
-                                               FontWeight="SemiBold" FontSize="16"/>
-                                    <TextBlock x:Name="ConfiguratorStatus"
-                                               Text="Embedded device configurator"
-                                               Foreground="{DynamicResource Muted}"
-                                               FontSize="12"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button Content="Reload" Click="ReloadConfigurator_Click"/>
-                                    <Button Content="Open in Edge"
-                                            Click="OpenConfiguratorExternal_Click" Margin="0"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Row="2"
-                                Background="White"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1" CornerRadius="18"
-                                ClipToBounds="True">
-                            <wv2:WebView2 x:Name="ConfiguratorWebView"/>
-                        </Border>
-                    </Grid>
-
-                    <Grid x:Name="PixelProKeymapPanel"
-                          Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="16"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="16"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="PIXEL PRO KEYMAP"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="8-key hardware map"
-                                           FontSize="25"
-                                           FontWeight="SemiBold"
-                                           Margin="0,5,0,0"/>
-                                <TextBlock Text="Changes are stored inside PIXEL PRO flash and survive power-off."
-                                           Foreground="{DynamicResource Muted}"
-                                           Margin="0,5,0,0"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1"
-                                        Orientation="Horizontal"
-                                        VerticalAlignment="Bottom">
-                                <Button Content="Reload"
-                                        Click="PixelKeymapReload_Click"/>
-                                <Button Content="Reset A–H"
-                                        Click="PixelKeymapReset_Click"
-                                        Margin="0"/>
-                            </StackPanel>
-                        </Grid>
-
-                        <Border Grid.Row="2"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="24"
-                                Padding="20">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <UniformGrid x:Name="PixelKeymapGrid"
-                                             Columns="4"
-                                             Rows="2"/>
-                            </ScrollViewer>
-                        </Border>
-
-                        <Grid Grid.Row="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="PixelKeymapStatusText"
-                                       Text="Connect PIXEL PRO to load the keymap."
-                                       Foreground="{DynamicResource Muted}"
-                                       VerticalAlignment="Center"/>
-                            <Button x:Name="PixelKeymapSaveButton"
-                                    Grid.Column="1"
-                                    Content="Save to PIXEL PRO"
-                                    Click="PixelKeymapSave_Click"
-                                    IsEnabled="False"
-                                    Margin="0"/>
-                        </Grid>
-                    </Grid>
-                </Grid>
-            </TabItem>
-
-            <TabItem Header="Action">
-                <Grid Margin="0,14,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="14"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <StackPanel>
-                        <TextBlock Text="ACTION / SCRIPT ENGINE"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Muted}"/>
-                        <TextBlock Text="Lumi Action"
-                                   FontSize="24"
-                                   FontWeight="SemiBold"
-                                   Margin="0,6,0,0"/>
-                        <TextBlock x:Name="LumiActionDescriptionText"
-                                   Text="Create actions and assign them to RYNOR ONE keys."
-                                   Foreground="{DynamicResource Muted}"
-                                   Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="280"/>
-                            <ColumnDefinition Width="18"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="20"
-                                Padding="16">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="12"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="14"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="Scripts"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"/>
-
-                                <ListBox x:Name="ActionScriptsList"
-                                         Grid.Row="2"
-                                         SelectionChanged="ActionScriptsList_SelectionChanged"/>
-
-                                <StackPanel Grid.Row="4"
-                                            Orientation="Horizontal">
-                                    <Button Content="New"
-                                            Click="NewActionScript_Click"/>
-                                    <Button Content="Delete"
-                                            Click="DeleteActionScript_Click"
-                                            Margin="0"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Column="2"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="20"
-                                Padding="18">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="14"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="16"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="14"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="16"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <StackPanel>
-                                    <TextBlock Text="SCRIPT EDITOR"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock x:Name="ActionEditorTitle"
-                                               Text="Select or create a script"
-                                               FontSize="21"
-                                               FontWeight="SemiBold"
-                                               Margin="0,4,0,0"/>
-                                    <TextBlock x:Name="ActionScriptIdText"
-                                               Text="Lumi Action —"
-                                               Foreground="{DynamicResource Accent}"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-
-                                <Grid Grid.Row="2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="76"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Name"
-                                               VerticalAlignment="Center"/>
-                                    <TextBox x:Name="ActionScriptNameText"
-                                             Grid.Column="1"
-                                             TextChanged="ActionScriptNameText_TextChanged"/>
-                                </Grid>
-
-                                <Grid Grid.Row="4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="160"/>
-                                        <ColumnDefinition Width="10"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <ComboBox x:Name="ActionStepTypeCombo"
-                                              SelectedValuePath="Tag">
-                                        <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
-                                        <ComboBoxItem Content="Key combination" Tag="Keys"/>
-                                        <ComboBoxItem Content="Type text" Tag="Text"/>
-                                        <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
-                                        <ComboBoxItem Content="Media key" Tag="Media"/>
-                                    </ComboBox>
-
-                                    <TextBox x:Name="ActionStepValueText"
-                                             Grid.Column="2"
-                                             ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
-
-                                    <Button Grid.Column="3"
-                                            Content="Add Step"
-                                            Click="AddActionStep_Click"
-                                            Margin="10,0,0,0"/>
-                                </Grid>
-
-                                <ListBox x:Name="ActionStepsList"
-                                         Grid.Row="6"/>
-
-                                <Grid Grid.Row="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button Content="Remove Step"
-                                                Click="RemoveActionStep_Click"/>
-                                        <Button Content="Move Up"
-                                                Click="MoveActionStepUp_Click"/>
-                                        <Button Content="Move Down"
-                                                Click="MoveActionStepDown_Click"
-                                                Margin="0"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1"
-                                                Orientation="Horizontal">
-                                        <TextBlock x:Name="ActionScriptStatusText"
-                                                   Text="Ready"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,12,0"/>
-                                        <Button Content="Key Map"
-                                                Click="AssignActionKey_Click"/>
-                                        <Button Content="Save"
-                                                Click="SaveActionScript_Click"/>
-                                        <Button Content="Run Test"
-                                                Click="RunActionScript_Click"
-                                                Margin="0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Grid>
-                        </Border>
-                    </Grid>
                 </Grid>
             </TabItem>
 
@@ -1673,6 +1514,352 @@
                         </Border>
                     </Grid>
                 </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Action">
+                <Grid Margin="0,14,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="ACTION / SCRIPT ENGINE"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Muted}"/>
+                        <TextBlock Text="Lumi Action"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Margin="0,6,0,0"/>
+                        <TextBlock x:Name="LumiActionDescriptionText"
+                                   Text="Create actions and assign them to RYNOR ONE keys."
+                                   Foreground="{DynamicResource Muted}"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="280"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="12"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Scripts"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+
+                                <ListBox x:Name="ActionScriptsList"
+                                         Grid.Row="2"
+                                         SelectionChanged="ActionScriptsList_SelectionChanged"/>
+
+                                <StackPanel Grid.Row="4"
+                                            Orientation="Horizontal">
+                                    <Button Content="New"
+                                            Click="NewActionScript_Click"/>
+                                    <Button Content="Delete"
+                                            Click="DeleteActionScript_Click"
+                                            Margin="0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="SCRIPT EDITOR"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock x:Name="ActionEditorTitle"
+                                               Text="Select or create a script"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"/>
+                                    <TextBlock x:Name="ActionScriptIdText"
+                                               Text="Lumi Action —"
+                                               Foreground="{DynamicResource Accent}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
+
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Name"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox x:Name="ActionScriptNameText"
+                                             Grid.Column="1"
+                                             TextChanged="ActionScriptNameText_TextChanged"/>
+                                </Grid>
+
+                                <Grid Grid.Row="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox x:Name="ActionStepTypeCombo"
+                                              SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
+                                        <ComboBoxItem Content="Key combination" Tag="Keys"/>
+                                        <ComboBoxItem Content="Type text" Tag="Text"/>
+                                        <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
+                                        <ComboBoxItem Content="Media key" Tag="Media"/>
+                                    </ComboBox>
+
+                                    <TextBox x:Name="ActionStepValueText"
+                                             Grid.Column="2"
+                                             ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
+
+                                    <Button Grid.Column="3"
+                                            Content="Add Step"
+                                            Click="AddActionStep_Click"
+                                            Margin="10,0,0,0"/>
+                                </Grid>
+
+                                <ListBox x:Name="ActionStepsList"
+                                         Grid.Row="6"/>
+
+                                <Grid Grid.Row="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Remove Step"
+                                                Click="RemoveActionStep_Click"/>
+                                        <Button Content="Move Up"
+                                                Click="MoveActionStepUp_Click"/>
+                                        <Button Content="Move Down"
+                                                Click="MoveActionStepDown_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal">
+                                        <TextBlock x:Name="ActionScriptStatusText"
+                                                   Text="Ready"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,12,0"/>
+                                        <Button Content="Key Map"
+                                                Click="AssignActionKey_Click"/>
+                                        <Button Content="Save"
+                                                Click="SaveActionScript_Click"/>
+                                        <Button Content="Run Test"
+                                                Click="RunActionScript_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Auto Profile">
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.15*"/>
+                        <ColumnDefinition Width="18"/>
+                        <ColumnDefinition Width="0.85*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="24"
+                            Padding="22">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="14"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="14"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="14"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="AUTO PROFILE"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="Link Game/App"
+                                               FontSize="24"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="AutoProfileStatusText"
+                                               Text="Watching active application"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="AutoProfileMappingCountText"
+                                           Grid.Column="1"
+                                           Text="0 / 10 linked apps"
+                                           Foreground="{DynamicResource Muted}"
+                                           VerticalAlignment="Center"/>
+                                <CheckBox x:Name="AutoProfileEnabledCheckBox"
+                                          Grid.Column="3"
+                                          Content="Enabled"
+                                          VerticalAlignment="Center"
+                                          Checked="AutoProfileEnabled_Changed"
+                                          Unchecked="AutoProfileEnabled_Changed"/>
+                            </Grid>
+
+                            <Border Grid.Row="2"
+                                    Background="{DynamicResource Card2}"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="190"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="40"
+                                            Height="40"
+                                            CornerRadius="10"
+                                            Background="{DynamicResource ControlBg}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="▦"
+                                                   FontSize="20"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Margin="4,0,14,0">
+                                        <TextBlock Text="Default"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="Fallback when no linked app is active"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,3,0,0"/>
+                                    </StackPanel>
+
+                                    <ComboBox x:Name="AutoProfileDefaultCombo"
+                                              Grid.Column="2"
+                                              SelectedValuePath="Tag"
+                                              VerticalAlignment="Center"
+                                              SelectionChanged="AutoProfileDefaultCombo_SelectionChanged">
+                                        <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
+                                        <ComboBoxItem Content="MEDIA" Tag="1"/>
+                                        <ComboBoxItem Content="FUSION 360" Tag="2"/>
+                                        <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
+                                        <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="4"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="AutoProfileMappingsPanel"/>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="24"
+                            Padding="22">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="14"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="APPLICATIONS"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock Text="Add game/app"
+                                               FontSize="22"
+                                               FontWeight="SemiBold"
+                                               Margin="0,6,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center">
+                                    <Button Content="Select Application"
+                                            Click="SelectAutoProfileApplication_Click"/>
+                                    <Button Content="Refresh"
+                                            Click="RefreshRunningApps_Click"
+                                            Margin="0"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <ScrollViewer Grid.Row="2"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="RunningAppsPanel"/>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Settings">
