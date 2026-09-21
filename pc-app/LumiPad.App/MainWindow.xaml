@@ -649,8 +649,15 @@
                                                 ToolTip="Remove last profile"
                                                 Click="PixelRemoveProfile_Click"/>
                                         <ComboBox x:Name="PixelProfileCombo"
-                                                  Width="150"
+                                                  Width="200"
+                                                  IsEditable="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
+                                                  MaxDropDownHeight="360"
+                                                  ToolTip="Select or rename profile"
                                                   SelectionChanged="PixelProfileCombo_SelectionChanged"
+                                                  KeyDown="PixelProfileCombo_KeyDown"
+                                                  LostKeyboardFocus="PixelProfileCombo_LostKeyboardFocus"
                                                   Margin="0,0,6,0"/>
                                         <Button Content="+"
                                                 Width="32"
@@ -658,16 +665,7 @@
                                                 Padding="0"
                                                 ToolTip="Add profile"
                                                 Click="PixelAddProfile_Click"
-                                                Margin="0,0,8,0"/>
-                                        <TextBox x:Name="PixelProfileNameTextBox"
-                                                 Width="170"
-                                                 Height="32"
-                                                 MaxLength="32"
-                                                 VerticalContentAlignment="Center"
-                                                 ToolTip="Profile name"
-                                                 KeyDown="PixelProfileNameTextBox_KeyDown"
-                                                 LostFocus="PixelProfileNameTextBox_LostFocus"
-                                                 Margin="0,0,18,0"/>
+                                                Margin="0,0,18,0"/>
                                         <TextBlock Text="LAYER"
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
@@ -727,6 +725,7 @@
                                     <ListBoxItem Content="Modifiers" Tag="Modifiers"/>
                                     <ListBoxItem Content="Layers" Tag="Layers"/>
                                     <ListBoxItem Content="Macro" Tag="Macro"/>
+                                    <ListBoxItem Content="Action" Tag="Action"/>
                                     <ListBoxItem Content="Special" Tag="Special"/>
                                 </ListBox>
                             </Border>
@@ -817,7 +816,7 @@
                                                 Background="{DynamicResource Line}"
                                                 Margin="0,0,0,14"/>
 
-                                        <TextBlock Text="Assign M1–M20 here, then edit the macro body in the Macro tab."
+                                        <TextBlock Text="Assign a Macro or Lumi Action here. Edit Macro and Action contents in their own tabs."
                                                    Foreground="{DynamicResource Muted}"
                                                    FontSize="11"
                                                    TextWrapping="Wrap"/>
@@ -868,21 +867,24 @@
                                 <RowDefinition Height="10"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="MACRO SLOTS"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="M1 – M20"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <TextBlock Text="MACRO SLOTS"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Muted}"/>
                             <ListBox x:Name="PixelMacroList"
                                      Grid.Row="2"
                                      SelectionChanged="PixelMacroList_SelectionChanged"
                                      BorderThickness="0"
-                                     Background="Transparent"/>
+                                     Background="Transparent">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Padding="4,3"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Grid>
                     </Border>
 
@@ -907,14 +909,22 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
+                                    <TextBox x:Name="PixelMacroNameTextBox"
+                                             Text="Macro 1"
+                                             FontSize="24"
+                                             FontWeight="SemiBold"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             Padding="0"
+                                             Width="300"
+                                             HorizontalAlignment="Left"
+                                             LostFocus="PixelMacroNameTextBox_LostFocus"/>
                                     <TextBlock x:Name="PixelMacroTitleText"
                                                Text="M1"
-                                               FontSize="24"
-                                               FontWeight="SemiBold"/>
-                                    <TextBox x:Name="PixelMacroNameTextBox"
-                                             Width="260"
-                                             HorizontalAlignment="Left"
-                                             Margin="0,6,0,0"/>
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,3,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1"
                                             Orientation="Horizontal"
@@ -1046,67 +1056,46 @@
                                           SelectionChanged="PixelMacroStepTypeCombo_SelectionChanged"
                                           Margin="0,10,0,8">
                                     <ComboBoxItem Content="Action" Tag="Action"/>
-                                    <ComboBoxItem Content="Combo Keys" Tag="Keys"/>
-                                    <ComboBoxItem Content="Text" Tag="Text"/>
-                                    <ComboBoxItem Content="Run App / File" Tag="Run"/>
+                                    <ComboBoxItem Content="Key" Tag="Key"/>
                                     <ComboBoxItem Content="Delay" Tag="Delay"/>
-                                    <ComboBoxItem Content="Media" Tag="Media"/>
-                                    <ComboBoxItem Content="Mouse Left Click" Tag="MouseClick:LEFT"/>
-                                    <ComboBoxItem Content="Mouse Right Click" Tag="MouseClick:RIGHT"/>
-                                    <ComboBoxItem Content="Mouse Middle Click" Tag="MouseClick:MIDDLE"/>
-                                    <ComboBoxItem Content="Mouse Wheel" Tag="MouseWheel"/>
-                                    <ComboBoxItem Content="Mouse Move" Tag="MouseMove"/>
                                 </ComboBox>
 
                                 <TextBlock x:Name="PixelMacroStepHintText"
-                                           Text="Choose a step type."
+                                           Text="Choose Action, Key or Delay."
                                            Foreground="{DynamicResource Muted}"
                                            FontSize="11"
                                            TextWrapping="Wrap"
-                                           Margin="0,0,0,6"/>
+                                           Margin="0,0,0,8"/>
+
                                 <ComboBox x:Name="PixelMacroActionCombo"
                                           Visibility="Collapsed"
                                           Margin="0,0,0,10"/>
+
                                 <TextBox x:Name="PixelMacroStepValueTextBox"
+                                         Visibility="Collapsed"
                                          Margin="0,0,0,10"/>
 
-                                <Button Content="Add Step"
-                                        Click="PixelMacroAddStep_Click"
-                                        Margin="0,0,0,14"/>
-
-                                <Border Height="1"
-                                        Background="{DynamicResource Line}"
-                                        Margin="0,0,0,14"/>
-
-                                <TextBlock Text="KEY RECORDER"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="Click the box and press one key. It adds ↓ / delay / key / delay / ↑."
-                                           FontSize="11"
-                                           Foreground="{DynamicResource Muted}"
-                                           TextWrapping="Wrap"
-                                           Margin="0,5,0,8"/>
-                                <Grid Margin="0,0,0,14">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid x:Name="PixelMacroKeyInputPanel"
+                                      Visibility="Collapsed"
+                                      Margin="0,0,0,10">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="8"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
                                     <TextBox x:Name="PixelMacroKeyCaptureBox"
-                                             Text="Press a key…"
+                                             Text="Click here, then press a key…"
                                              IsReadOnly="True"
                                              PreviewKeyDown="PixelMacroKeyCaptureBox_PreviewKeyDown"
                                              VerticalContentAlignment="Center"/>
-                                    <StackPanel Grid.Column="1"
-                                                Orientation="Horizontal"
-                                                VerticalAlignment="Center"
-                                                Margin="10,0,0,0">
-                                        <TextBlock Text="Delay"
+                                    <StackPanel Grid.Row="2"
+                                                Orientation="Horizontal">
+                                        <TextBlock Text="Default delay"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,6,0"/>
                                         <TextBox x:Name="PixelMacroDefaultDelayTextBox"
                                                  Text="100"
-                                                 Width="58"
+                                                 Width="64"
                                                  MaxLength="6"
                                                  TextAlignment="Center"
                                                  VerticalContentAlignment="Center"
@@ -1117,30 +1106,10 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <Border Height="1"
-                                        Background="{DynamicResource Line}"
+                                <Button x:Name="PixelMacroAddStepButton"
+                                        Content="Add Step"
+                                        Click="PixelMacroAddStep_Click"
                                         Margin="0,0,0,14"/>
-
-                                <TextBlock Text="QUICK"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <WrapPanel Margin="0,8,0,0">
-                                    <Button Content="Ctrl+C" Tag="Keys|Ctrl+C"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                    <Button Content="Ctrl+V" Tag="Keys|Ctrl+V"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                    <Button Content="Left Click" Tag="MouseClick|LEFT"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                    <Button Content="Right Click" Tag="MouseClick|RIGHT"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                    <Button Content="Wheel +" Tag="MouseWheel|1"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                    <Button Content="Wheel -" Tag="MouseWheel|-1"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                    <Button Content="100 ms" Tag="Delay|100"
-                                            Click="PixelMacroQuickStep_Click"/>
-                                </WrapPanel>
 
                                 <TextBlock x:Name="PixelMacroStatusText"
                                            Text="Macros run through LumiPad on Windows."
