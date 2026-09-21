@@ -1233,19 +1233,11 @@ public partial class MainWindow : Window
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
-        if (RgbStaticPresets is not null)
-            RgbStaticPresets.Visibility =
+        if (RynorRgbPresetsPanel is not null)
+            RynorRgbPresetsPanel.Visibility =
                 pixel
                     ? Visibility.Collapsed
                     : Visibility.Visible;
-
-        if (RgbDynamicPresets is not null && pixel)
-            RgbDynamicPresets.Visibility =
-                Visibility.Collapsed;
-
-        if (RgbReactivePresets is not null && pixel)
-            RgbReactivePresets.Visibility =
-                Visibility.Collapsed;
 
         if (RgbProfileCombo is not null)
             RgbProfileCombo.Visibility =
