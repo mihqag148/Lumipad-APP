@@ -642,15 +642,32 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,10,0"/>
+                                        <Button Content="−"
+                                                Width="32"
+                                                Height="32"
+                                                Padding="0"
+                                                ToolTip="Remove last profile"
+                                                Click="PixelRemoveProfile_Click"/>
                                         <ComboBox x:Name="PixelProfileCombo"
                                                   Width="150"
                                                   SelectionChanged="PixelProfileCombo_SelectionChanged"
-                                                  Margin="0,0,8,0"/>
-                                        <Button Content="+ Profile"
+                                                  Margin="0,0,6,0"/>
+                                        <Button Content="+"
+                                                Width="32"
                                                 Height="32"
-                                                Padding="10,0"
+                                                Padding="0"
+                                                ToolTip="Add profile"
                                                 Click="PixelAddProfile_Click"
-                                                Margin="0,0,18,0"/>
+                                                Margin="0,0,8,0"/>
+                                        <TextBox x:Name="PixelProfileNameTextBox"
+                                                 Width="170"
+                                                 Height="32"
+                                                 MaxLength="32"
+                                                 VerticalContentAlignment="Center"
+                                                 ToolTip="Profile name"
+                                                 KeyDown="PixelProfileNameTextBox_KeyDown"
+                                                 LostFocus="PixelProfileNameTextBox_LostFocus"
+                                                 Margin="0,0,18,0"/>
                                         <TextBlock Text="LAYER"
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
@@ -914,7 +931,26 @@
                                      Grid.Row="2"
                                      BorderBrush="{DynamicResource Line}"
                                      BorderThickness="1"
-                                     Background="{DynamicResource Card2}"/>
+                                     Background="{DynamicResource Card2}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="6,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="88"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Type}"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                            <TextBox Grid.Column="1"
+                                                     Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                     LostFocus="PixelMacroStepValue_LostFocus"
+                                                     Margin="6,0,0,0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
 
                             <StackPanel Grid.Row="4"
                                         Orientation="Horizontal"
@@ -967,12 +1003,58 @@
                                            FontSize="11"
                                            TextWrapping="Wrap"
                                            Margin="0,0,0,6"/>
+                                <ComboBox x:Name="PixelMacroActionCombo"
+                                          Visibility="Collapsed"
+                                          Margin="0,0,0,10"/>
                                 <TextBox x:Name="PixelMacroStepValueTextBox"
                                          Margin="0,0,0,10"/>
 
                                 <Button Content="Add Step"
                                         Click="PixelMacroAddStep_Click"
                                         Margin="0,0,0,14"/>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,0,0,14"/>
+
+                                <TextBlock Text="KEY RECORDER"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <TextBlock Text="Click the box and press one key. It adds Key Down → Delay → Key Up."
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Muted}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,5,0,8"/>
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="PixelMacroKeyCaptureBox"
+                                             Text="Press a key…"
+                                             IsReadOnly="True"
+                                             PreviewKeyDown="PixelMacroKeyCaptureBox_PreviewKeyDown"
+                                             VerticalContentAlignment="Center"/>
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                VerticalAlignment="Center"
+                                                Margin="10,0,0,0">
+                                        <TextBlock Text="Delay"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,6,0"/>
+                                        <TextBox x:Name="PixelMacroDefaultDelayTextBox"
+                                                 Text="100"
+                                                 Width="58"
+                                                 MaxLength="6"
+                                                 TextAlignment="Center"
+                                                 VerticalContentAlignment="Center"
+                                                 ToolTip="Default delay in milliseconds"/>
+                                        <TextBlock Text="ms"
+                                                   VerticalAlignment="Center"
+                                                   Margin="5,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
 
                                 <Border Height="1"
                                         Background="{DynamicResource Line}"
@@ -1010,6 +1092,187 @@
                     </Border>
                 </Grid>
             </TabItem>
+
+            <TabItem Header="Action">
+                <Grid Margin="0,14,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="ACTION / SCRIPT ENGINE"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Muted}"/>
+                        <TextBlock Text="Lumi Action"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Margin="0,6,0,0"/>
+                        <TextBlock x:Name="LumiActionDescriptionText"
+                                   Text="Create actions and assign them to RYNOR ONE keys."
+                                   Foreground="{DynamicResource Muted}"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="280"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="12"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Scripts"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+
+                                <ListBox x:Name="ActionScriptsList"
+                                         Grid.Row="2"
+                                         SelectionChanged="ActionScriptsList_SelectionChanged"/>
+
+                                <StackPanel Grid.Row="4"
+                                            Orientation="Horizontal">
+                                    <Button Content="New"
+                                            Click="NewActionScript_Click"/>
+                                    <Button Content="Delete"
+                                            Click="DeleteActionScript_Click"
+                                            Margin="0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="16"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="SCRIPT EDITOR"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock x:Name="ActionEditorTitle"
+                                               Text="Select or create a script"
+                                               FontSize="21"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"/>
+                                    <TextBlock x:Name="ActionScriptIdText"
+                                               Text="Lumi Action —"
+                                               Foreground="{DynamicResource Accent}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,0"/>
+                                </StackPanel>
+
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Name"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox x:Name="ActionScriptNameText"
+                                             Grid.Column="1"
+                                             TextChanged="ActionScriptNameText_TextChanged"/>
+                                </Grid>
+
+                                <Grid Grid.Row="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox x:Name="ActionStepTypeCombo"
+                                              SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
+                                        <ComboBoxItem Content="Key combination" Tag="Keys"/>
+                                        <ComboBoxItem Content="Type text" Tag="Text"/>
+                                        <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
+                                        <ComboBoxItem Content="Media key" Tag="Media"/>
+                                    </ComboBox>
+
+                                    <TextBox x:Name="ActionStepValueText"
+                                             Grid.Column="2"
+                                             ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
+
+                                    <Button Grid.Column="3"
+                                            Content="Add Step"
+                                            Click="AddActionStep_Click"
+                                            Margin="10,0,0,0"/>
+                                </Grid>
+
+                                <ListBox x:Name="ActionStepsList"
+                                         Grid.Row="6"/>
+
+                                <Grid Grid.Row="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Remove Step"
+                                                Click="RemoveActionStep_Click"/>
+                                        <Button Content="Move Up"
+                                                Click="MoveActionStepUp_Click"/>
+                                        <Button Content="Move Down"
+                                                Click="MoveActionStepDown_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal">
+                                        <TextBlock x:Name="ActionScriptStatusText"
+                                                   Text="Ready"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,12,0"/>
+                                        <Button Content="Key Map"
+                                                Click="AssignActionKey_Click"/>
+                                        <Button Content="Save"
+                                                Click="SaveActionScript_Click"/>
+                                        <Button Content="Run Test"
+                                                Click="RunActionScript_Click"
+                                                Margin="0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
 
             <TabItem Header="RGB">
                 <Grid Margin="0,14,0,0">
@@ -1690,186 +1953,6 @@
                         </Border>
                     </Grid>
                 </ScrollViewer>
-            </TabItem>
-
-            <TabItem Header="Action">
-                <Grid Margin="0,14,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="14"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <StackPanel>
-                        <TextBlock Text="ACTION / SCRIPT ENGINE"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Muted}"/>
-                        <TextBlock Text="Lumi Action"
-                                   FontSize="24"
-                                   FontWeight="SemiBold"
-                                   Margin="0,6,0,0"/>
-                        <TextBlock x:Name="LumiActionDescriptionText"
-                                   Text="Create actions and assign them to RYNOR ONE keys."
-                                   Foreground="{DynamicResource Muted}"
-                                   Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="280"/>
-                            <ColumnDefinition Width="18"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="20"
-                                Padding="16">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="12"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="14"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="Scripts"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"/>
-
-                                <ListBox x:Name="ActionScriptsList"
-                                         Grid.Row="2"
-                                         SelectionChanged="ActionScriptsList_SelectionChanged"/>
-
-                                <StackPanel Grid.Row="4"
-                                            Orientation="Horizontal">
-                                    <Button Content="New"
-                                            Click="NewActionScript_Click"/>
-                                    <Button Content="Delete"
-                                            Click="DeleteActionScript_Click"
-                                            Margin="0"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Column="2"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="20"
-                                Padding="18">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="14"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="16"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="14"/>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="16"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <StackPanel>
-                                    <TextBlock Text="SCRIPT EDITOR"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock x:Name="ActionEditorTitle"
-                                               Text="Select or create a script"
-                                               FontSize="21"
-                                               FontWeight="SemiBold"
-                                               Margin="0,4,0,0"/>
-                                    <TextBlock x:Name="ActionScriptIdText"
-                                               Text="Lumi Action —"
-                                               Foreground="{DynamicResource Accent}"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-
-                                <Grid Grid.Row="2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="76"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Name"
-                                               VerticalAlignment="Center"/>
-                                    <TextBox x:Name="ActionScriptNameText"
-                                             Grid.Column="1"
-                                             TextChanged="ActionScriptNameText_TextChanged"/>
-                                </Grid>
-
-                                <Grid Grid.Row="4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="160"/>
-                                        <ColumnDefinition Width="10"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <ComboBox x:Name="ActionStepTypeCombo"
-                                              SelectedValuePath="Tag">
-                                        <ComboBoxItem Content="Run app/file/URL" Tag="Run" IsSelected="True"/>
-                                        <ComboBoxItem Content="Key combination" Tag="Keys"/>
-                                        <ComboBoxItem Content="Type text" Tag="Text"/>
-                                        <ComboBoxItem Content="Delay (ms)" Tag="Delay"/>
-                                        <ComboBoxItem Content="Media key" Tag="Media"/>
-                                    </ComboBox>
-
-                                    <TextBox x:Name="ActionStepValueText"
-                                             Grid.Column="2"
-                                             ToolTip="Examples: C:\Apps\app.exe, Ctrl+Shift+S, Hello, 500, PlayPause"/>
-
-                                    <Button Grid.Column="3"
-                                            Content="Add Step"
-                                            Click="AddActionStep_Click"
-                                            Margin="10,0,0,0"/>
-                                </Grid>
-
-                                <ListBox x:Name="ActionStepsList"
-                                         Grid.Row="6"/>
-
-                                <Grid Grid.Row="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button Content="Remove Step"
-                                                Click="RemoveActionStep_Click"/>
-                                        <Button Content="Move Up"
-                                                Click="MoveActionStepUp_Click"/>
-                                        <Button Content="Move Down"
-                                                Click="MoveActionStepDown_Click"
-                                                Margin="0"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1"
-                                                Orientation="Horizontal">
-                                        <TextBlock x:Name="ActionScriptStatusText"
-                                                   Text="Ready"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   VerticalAlignment="Center"
-                                                   Margin="0,0,12,0"/>
-                                        <Button Content="Key Map"
-                                                Click="AssignActionKey_Click"/>
-                                        <Button Content="Save"
-                                                Click="SaveActionScript_Click"/>
-                                        <Button Content="Run Test"
-                                                Click="RunActionScript_Click"
-                                                Margin="0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Grid>
-                        </Border>
-                    </Grid>
-                </Grid>
             </TabItem>
 
             <TabItem Header="Auto Profile">
