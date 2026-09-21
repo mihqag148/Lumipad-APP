@@ -473,26 +473,18 @@ public partial class MainWindow : Window
                 BottomStatus.Text = L($"Now Playing unavailable: {ex.Message}", $"Không dùng được Now Playing: {ex.Message}");
             }
 
-            _connectionPreference = "auto";
-            _autoReconnectEnabled = true;
-            AddLog("INFO", "APP", "Auto-connect enabled by default");
+            foreach (ProductDefinition product in ProductCatalog.All)
+            {
+                _connectionPreferences[product.Id] = "auto";
+                _autoReconnectByProduct[product.Id] = true;
+            }
 
-            if (!string.Equals(
-                    _activeProduct.Id,
-                    ProductCatalog.PixelPro.Id,
-                    StringComparison.OrdinalIgnoreCase) &&
-                PixelProCdcLink.IsDevicePresent(ProductCatalog.PixelPro))
-            {
-                AddLog(
-                    "INFO",
-                    "APP",
-                    "Live PIXEL PRO USB CDC detected; selecting PIXEL PRO automatically");
-                await SwitchActiveProductAsync(ProductCatalog.PixelPro);
-            }
-            else
-            {
-                await DetectAsync();
-            }
+            AddLog(
+                "INFO",
+                "APP",
+                "Parallel auto-connect enabled for RYNOR ONE and PIXEL PRO");
+
+            await ConnectAllProductsAsync();
             await CheckForUpdatesAsync(silent: true);
             _updateCheckTimer.Start();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
@@ -898,24 +890,48 @@ public partial class MainWindow : Window
         await UpdateProductOverviewAsync();
     }
 
-    private void AttachDeviceLinkEvents(IDeviceLink link)
+    private void AttachDeviceLinkEvents(
+        ProductDefinition product,
+        IDeviceLink link)
     {
         link.Diagnostic += (level, message) =>
-            Dispatcher.Invoke(() => AddLog(level, "APP", message));
+            Dispatcher.Invoke(() =>
+                AddLog(
+                    level,
+                    product.Name,
+                    message));
 
         link.LinkError += message =>
             Dispatcher.Invoke(() =>
             {
-                AddLog("ERROR", "LINK", message);
-                DeviceStatus.Text = L("Device link error", "Lỗi kết nối thiết bị");
-                DeviceDot.Fill =
-                    new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
-                BottomStatus.Text = message;
-                _keyboardSleeping = false;
-                _activeBatteryPercent = null;
-                SetDeviceControlsEnabled(false);
-                UpdateTransportIndicators();
-                UpdateSleepButtonUi();
+                AddLog(
+                    "ERROR",
+                    product.Name,
+                    message);
+
+                _sleepingByProduct[product.Id] = false;
+                _batteryByProduct[product.Id] = null;
+
+                if (IsActiveProduct(product))
+                {
+                    DeviceStatus.Text =
+                        L(
+                            "Device link error",
+                            "Lỗi kết nối thiết bị");
+
+                    DeviceDot.Fill =
+                        new SolidColorBrush(
+                            MediaColor.FromRgb(
+                                255,
+                                69,
+                                58));
+
+                    BottomStatus.Text = message;
+                    SetDeviceControlsEnabled(false);
+                    UpdateTransportIndicators();
+                    UpdateSleepButtonUi();
+                }
+
                 UpdateProductHubUi();
             });
 
@@ -923,7 +939,15 @@ public partial class MainWindow : Window
         {
             pixel.KeyStateChanged += (index, down, layer) =>
                 Dispatcher.Invoke(() =>
-                    UpdatePixelMatrixTest(index, down, layer));
+                {
+                    if (IsActiveProduct(product))
+                    {
+                        UpdatePixelMatrixTest(
+                            index,
+                            down,
+                            layer);
+                    }
+                });
 
             pixel.MacroTriggered += (slot, key, profile, layer) =>
                 Dispatcher.BeginInvoke(
@@ -947,61 +971,108 @@ public partial class MainWindow : Window
 
     private async Task SwitchActiveProductAsync(ProductDefinition product)
     {
-        _autoReconnectEnabled = false;
         try
         {
-            try
-            {
-                _serial.Disconnect();
-                _serial.Dispose();
-            }
-            catch
-            {
-            }
-
             _activeProduct = product;
-            _activeBatteryPercent = null;
-            _keyboardSleeping = false;
-            _lastActionEventSeq = 0;
-            _firmwareLogSeq = 0;
-            _connectionPreference = "auto";
-
-            _serial = DeviceLinkFactory.Create(product);
-            AttachDeviceLinkEvents(_serial);
+            _serial = LinkFor(product);
 
             _configuratorInitialized = false;
             _loadedConfiguratorUrl = "";
+
             UpdateDeviceConfiguratorUi();
             UpdateProductSpecificText();
 
-            SetDeviceControlsEnabled(false);
+            SetDeviceControlsEnabled(_serial.IsConnected);
             UpdateTransportIndicators();
             UpdateSleepButtonUi();
             UpdateProductHubUi();
+            UpdateSettingsInfo();
 
             AddLog(
                 "INFO",
                 "APP",
-                $"Active product: {product.Name} ({product.Driver})");
+                $"Active page: {product.Name} ({product.Driver}); connection kept alive");
 
-            await DetectAsync();
-
-            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
-                System.IO.File.Exists(_screensaverMediaPath))
+            if (!_serial.IsConnected)
             {
-                await PrepareScreensaverMediaAsync();
+                await DetectAsync();
             }
-
+            else
+            {
+                await UpdateMemoryUsageAsync();
+                await UpdatePanelInfoAsync();
+                await CheckForUpdatesAsync(silent: true);
+            }
         }
         catch (Exception ex)
         {
-            AddLog("ERROR", "APP", $"Cannot activate {product.Name}: {ex.Message}");
+            AddLog(
+                "ERROR",
+                "APP",
+                $"Cannot activate {product.Name}: {ex.Message}");
+
             BottomStatus.Text = ex.Message;
         }
-        finally
+    }
+
+    private async Task ConnectAllProductsAsync()
+    {
+        foreach (ProductDefinition product in ProductCatalog.All)
         {
-            _autoReconnectEnabled = true;
+            IDeviceLink link = LinkFor(product);
+
+            if (link.IsConnected)
+                continue;
+
+            try
+            {
+                string? connection =
+                    await link.AutoDetectAsync();
+
+                if (connection is null)
+                {
+                    AddLog(
+                        "INFO",
+                        product.Name,
+                        "Parallel auto-connect: not found");
+                    continue;
+                }
+
+                AddLog(
+                    "INFO",
+                    product.Name,
+                    $"Parallel auto-connect: {connection}");
+
+                _sleepingByProduct[product.Id] = false;
+                _batteryByProduct[product.Id] =
+                    await link.ReadBatteryPercentAsync();
+
+                if (IsActiveProduct(product))
+                {
+                    DeviceStatus.Text = connection;
+                    DeviceDot.Fill =
+                        new SolidColorBrush(
+                            MediaColor.FromRgb(
+                                48,
+                                209,
+                                88));
+
+                    SetDeviceControlsEnabled(true);
+                    UpdateTransportIndicators();
+                    UpdateSleepButtonUi();
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLog(
+                    "WARN",
+                    product.Name,
+                    $"Parallel auto-connect failed: {ex.Message}");
+            }
         }
+
+        UpdateProductHubUi();
+        await UpdateProductOverviewAsync();
     }
 
     private void UpdateProductSpecificText()
