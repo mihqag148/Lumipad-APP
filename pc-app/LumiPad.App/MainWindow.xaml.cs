@@ -7887,6 +7887,18 @@ try {{
         CurrentPixelMacro.Steps.Add(
             new ActionScriptStep
             {
+                Type = "KeyLabel",
+                Value = token
+            });
+        CurrentPixelMacro.Steps.Add(
+            new ActionScriptStep
+            {
+                Type = "Delay",
+                Value = delayMs.ToString()
+            });
+        CurrentPixelMacro.Steps.Add(
+            new ActionScriptStep
+            {
                 Type = "KeyUp",
                 Value = token
             });
@@ -7896,16 +7908,16 @@ try {{
 
         if (PixelMacroStepsList is not null)
             PixelMacroStepsList.SelectedIndex =
-                CurrentPixelMacro.Steps.Count - 2;
+                CurrentPixelMacro.Steps.Count - 3;
 
         if (PixelMacroKeyCaptureBox is not null)
             PixelMacroKeyCaptureBox.Text =
-                $"{token} · Down → {delayMs} ms → Up";
+                $"↓ · {delayMs} ms · {token} · {delayMs} ms · ↑";
 
         PixelMacroStatusText.Text =
             L(
-                $"Added {token}: Key Down → {delayMs} ms → Key Up.",
-                $"Đã thêm {token}: nhấn xuống → {delayMs} ms → nhả lên.");
+                $"Added ↓ / {delayMs} ms / {token} / {delayMs} ms / ↑.",
+                $"Đã thêm ↓ / {delayMs} ms / {token} / {delayMs} ms / ↑.");
     }
 
     private static string? PixelMacroKeyToken(Key key)
