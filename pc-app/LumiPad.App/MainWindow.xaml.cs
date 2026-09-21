@@ -2922,8 +2922,8 @@ public partial class MainWindow : Window
                 FirmwareUpdateStateText.Text =
                     pixelBootstrapRequired
                         ? L(
-                            "One-time v0.1.5 bootstrap required; future updates are one-click",
-                            "Cần nạp bootstrap v0.1.5 một lần; các bản sau cập nhật 1 nút")
+                            "One-time QMK install required; LumiPad will flash it automatically",
+                            "Cần cài QMK một lần; LumiPad sẽ tự nạp firmware")
                         : _serial.IsUsbConnected
                             ? L("Update available", "Có bản mới")
                             : L(
