@@ -802,13 +802,13 @@
                                                    Foreground="{DynamicResource Muted}"/>
 
                                         <Canvas x:Name="PixelModifierCanvas"
-                                                Height="104"
+                                                Height="150"
                                                 Margin="0,6,0,10"
                                                 Background="Transparent">
                                             <Border x:Name="PixelModifiersPanel"
                                                     Canvas.Left="0"
                                                     Canvas.Top="0"
-                                                    Width="232"
+                                                    Width="190"
                                                     Background="{DynamicResource Card2}"
                                                     BorderBrush="{DynamicResource Line}"
                                                     BorderThickness="1"
