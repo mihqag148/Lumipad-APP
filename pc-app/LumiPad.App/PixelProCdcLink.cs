@@ -7,12 +7,13 @@ namespace LumiPad.App;
 
 /// <summary>
 /// Native ESP32-S2 USB CDC transport for PIXEL PRO.
-/// The device exposes a normal HID keyboard independently; LumiPad only owns
-/// the companion CDC interface.
+/// The HID keyboard remains independent; LumiPad owns only the CDC interface.
 /// </summary>
 public sealed class PixelProCdcLink : IDeviceLink
 {
     private readonly ProductDefinition _product;
+    private readonly SemaphoreSlim _connectGate = new(1, 1);
+
     private SerialPort? _port;
     private CancellationTokenSource? _readCts;
     private Task? _readTask;
@@ -47,6 +48,36 @@ public sealed class PixelProCdcLink : IDeviceLink
     private void Log(string level, string message) =>
         Diagnostic?.Invoke(level, message);
 
+    public static bool IsDevicePresent(ProductDefinition product)
+    {
+        if (!product.UsbVendorId.HasValue || !product.UsbProductId.HasValue)
+            return false;
+
+        string vid = $"VID_{product.UsbVendorId.Value:X4}";
+        string pid = $"PID_{product.UsbProductId.Value:X4}";
+
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT PNPDeviceID FROM Win32_PnPEntity WHERE PNPDeviceID IS NOT NULL");
+
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                string pnp = Convert.ToString(obj["PNPDeviceID"]) ?? "";
+                if (pnp.Contains(vid, StringComparison.OrdinalIgnoreCase) &&
+                    pnp.Contains(pid, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
+    }
+
     public Task<string?> AutoDetectAsync(
         CancellationToken cancellationToken = default) =>
         ConnectUsbAsync(cancellationToken);
@@ -54,103 +85,159 @@ public sealed class PixelProCdcLink : IDeviceLink
     public async Task<string?> ConnectUsbAsync(
         CancellationToken cancellationToken = default)
     {
-        Disconnect();
+        await _connectGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (IsConnected &&
+                FirmwareHello.StartsWith("PIXELPRO|", StringComparison.Ordinal))
+            {
+                return _connectionName;
+            }
 
-        List<PortCandidate> metadata = GetPortCandidates();
-        string[] ports = SerialPort.GetPortNames()
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            DisconnectInternal();
 
-        var ordered = metadata
-            .Where(x => x.IsPreferred)
-            .Select(x => x.PortName)
-            .Concat(metadata.Where(x => !x.IsPreferred).Select(x => x.PortName))
-            .Concat(ports)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            List<PortCandidate> metadata = GetPortCandidates();
+            string[] allPorts = SerialPort.GetPortNames()
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
-        Log(
-            "INFO",
-            $"PIXEL PRO CDC probe: {ordered.Count} candidate port(s): " +
-            string.Join(", ", ordered));
+            List<string> preferred = metadata
+                .Where(x => x.IsPreferred)
+                .Select(x => x.PortName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-        foreach (string portName in ordered)
+            // When Windows exposes the VID/PID metadata, probe only the PIXEL PRO
+            // CDC port. This prevents touching unrelated Arduino/serial devices.
+            List<string> ordered = preferred.Count > 0
+                ? preferred
+                : metadata.Select(x => x.PortName)
+                    .Concat(allPorts)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+            Log(
+                "INFO",
+                $"PIXEL PRO CDC probe: {ordered.Count} candidate port(s): " +
+                string.Join(", ", ordered));
+
+            foreach (string portName in ordered)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                SerialPort? candidate = null;
+                try
+                {
+                    candidate = new SerialPort(
+                        portName,
+                        115200,
+                        Parity.None,
+                        8,
+                        StopBits.One)
+                    {
+                        NewLine = "\n",
+                        ReadTimeout = 250,
+                        WriteTimeout = 1000,
+                        DtrEnable = true,
+                        RtsEnable = false
+                    };
+
+                    Log("INFO", $"Opening PIXEL PRO candidate {portName}");
+                    candidate.Open();
+
+                    // Give Windows usbser + the ESP32-S2 CDC task time to settle
+                    // after DTR becomes active.
+                    await Task.Delay(350, cancellationToken);
+
+                    candidate.DiscardInBuffer();
+                    candidate.DiscardOutBuffer();
+
+                    string? hello = await ProbeHelloAsync(
+                        candidate,
+                        cancellationToken);
+
+                    if (hello is null)
+                    {
+                        Log("INFO", $"{portName}: no PIXELPRO HELLO response");
+                        candidate.Close();
+                        candidate.Dispose();
+                        continue;
+                    }
+
+                    _port = candidate;
+                    candidate = null;
+                    FirmwareHello = hello;
+                    ProtocolVersion = ParseProtocolVersion(hello);
+                    _connectionName = $"USB CDC · {portName}";
+
+                    PortCandidate? info = metadata.FirstOrDefault(
+                        x => string.Equals(
+                            x.PortName,
+                            portName,
+                            StringComparison.OrdinalIgnoreCase));
+
+                    Log(
+                        "INFO",
+                        $"CONNECTED {_connectionName}; protocol={ProtocolVersion}; " +
+                        $"hello=\"{FirmwareHello}\"; pnp=\"{info?.PnpDeviceId ?? "unknown"}\"");
+
+                    StartReader();
+                    return _connectionName;
+                }
+                catch (OperationCanceledException)
+                {
+                    try { candidate?.Close(); } catch { }
+                    candidate?.Dispose();
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Log("WARN", $"{portName}: {ex.Message}");
+                    try { candidate?.Close(); } catch { }
+                    try { candidate?.Dispose(); } catch { }
+                }
+            }
+
+            Log(
+                "WARN",
+                "PIXEL PRO CDC not found. Expected PIXELPRO|1|... from the " +
+                "VID_303A/PID_80C2 CDC interface.");
+            return null;
+        }
+        finally
+        {
+            _connectGate.Release();
+        }
+    }
+
+    private async Task<string?> ProbeHelloAsync(
+        SerialPort port,
+        CancellationToken cancellationToken)
+    {
+        // Two attempts make reconnect robust if Windows opens the interface
+        // immediately after the ESP32-S2 has just reset.
+        for (int attempt = 1; attempt <= 2; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            SerialPort? candidate = null;
-            try
+            Log("INFO", $"{port.PortName} => HELLO (attempt {attempt})");
+            port.WriteLine("HELLO");
+
+            string? hello = await ReadHelloAsync(
+                port,
+                TimeSpan.FromMilliseconds(1800),
+                cancellationToken);
+
+            if (hello is not null)
+                return hello;
+
+            if (attempt == 1)
             {
-                candidate = new SerialPort(
-                    portName,
-                    115200,
-                    Parity.None,
-                    8,
-                    StopBits.One)
-                {
-                    NewLine = "\n",
-                    ReadTimeout = 180,
-                    WriteTimeout = 500,
-                    DtrEnable = true,
-                    RtsEnable = false
-                };
-
-                candidate.Open();
-                await Task.Delay(80, cancellationToken);
-                candidate.DiscardInBuffer();
-                candidate.DiscardOutBuffer();
-
-                Log("INFO", $"Probing {portName} with HELLO");
-                candidate.WriteLine("HELLO");
-
-                string? hello = await ReadHelloAsync(
-                    candidate,
-                    TimeSpan.FromMilliseconds(1200),
-                    cancellationToken);
-
-                if (hello is null)
-                {
-                    Log("INFO", $"{portName}: no PIXELPRO response");
-                    candidate.Dispose();
-                    continue;
-                }
-
-                _port = candidate;
-                candidate = null;
-                FirmwareHello = hello;
-                ProtocolVersion = ParseProtocolVersion(hello);
-                _connectionName = $"USB CDC · {portName}";
-
-                PortCandidate? info = metadata.FirstOrDefault(
-                    x => string.Equals(
-                        x.PortName,
-                        portName,
-                        StringComparison.OrdinalIgnoreCase));
-
-                Log(
-                    "INFO",
-                    $"Connected {_connectionName}; protocol={ProtocolVersion}; " +
-                    $"hello=\"{FirmwareHello}\"; pnp=\"{info?.PnpDeviceId ?? "unknown"}\"");
-
-                StartReader();
-                return _connectionName;
-            }
-            catch (OperationCanceledException)
-            {
-                candidate?.Dispose();
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Log("WARN", $"{portName}: {ex.Message}");
-                try { candidate?.Dispose(); } catch { }
+                await Task.Delay(250, cancellationToken);
+                try { port.DiscardInBuffer(); } catch { }
             }
         }
 
-        Log(
-            "WARN",
-            "PIXEL PRO CDC not found. Expected a port that replies " +
-            "PIXELPRO|1|... to HELLO.");
         return null;
     }
 
@@ -164,6 +251,7 @@ public sealed class PixelProCdcLink : IDeviceLink
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 string line = port.ReadLine().Trim('\0', '\r', '\n', ' ');
@@ -196,6 +284,9 @@ public sealed class PixelProCdcLink : IDeviceLink
         if (port is null)
             return;
 
+        _readCts?.Cancel();
+        _readCts?.Dispose();
+
         _readCts = new CancellationTokenSource();
         CancellationToken token = _readCts.Token;
         _readTask = Task.Run(() => ReadLoop(port, token), token);
@@ -212,11 +303,10 @@ public sealed class PixelProCdcLink : IDeviceLink
                     continue;
 
                 string category =
-                    line.StartsWith("KEY|", StringComparison.Ordinal)
+                    line.StartsWith("KEY|", StringComparison.Ordinal) ||
+                    line.StartsWith("KEYS|", StringComparison.Ordinal)
                         ? "KEY"
-                        : line.StartsWith("KEYS|", StringComparison.Ordinal)
-                            ? "KEY"
-                            : "CDC";
+                        : "CDC";
 
                 Log(category, line);
             }
@@ -230,6 +320,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                     Log("ERROR", $"PIXEL PRO CDC disconnected: {ex.Message}");
                     LinkError?.Invoke(ex.Message);
                 }
+
                 return;
             }
             catch (InvalidOperationException)
@@ -271,11 +362,14 @@ public sealed class PixelProCdcLink : IDeviceLink
                     continue;
 
                 bool preferred =
-                    pnp.Contains("VID_303A", StringComparison.OrdinalIgnoreCase) &&
-                    (!_product.UsbProductId.HasValue ||
-                     pnp.Contains(
-                         $"PID_{_product.UsbProductId.Value:X4}",
-                         StringComparison.OrdinalIgnoreCase));
+                    _product.UsbVendorId.HasValue &&
+                    _product.UsbProductId.HasValue &&
+                    pnp.Contains(
+                        $"VID_{_product.UsbVendorId.Value:X4}",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    pnp.Contains(
+                        $"PID_{_product.UsbProductId.Value:X4}",
+                        StringComparison.OrdinalIgnoreCase);
 
                 result.Add(new PortCandidate(
                     match.Groups[1].Value,
@@ -320,6 +414,11 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     public void Disconnect()
     {
+        DisconnectInternal();
+    }
+
+    private void DisconnectInternal()
+    {
         _readCts?.Cancel();
         _readCts?.Dispose();
         _readCts = null;
@@ -333,7 +432,9 @@ public sealed class PixelProCdcLink : IDeviceLink
                 port.Close();
             port?.Dispose();
         }
-        catch { }
+        catch
+        {
+        }
 
         _readTask = null;
         _connectionName = "";
@@ -413,5 +514,9 @@ public sealed class PixelProCdcLink : IDeviceLink
     public Task<bool> ClearPcMonitorAsync() =>
         Task.FromResult(false);
 
-    public void Dispose() => Disconnect();
+    public void Dispose()
+    {
+        DisconnectInternal();
+        _connectGate.Dispose();
+    }
 }
