@@ -1131,6 +1131,8 @@ public partial class MainWindow : Window
         ["Clear log"] = "Xóa log",
         ["SYSTEM"] = "HỆ THỐNG",
         ["Flash usage"] = "Sử dụng Flash",
+        ["SRAM usage"] = "Sử dụng SRAM",
+        ["PSRAM usage"] = "Sử dụng PSRAM",
         ["RAM usage"] = "Sử dụng RAM",
         ["Sleep keyboard"] = "Ngủ bàn phím",
         ["Wake keyboard"] = "Đánh thức bàn phím",
@@ -2385,24 +2387,66 @@ public partial class MainWindow : Window
 
     private async Task UpdateMemoryUsageAsync()
     {
-        if (!_serial.IsConnected)
+        void ResetMemoryText()
         {
             FlashUsageText.Text = "FLASH --";
-            RamUsageText.Text = "RAM --";
+            SramUsageText.Text = "SRAM --";
+            PsramUsageText.Text = "PSRAM --";
+        }
+
+        if (!_serial.IsConnected)
+        {
+            ResetMemoryText();
             return;
         }
 
-        var usage = await _serial.ReadMemoryUsageAsync();
+        DeviceMemoryUsage? usage =
+            await _serial.ReadMemoryUsageAsync();
+
         if (usage is null)
+        {
+            ResetMemoryText();
             return;
+        }
 
-        double flashPct =
-            usage.Value.FlashUsed * 100.0 / usage.Value.FlashTotal;
-        double ramPct =
-            usage.Value.RamUsed * 100.0 / usage.Value.RamTotal;
+        static string PercentText(
+            string label,
+            long used,
+            long total,
+            bool notAvailableWhenZero = false)
+        {
+            if (total <= 0)
+                return notAvailableWhenZero
+                    ? $"{label} N/A"
+                    : $"{label} --";
 
-        FlashUsageText.Text = $"FLASH {flashPct:0.0}%";
-        RamUsageText.Text = $"RAM {ramPct:0.0}%";
+            double pct =
+                Math.Clamp(
+                    used * 100.0 / total,
+                    0.0,
+                    100.0);
+
+            return $"{label} {pct:0.0}%";
+        }
+
+        FlashUsageText.Text =
+            PercentText(
+                "FLASH",
+                usage.Value.FlashUsed,
+                usage.Value.FlashTotal);
+
+        SramUsageText.Text =
+            PercentText(
+                "SRAM",
+                usage.Value.SramUsed,
+                usage.Value.SramTotal);
+
+        PsramUsageText.Text =
+            PercentText(
+                "PSRAM",
+                usage.Value.PsramUsed,
+                usage.Value.PsramTotal,
+                notAvailableWhenZero: true);
     }
 
     private async Task UpdatePanelInfoAsync()
@@ -2445,17 +2489,22 @@ public partial class MainWindow : Window
 
     private async Task DetectAsync()
     {
+        bool pixel =
+            _activeProduct.Driver == DeviceDriverKind.PixelProCdc;
+
         ConnectUsbButton.IsEnabled = false;
         ConnectBluetoothButton.IsEnabled = false;
         AddLog("INFO", "APP", $"Connect requested ({_connectionPreference})");
         DeviceStatus.Text = L("Detecting…", "Đang tìm…");
         DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(255, 159, 10));
-        BottomStatus.Text = _connectionPreference switch
-        {
-            "usb" => L("Searching USB…", "Đang tìm USB…"),
-            "bluetooth" => L("Searching Bluetooth…", "Đang tìm Bluetooth…"),
-            _ => L("Searching USB first, then Bluetooth…", "Đang tìm USB trước, sau đó Bluetooth…")
-        };
+        BottomStatus.Text = pixel
+            ? L("Searching PIXEL PRO over USB…", "Đang tìm PIXEL PRO qua USB…")
+            : _connectionPreference switch
+            {
+                "usb" => L("Searching USB…", "Đang tìm USB…"),
+                "bluetooth" => L("Searching Bluetooth…", "Đang tìm Bluetooth…"),
+                _ => L("Searching USB first, then Bluetooth…", "Đang tìm USB trước, sau đó Bluetooth…")
+            };
 
         var connection = _connectionPreference switch
         {
@@ -2468,9 +2517,13 @@ public partial class MainWindow : Window
         {
             DeviceStatus.Text = L("Not connected", "Chưa kết nối");
             DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(99, 99, 102));
-            BottomStatus.Text =
-                L("LumiPad not found. Pair the keyboard over Bluetooth, or connect USB as fallback.",
-                  "Không tìm thấy LumiPad. Hãy ghép Bluetooth hoặc cắm USB dự phòng.");
+            BottomStatus.Text = pixel
+                ? L(
+                    "PIXEL PRO not found. Connect the USB cable.",
+                    "Không tìm thấy PIXEL PRO. Hãy cắm cáp USB.")
+                : L(
+                    "LumiPad not found. Pair the keyboard over Bluetooth, or connect USB as fallback.",
+                    "Không tìm thấy LumiPad. Hãy ghép Bluetooth hoặc cắm USB dự phòng.");
             SetDeviceControlsEnabled(false);
             UpdateTransportIndicators();
         }
@@ -2482,8 +2535,13 @@ public partial class MainWindow : Window
             BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
                 ? L("Connected wirelessly. Now Playing and RGB are live.",
                     "Đã kết nối không dây. Now Playing và RGB đang hoạt động.")
-                : L("Connected over USB fallback. Now Playing and RGB are live.",
-                    "Đã kết nối qua USB dự phòng. Now Playing và RGB đang hoạt động.");
+                : pixel
+                    ? L(
+                        "PIXEL PRO connected over USB.",
+                        "PIXEL PRO đã kết nối qua USB.")
+                    : L(
+                        "Connected over USB fallback. Now Playing and RGB are live.",
+                        "Đã kết nối qua USB dự phòng. Now Playing và RGB đang hoạt động.");
 
             _firmwareLogSeq = 0;
             AddLog("INFO", "LINK", $"Connected: {connection}; {_serial.FirmwareHello}");
@@ -2500,7 +2558,7 @@ public partial class MainWindow : Window
         }
 
         ConnectUsbButton.IsEnabled = true;
-        ConnectBluetoothButton.IsEnabled = true;
+        ConnectBluetoothButton.IsEnabled = !pixel;
         await UpdateProductOverviewAsync();
     }
 
@@ -2634,7 +2692,9 @@ public partial class MainWindow : Window
                 StringComparison.Ordinal));
         _serial.SetSleepTimeout(_sleepDelaySeconds);
         _serial.SetRgbIdleTimeout(_rgbIdleDelaySeconds);
-        _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
+
+        if (_activeProduct.Driver != DeviceDriverKind.PixelProCdc)
+            _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
     }
 
     private void ScreensaverSourceCombo_SelectionChanged(
@@ -2755,6 +2815,9 @@ public partial class MainWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (_activeProduct.Driver == DeviceDriverKind.PixelProCdc)
+            return;
+
         _deepSleepDelaySeconds =
             ComboSeconds(sender, _deepSleepDelaySeconds);
 
@@ -8178,7 +8241,7 @@ try {{
     private string CurrentConfiguratorName() =>
         _activeProduct.Driver switch
         {
-            DeviceDriverKind.RynorSerial => "Device Config",
+            DeviceDriverKind.RynorSerial => "ZMK Keymap",
             DeviceDriverKind.PixelProCdc => "Keymap",
             DeviceDriverKind.Esp32Companion => "Device Config",
             _ => "Device Config"
@@ -8187,7 +8250,7 @@ try {{
     private string CurrentConfiguratorUrl() =>
         _activeProduct.Driver switch
         {
-            DeviceDriverKind.RynorSerial => "",
+            DeviceDriverKind.RynorSerial => "https://zmk.studio/",
             _ => ""
         };
 
@@ -8210,6 +8273,17 @@ try {{
         if (PixelMacroTab is not null)
             PixelMacroTab.Visibility =
                 pixel ? Visibility.Visible : Visibility.Collapsed;
+
+        if (ConnectBluetoothButton is not null)
+            ConnectBluetoothButton.Visibility =
+                pixel ? Visibility.Collapsed : Visibility.Visible;
+
+        if (DeepSleepSettingsPanel is not null)
+            DeepSleepSettingsPanel.Visibility =
+                pixel ? Visibility.Collapsed : Visibility.Visible;
+
+        if (pixel && _connectionPreference == "bluetooth")
+            _connectionPreference = "auto";
 
         if (!pixel && DeviceConfiguratorTitle is not null)
             DeviceConfiguratorTitle.Text = CurrentConfiguratorName();
