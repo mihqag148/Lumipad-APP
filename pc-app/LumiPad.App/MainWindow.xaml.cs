@@ -6772,6 +6772,9 @@ try {{
         object sender,
         SelectionChangedEventArgs e)
     {
+        if (IsPixelProActive)
+            return;
+
         if (e.AddedItems.Count == 0 ||
             e.AddedItems[0] is not ComboBoxItem item ||
             !int.TryParse(item.Tag?.ToString(), out int index))
@@ -6792,6 +6795,32 @@ try {{
 
     private void RgbSaveProfile_Click(object sender, RoutedEventArgs e)
     {
+        if (IsPixelProActive)
+        {
+            int profile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    _pixelRgbProfiles.Length - 1);
+
+            SaveAppSettings();
+
+            if (_serial is PixelProCdcLink pixel &&
+                pixel.IsConnected)
+            {
+                pixel.SetPixelRgbProfile(
+                    profile,
+                    _pixelRgbProfiles[profile]);
+            }
+
+            BottomStatus.Text =
+                L(
+                    $"PIXEL RGB saved to keymap profile {profile + 1}.",
+                    $"Đã lưu RGB PIXEL vào profile keymap {profile + 1}.");
+
+            return;
+        }
+
         int index = Math.Clamp(_rgbProfileIndex, 0, _rgbProfiles.Length - 1);
         _rgbProfiles[index] = new RgbProfileSetting
         {
@@ -6934,17 +6963,206 @@ try {{
         if (RgbBText is not null) RgbBText.Text = _b.ToString();
     }
 
+    private void UpdatePixelRgbUi()
+    {
+        if (!IsPixelProActive ||
+            PixelRgbK1 is null)
+        {
+            return;
+        }
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbProfiles.Length - 1);
+
+        if (PixelRgbProfileText is not null)
+        {
+            string name =
+                profile <
+                    _pixelProfileCatalog.Names.Length
+                    ? _pixelProfileCatalog.Names[profile]
+                    : $"Profile {profile + 1}";
+
+            PixelRgbProfileText.Text =
+                $"Keymap Profile {profile + 1:00} · {name}";
+        }
+
+        System.Windows.Controls.Button[] buttons =
+        [
+            PixelRgbK1,
+            PixelRgbK2,
+            PixelRgbK3,
+            PixelRgbK4,
+            PixelRgbK5,
+            PixelRgbK6,
+            PixelRgbK7,
+            PixelRgbK8
+        ];
+
+        for (int key = 0; key < 8; key++)
+        {
+            PixelRgbColor color =
+                _pixelRgbProfiles[profile][key];
+
+            buttons[key].Background =
+                new SolidColorBrush(
+                    MediaColor.FromRgb(
+                        color.R,
+                        color.G,
+                        color.B));
+
+            buttons[key].Foreground =
+                new SolidColorBrush(
+                    (color.R * 299 +
+                     color.G * 587 +
+                     color.B * 114) >
+                    150000
+                        ? MediaColor.FromRgb(20, 20, 20)
+                        : MediaColor.FromRgb(245, 245, 245));
+
+            bool selected =
+                _pixelRgbSelectedKey == key;
+
+            buttons[key].BorderBrush =
+                new SolidColorBrush(
+                    selected
+                        ? MediaColor.FromRgb(255, 159, 10)
+                        : MediaColor.FromRgb(92, 92, 96));
+
+            buttons[key].BorderThickness =
+                new Thickness(
+                    selected
+                        ? 3
+                        : 1);
+        }
+
+        if (PixelRgbAllButton is not null)
+        {
+            bool allSelected =
+                _pixelRgbSelectedKey < 0;
+
+            PixelRgbAllButton.BorderBrush =
+                new SolidColorBrush(
+                    allSelected
+                        ? MediaColor.FromRgb(255, 159, 10)
+                        : MediaColor.FromRgb(92, 92, 96));
+
+            PixelRgbAllButton.BorderThickness =
+                new Thickness(
+                    allSelected
+                        ? 3
+                        : 1);
+        }
+    }
+
+    private void PixelRgbKey_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            sender is not System.Windows.Controls.Button button ||
+            !int.TryParse(
+                button.Tag?.ToString(),
+                out int key))
+        {
+            return;
+        }
+
+        _pixelRgbSelectedKey =
+            Math.Clamp(
+                key,
+                -1,
+                7);
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbProfiles.Length - 1);
+
+        PixelRgbColor selected =
+            _pixelRgbProfiles[profile][
+                _pixelRgbSelectedKey >= 0
+                    ? _pixelRgbSelectedKey
+                    : 0];
+
+        _r = selected.R;
+        _g = selected.G;
+        _b = selected.B;
+
+        UpdateRgbReadout();
+        UpdatePixelRgbUi();
+    }
+
     private void ApplySelectedRgbColor(bool send)
     {
         UpdateRgbReadout();
 
-        if (send && _uiReady)
+        if (!send ||
+            !_uiReady)
         {
-            _rgbAuto = false;
-            _rgbEffect = 3;
-            SaveAppSettings();
-            _serial.SetSolid(_r, _g, _b);
+            return;
         }
+
+        if (IsPixelProActive)
+        {
+            int profile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    _pixelRgbProfiles.Length - 1);
+
+            PixelRgbColor color =
+                new(
+                    _r,
+                    _g,
+                    _b);
+
+            if (_pixelRgbSelectedKey < 0)
+            {
+                for (int key = 0; key < 8; key++)
+                    _pixelRgbProfiles[profile][key] = color;
+
+                if (_serial is PixelProCdcLink pixel &&
+                    pixel.IsConnected)
+                {
+                    pixel.SetPixelRgbAll(
+                        profile,
+                        color);
+                }
+            }
+            else
+            {
+                int key =
+                    Math.Clamp(
+                        _pixelRgbSelectedKey,
+                        0,
+                        7);
+
+                _pixelRgbProfiles[profile][key] =
+                    color;
+
+                if (_serial is PixelProCdcLink pixel &&
+                    pixel.IsConnected)
+                {
+                    pixel.SetPixelRgbKey(
+                        profile,
+                        key,
+                        color);
+                }
+            }
+
+            SaveAppSettings();
+            UpdatePixelRgbUi();
+            return;
+        }
+
+        _rgbAuto = false;
+        _rgbEffect = 3;
+        SaveAppSettings();
+        _serial.SetSolid(_r, _g, _b);
     }
 
     private void RgbSwatch_Click(object sender, RoutedEventArgs e)
@@ -7039,12 +7257,40 @@ try {{
         if (!_serial.IsConnected)
             return;
 
-        _rgbEnabled = LedEnabled.IsChecked == true;
-        _rgbBrightness = (int)Math.Round(BrightnessSlider.Value);
-        _rgbSpeed = (int)Math.Round(RgbSpeedSlider.Value);
+        _rgbEnabled =
+            LedEnabled.IsChecked == true;
 
-        // Preserve the known-working pre-redesign protocol: individual
-        // commands are sent in a deterministic order instead of RGB|STATE.
+        _rgbBrightness =
+            (int)Math.Round(
+                BrightnessSlider.Value);
+
+        if (IsPixelProActive &&
+            _serial is PixelProCdcLink pixel)
+        {
+            int profile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    _pixelRgbProfiles.Length - 1);
+
+            pixel.SetPixelRgbProfile(
+                profile,
+                _pixelRgbProfiles[profile]);
+
+            pixel.SetEnabled(
+                _rgbEnabled);
+
+            pixel.SetBrightness(
+                _rgbBrightness);
+
+            return;
+        }
+
+        _rgbSpeed =
+            (int)Math.Round(
+                RgbSpeedSlider.Value);
+
+        // RYNOR ONE: preserve the known-working pre-redesign protocol.
         for (int i = 0; i < _rgbProfiles.Length; i++)
         {
             var profile = _rgbProfiles[i];
@@ -8043,10 +8289,33 @@ try {{
             pixel.SetProfileLayer(
                 _pixelSelectedProfile,
                 _pixelSelectedLayer);
+
+            PixelRgbColor[]? colors =
+                await pixel.GetPixelRgbProfileAsync(
+                    _pixelSelectedProfile);
+
+            if (colors is { Length: 8 })
+            {
+                _pixelRgbProfiles[_pixelSelectedProfile] =
+                    colors.ToArray();
+            }
         }
+
+        _pixelRgbSelectedKey = -1;
+
+        PixelRgbColor firstColor =
+            _pixelRgbProfiles[
+                _pixelSelectedProfile][0];
+
+        _r = firstColor.R;
+        _g = firstColor.G;
+        _b = firstColor.B;
 
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
+        UpdateRgbReadout();
+        UpdatePixelRgbUi();
+        SaveAppSettings();
 
         _pixelViaUpdating = true;
         try
