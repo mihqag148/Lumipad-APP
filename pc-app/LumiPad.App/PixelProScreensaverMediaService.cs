@@ -221,18 +221,22 @@ public static class PixelProScreensaverMediaService
                     1000.0 /
                     requestedMaxFps));
 
-        bool needsOptimization =
-            sourceEncoded.Length > TargetGifBytes ||
+        bool needsTemporalReduction =
             sourceLoopMs > maxDurationMs ||
             sourceDelaysMs.Any(
                 delay =>
                     delay <
                     requestedMinDelay);
 
+        bool overSoftTarget =
+            sourceEncoded.Length >
+            TargetGifBytes;
+
         PixelProGifOptimizationResult? optimized =
             null;
 
-        if (needsOptimization)
+        if (needsTemporalReduction ||
+            overSoftTarget)
         {
             optimized =
                 PixelProGifOptimizer.Optimize(
@@ -241,17 +245,18 @@ public static class PixelProScreensaverMediaService
                     requestedMaxFps,
                     maxDurationMs,
                     TargetGifBytes);
-
-            if (optimized.Bytes.Length >
-                TargetGifBytes)
-            {
-                throw new InvalidOperationException(
-                    "GIF still exceeds 1 MiB at 20 FPS. PIXEL PRO will not reduce resolution; shorten the GIF or simplify the animation.");
-            }
         }
 
+        // 1 MiB is a quality/transfer target, not a hard rejection limit.
+        // When duration/FPS must be constrained, keep the optimized result
+        // even if it cannot reach 1 MiB without lowering resolution. When
+        // only size triggered optimization, never replace the source with a
+        // larger re-encode.
         bool useOptimized =
-            optimized is not null;
+            optimized is not null &&
+            (needsTemporalReduction ||
+             optimized.Bytes.Length <
+                 sourceEncoded.Length);
 
         byte[] encoded =
             useOptimized
