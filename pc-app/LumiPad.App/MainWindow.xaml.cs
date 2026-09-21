@@ -272,7 +272,7 @@ public partial class MainWindow : Window
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "LumiPad-Updater/1.20.6");
+            "LumiPad-Updater/1.20.8");
         client.DefaultRequestHeaders.CacheControl =
             new System.Net.Http.Headers.CacheControlHeaderValue
             {
