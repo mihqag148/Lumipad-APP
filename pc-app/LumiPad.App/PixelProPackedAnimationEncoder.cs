@@ -957,12 +957,14 @@ internal static class PixelProPackedAnimationEncoder
 
         if (colorCount >= 64)
         {
-            return populated
-                .Take(
-                    colorCount)
-                .Select(
-                    BinToColor)
-                .ToArray();
+            return PadPalette(
+                populated
+                    .Take(
+                        colorCount)
+                    .Select(
+                        BinToColor)
+                    .ToArray(),
+                colorCount);
         }
 
         int count =
@@ -1085,26 +1087,54 @@ internal static class PixelProPackedAnimationEncoder
             }
         }
 
-        return centers
-            .Select(
-                center =>
-                    Drawing.Color.FromArgb(
-                        Math.Clamp(
-                            (int)Math.Round(
-                                center.R),
-                            0,
-                            255),
-                        Math.Clamp(
-                            (int)Math.Round(
-                                center.G),
-                            0,
-                            255),
-                        Math.Clamp(
-                            (int)Math.Round(
-                                center.B),
-                            0,
-                            255)))
-            .ToArray();
+        return PadPalette(
+            centers
+                .Select(
+                    center =>
+                        Drawing.Color.FromArgb(
+                            Math.Clamp(
+                                (int)Math.Round(
+                                    center.R),
+                                0,
+                                255),
+                            Math.Clamp(
+                                (int)Math.Round(
+                                    center.G),
+                                0,
+                                255),
+                            Math.Clamp(
+                                (int)Math.Round(
+                                    center.B),
+                                0,
+                                255)))
+                .ToArray(),
+            colorCount);
+    }
+
+    private static Drawing.Color[] PadPalette(
+        IReadOnlyList<Drawing.Color> source,
+        int requestedCount)
+    {
+        var result =
+            new Drawing.Color[
+                requestedCount];
+
+        Drawing.Color fallback =
+            source.Count > 0
+                ? source[source.Count - 1]
+                : Drawing.Color.Black;
+
+        for (int i = 0;
+             i < requestedCount;
+             i++)
+        {
+            result[i] =
+                i < source.Count
+                    ? source[i]
+                    : fallback;
+        }
+
+        return result;
     }
 
     private static void AddToHistogram(
