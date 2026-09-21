@@ -1109,8 +1109,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · GIF soft target ≈1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
-                        "ILI9486 480×320 · GIF mục tiêu mềm ≈1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
+                        "ILI9486 480×320 · PXQ hard cap <1 MiB · Delta + RLE · auto resolution/FPS/color depth · Fill/Center.",
+                        "ILI9486 480×320 · PXQ bắt buộc <1 MiB · Delta + RLE · tự chọn độ phân giải/FPS/độ sâu màu · Fill/Center.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
