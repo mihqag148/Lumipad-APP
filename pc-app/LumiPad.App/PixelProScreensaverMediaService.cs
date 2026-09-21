@@ -2,6 +2,7 @@ using System.IO;
 using System.Drawing.Imaging;
 using Drawing = System.Drawing;
 using Drawing2D = System.Drawing.Drawing2D;
+using System.Runtime.CompilerServices;
 
 namespace LumiPad.App;
 
@@ -12,6 +13,15 @@ namespace LumiPad.App;
 /// </summary>
 public static class PixelProScreensaverMediaService
 {
+    private sealed class EncodedGifHolder
+    {
+        public required byte[] Bytes { get; init; }
+    }
+
+    private static readonly ConditionalWeakTable<
+        ScreensaverAnimation,
+        EncodedGifHolder> EncodedGifs = new();
+
     public const int PanelWidth = 480;
     public const int PanelHeight = 320;
     public const int NativePanelWidth = 320;
@@ -156,18 +166,49 @@ public static class PixelProScreensaverMediaService
                 (int)Math.Round(
                     previewDurations.Average()));
 
-        return new ScreensaverAnimation(
-            Path.GetFileName(path),
-            PanelWidth,
-            PanelHeight,
-            ScreensaverPixelFormat.Rgb332,
-            averageDelayMs,
-            previewDurations,
-            previewFrames)
-        {
-            EncodedGif = encoded
-        };
+        var animation =
+            new ScreensaverAnimation(
+                Path.GetFileName(path),
+                PanelWidth,
+                PanelHeight,
+                ScreensaverPixelFormat.Rgb332,
+                averageDelayMs,
+                previewDurations,
+                previewFrames);
+
+        EncodedGifs.Add(
+            animation,
+            new EncodedGifHolder
+            {
+                Bytes = encoded
+            });
+
+        return animation;
     }
+
+    public static bool TryGetEncodedGif(
+        ScreensaverAnimation animation,
+        out byte[] bytes)
+    {
+        if (EncodedGifs.TryGetValue(
+                animation,
+                out EncodedGifHolder? holder))
+        {
+            bytes = holder.Bytes;
+            return true;
+        }
+
+        bytes = Array.Empty<byte>();
+        return false;
+    }
+
+    public static long GetEncodedGifSize(
+        ScreensaverAnimation animation) =>
+        EncodedGifs.TryGetValue(
+            animation,
+            out EncodedGifHolder? holder)
+            ? holder.Bytes.LongLength
+            : 0;
 
     private static IReadOnlyList<int> BuildPreviewIndices(
         IReadOnlyList<int> sourceDelaysMs,
