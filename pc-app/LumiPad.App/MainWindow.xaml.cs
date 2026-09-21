@@ -171,6 +171,8 @@ public partial class MainWindow : Window
     private int _pixelSelectedLayer;
     private int _pixelSelectedKey;
     private int _pixelSelectedMacroSlot = 1;
+    private int _pixelMacroDragIndex = -1;
+    private Point _pixelMacroDragStartPoint;
     private string _pixelCurrentCategory = "Basic";
     private bool _pixelViaUiBuilt;
     private bool _pixelViaUpdating;
@@ -8069,56 +8071,134 @@ try {{
             type.Equals(
                 "Action",
                 StringComparison.OrdinalIgnoreCase);
+
         bool keyStep =
             type.Equals(
                 "Key",
                 StringComparison.OrdinalIgnoreCase);
-        bool delayStep =
-            type.Equals(
-                "Delay",
-                StringComparison.OrdinalIgnoreCase);
 
         PixelMacroStepHintText.Text =
-            actionStep
-                ? "Choose a Lumi Action."
-                : keyStep
-                    ? "Click the key box and press one key. It adds ↓ / delay / key / delay / ↑."
-                    : "Enter delay in milliseconds.";
+            type switch
+            {
+                "Action" =>
+                    "Choose an existing Lumi Action.",
+                "Key" =>
+                    "Press one key. It adds ↓ / delay / key / delay / ↑ as five movable steps.",
+                "Keys" =>
+                    "Shortcut/chord, e.g. Ctrl+Shift+S.",
+                "Text" =>
+                    "Text to type.",
+                "Run" =>
+                    "App, file, folder or URL to open.",
+                "Delay" =>
+                    "Delay in milliseconds.",
+                "Media" =>
+                    "PLAY, PAUSE, NEXT, PREV, STOP, MUTE, VOLUP or VOLDOWN.",
+                "MouseWheel" =>
+                    "Wheel ticks, e.g. 1 or -1.",
+                "MouseMove" =>
+                    "Relative movement dx,dy, e.g. 20,-10.",
+                "MouseClick" =>
+                    "Mouse button click.",
+                _ =>
+                    "Enter the step value."
+            };
 
         if (PixelMacroActionCombo is not null)
+        {
             PixelMacroActionCombo.Visibility =
                 actionStep
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+        }
 
         if (PixelMacroKeyInputPanel is not null)
+        {
             PixelMacroKeyInputPanel.Visibility =
                 keyStep
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+        }
 
         if (PixelMacroStepValueTextBox is not null)
         {
             PixelMacroStepValueTextBox.Visibility =
-                delayStep
+                !actionStep && !keyStep
                     ? Visibility.Visible
                     : Visibility.Collapsed;
 
-            if (delayStep &&
-                string.IsNullOrWhiteSpace(PixelMacroStepValueTextBox.Text))
-            {
-                PixelMacroStepValueTextBox.Text = "100";
-            }
+            string defaultValue =
+                type switch
+                {
+                    "Delay" => "100",
+                    "Media" => "PLAY",
+                    "MouseWheel" => "1",
+                    "MouseMove" => "0,0",
+                    "MouseClick" when tag.Contains(':') =>
+                        tag[(tag.IndexOf(':') + 1)..],
+                    _ => ""
+                };
+
+            PixelMacroStepValueTextBox.Text = defaultValue;
         }
 
         if (PixelMacroAddStepButton is not null)
+        {
             PixelMacroAddStepButton.Visibility =
                 keyStep
                     ? Visibility.Collapsed
                     : Visibility.Visible;
+        }
 
         if (actionStep)
             RefreshPixelMacroActionCombo();
+    }
+
+    private int InsertPixelMacroSteps(
+        IEnumerable<ActionScriptStep> steps)
+    {
+        List<ActionScriptStep> incoming = steps.ToList();
+
+        if (incoming.Count == 0)
+            return -1;
+
+        int selected =
+            PixelMacroStepsList?.SelectedIndex ?? -1;
+
+        int insertAt =
+            selected >= 0
+                ? selected + 1
+                : CurrentPixelMacro.Steps.Count;
+
+        insertAt =
+            Math.Clamp(
+                insertAt,
+                0,
+                CurrentPixelMacro.Steps.Count);
+
+        foreach (ActionScriptStep step in incoming)
+        {
+            CurrentPixelMacro.Steps.Insert(
+                insertAt++,
+                step);
+        }
+
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+
+        int firstInserted =
+            insertAt - incoming.Count;
+
+        if (PixelMacroStepsList is not null)
+        {
+            PixelMacroStepsList.SelectedIndex =
+                firstInserted;
+
+            PixelMacroStepsList.ScrollIntoView(
+                CurrentPixelMacro.Steps[firstInserted]);
+        }
+
+        return firstInserted;
     }
 
     private void PixelMacroAddStep_Click(
@@ -8135,14 +8215,17 @@ try {{
         {
             PixelMacroStatusText.Text =
                 L(
-                    "Click the key box and press a key.",
+                    "Click the Key box and press a key.",
                     "Bấm ô Key rồi nhấn một phím.");
             return;
         }
 
-        string value = PixelMacroStepValueTextBox?.Text?.Trim() ?? "";
+        string value =
+            PixelMacroStepValueTextBox?.Text?.Trim() ?? "";
 
-        if (type.Equals("Action", StringComparison.OrdinalIgnoreCase))
+        if (type.Equals(
+                "Action",
+                StringComparison.OrdinalIgnoreCase))
         {
             if (PixelMacroActionCombo?.SelectedItem is not ComboBoxItem actionItem ||
                 actionItem.Tag is not int actionId)
@@ -8157,27 +8240,41 @@ try {{
             value = actionId.ToString();
         }
 
-        if (type.Equals("Delay", StringComparison.OrdinalIgnoreCase))
+        if (tag.StartsWith(
+                "MouseClick:",
+                StringComparison.OrdinalIgnoreCase))
         {
-            if (!int.TryParse(value, out int delay))
-                delay = 100;
-
-            value = Math.Clamp(delay, 0, 600_000).ToString();
+            value =
+                tag[(tag.IndexOf(':') + 1)..];
         }
 
-        CurrentPixelMacro.Steps.Add(
+        if (type.Equals(
+                "Delay",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            if (!int.TryParse(
+                    value,
+                    out int delay))
+            {
+                delay = 100;
+            }
+
+            value =
+                Math.Clamp(
+                    delay,
+                    0,
+                    600_000)
+                .ToString();
+        }
+
+        InsertPixelMacroSteps(
+        [
             new ActionScriptStep
             {
                 Type = type,
                 Value = value
-            });
-
-        PixelProMacroStore.Save(_pixelMacros);
-        RefreshPixelMacroEditor();
-
-        if (PixelMacroStepsList is not null)
-            PixelMacroStepsList.SelectedIndex =
-                CurrentPixelMacro.Steps.Count - 1;
+            }
+        ]);
     }
 
     private void PixelMacroQuickStep_Click(
@@ -8192,15 +8289,14 @@ try {{
         string type = sep >= 0 ? tag[..sep] : tag;
         string value = sep >= 0 ? tag[(sep + 1)..] : "";
 
-        CurrentPixelMacro.Steps.Add(
+        InsertPixelMacroSteps(
+        [
             new ActionScriptStep
             {
                 Type = type,
                 Value = value
-            });
-
-        PixelProMacroStore.Save(_pixelMacros);
-        RefreshPixelMacroEditor();
+            }
+        ]);
     }
 
     private void PixelMacroNameTextBox_LostFocus(
@@ -8268,43 +8364,42 @@ try {{
         if (PixelMacroDefaultDelayTextBox is not null)
             PixelMacroDefaultDelayTextBox.Text = delayMs.ToString();
 
-        CurrentPixelMacro.Steps.Add(
-            new ActionScriptStep
-            {
-                Type = "KeyDown",
-                Value = token
-            });
-        CurrentPixelMacro.Steps.Add(
-            new ActionScriptStep
-            {
-                Type = "Delay",
-                Value = delayMs.ToString()
-            });
-        CurrentPixelMacro.Steps.Add(
-            new ActionScriptStep
-            {
-                Type = "KeyLabel",
-                Value = token
-            });
-        CurrentPixelMacro.Steps.Add(
-            new ActionScriptStep
-            {
-                Type = "Delay",
-                Value = delayMs.ToString()
-            });
-        CurrentPixelMacro.Steps.Add(
-            new ActionScriptStep
-            {
-                Type = "KeyUp",
-                Value = token
-            });
+        int firstInserted =
+            InsertPixelMacroSteps(
+            [
+                new ActionScriptStep
+                {
+                    Type = "KeyDown",
+                    Value = token
+                },
+                new ActionScriptStep
+                {
+                    Type = "Delay",
+                    Value = delayMs.ToString()
+                },
+                new ActionScriptStep
+                {
+                    Type = "KeyLabel",
+                    Value = token
+                },
+                new ActionScriptStep
+                {
+                    Type = "Delay",
+                    Value = delayMs.ToString()
+                },
+                new ActionScriptStep
+                {
+                    Type = "KeyUp",
+                    Value = token
+                }
+            ]);
 
-        PixelProMacroStore.Save(_pixelMacros);
-        RefreshPixelMacroEditor();
-
-        if (PixelMacroStepsList is not null)
+        if (PixelMacroStepsList is not null &&
+            firstInserted >= 0)
+        {
             PixelMacroStepsList.SelectedIndex =
-                CurrentPixelMacro.Steps.Count - 3;
+                firstInserted + 2;
+        }
 
         if (PixelMacroKeyCaptureBox is not null)
             PixelMacroKeyCaptureBox.Text =
@@ -8371,6 +8466,202 @@ try {{
             Key.OemTilde => "TILDE",
             _ => null
         };
+    }
+
+    private void PixelMacroClearAll_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (CurrentPixelMacro.Steps.Count == 0)
+            return;
+
+        CurrentPixelMacro.Steps.Clear();
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+
+        PixelMacroStatusText.Text =
+            L(
+                "All macro steps cleared.",
+                "Đã xoá toàn bộ step của macro.");
+    }
+
+    private static T? PixelMacroFindAncestor<T>(
+        DependencyObject? source)
+        where T : DependencyObject
+    {
+        DependencyObject? current = source;
+
+        while (current is not null)
+        {
+            if (current is T match)
+                return match;
+
+            current =
+                VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private void PixelMacroStepsList_PreviewMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        _pixelMacroDragIndex = -1;
+        _pixelMacroDragStartPoint =
+            e.GetPosition(PixelMacroStepsList);
+
+        if (e.OriginalSource is not DependencyObject source)
+            return;
+
+        if (PixelMacroFindAncestor<TextBox>(source) is not null)
+            return;
+
+        ListBoxItem? item =
+            PixelMacroFindAncestor<ListBoxItem>(source);
+
+        if (item is null ||
+            PixelMacroStepsList is null)
+        {
+            return;
+        }
+
+        _pixelMacroDragIndex =
+            PixelMacroStepsList
+                .ItemContainerGenerator
+                .IndexFromContainer(item);
+    }
+
+    private void PixelMacroStepsList_PreviewMouseMove(
+        object sender,
+        MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed ||
+            _pixelMacroDragIndex < 0 ||
+            PixelMacroStepsList is null)
+        {
+            return;
+        }
+
+        Point current =
+            e.GetPosition(PixelMacroStepsList);
+
+        if (Math.Abs(
+                current.X - _pixelMacroDragStartPoint.X) <
+                SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(
+                current.Y - _pixelMacroDragStartPoint.Y) <
+                SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        int sourceIndex = _pixelMacroDragIndex;
+        _pixelMacroDragIndex = -1;
+
+        var data =
+            new DataObject(
+                "PIXEL_MACRO_STEP_INDEX",
+                sourceIndex);
+
+        DragDrop.DoDragDrop(
+            PixelMacroStepsList,
+            data,
+            DragDropEffects.Move);
+    }
+
+    private void PixelMacroStepsList_DragOver(
+        object sender,
+        DragEventArgs e)
+    {
+        e.Effects =
+            e.Data.GetDataPresent(
+                "PIXEL_MACRO_STEP_INDEX")
+                ? DragDropEffects.Move
+                : DragDropEffects.None;
+
+        e.Handled = true;
+    }
+
+    private void PixelMacroStepsList_Drop(
+        object sender,
+        DragEventArgs e)
+    {
+        if (PixelMacroStepsList is null ||
+            !e.Data.GetDataPresent(
+                "PIXEL_MACRO_STEP_INDEX"))
+        {
+            return;
+        }
+
+        object? raw =
+            e.Data.GetData(
+                "PIXEL_MACRO_STEP_INDEX");
+
+        if (raw is not int sourceIndex ||
+            sourceIndex < 0 ||
+            sourceIndex >= CurrentPixelMacro.Steps.Count)
+        {
+            return;
+        }
+
+        int targetIndex =
+            CurrentPixelMacro.Steps.Count;
+
+        if (e.OriginalSource is DependencyObject source)
+        {
+            ListBoxItem? targetItem =
+                PixelMacroFindAncestor<ListBoxItem>(
+                    source);
+
+            if (targetItem is not null)
+            {
+                targetIndex =
+                    PixelMacroStepsList
+                        .ItemContainerGenerator
+                        .IndexFromContainer(
+                            targetItem);
+
+                Point inside =
+                    e.GetPosition(targetItem);
+
+                if (inside.Y >
+                    targetItem.ActualHeight / 2.0)
+                {
+                    targetIndex++;
+                }
+            }
+        }
+
+        ActionScriptStep moved =
+            CurrentPixelMacro.Steps[sourceIndex];
+
+        CurrentPixelMacro.Steps.RemoveAt(
+            sourceIndex);
+
+        if (sourceIndex < targetIndex)
+            targetIndex--;
+
+        targetIndex =
+            Math.Clamp(
+                targetIndex,
+                0,
+                CurrentPixelMacro.Steps.Count);
+
+        CurrentPixelMacro.Steps.Insert(
+            targetIndex,
+            moved);
+
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+
+        PixelMacroStepsList.SelectedIndex =
+            targetIndex;
+
+        PixelMacroStepsList.ScrollIntoView(
+            moved);
+
+        e.Handled = true;
     }
 
     private void PixelMacroSave_Click(
