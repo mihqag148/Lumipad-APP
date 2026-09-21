@@ -811,6 +811,15 @@ public partial class MainWindow : Window
             pixel.KeyStateChanged += (index, down, layer) =>
                 Dispatcher.Invoke(() =>
                     UpdatePixelMatrixTest(index, down, layer));
+
+            pixel.MacroTriggered += (slot, key, profile, layer) =>
+                Dispatcher.BeginInvoke(
+                    new Action(async () =>
+                        await ExecutePixelMacroAsync(
+                            slot,
+                            key,
+                            profile,
+                            layer)));
         }
     }
 
