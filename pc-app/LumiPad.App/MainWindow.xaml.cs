@@ -912,9 +912,21 @@ public partial class MainWindow : Window
             _screensaverAnimation is null)
         {
             ScreensaverMediaInfo.Text =
-                L(
-                    $"Converted to a lightweight loop for {productName}.",
-                    $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
+                IsPixelProActive
+                    ? L(
+                        "ILI9486 480×320 · 3:2 · static RGB565 · GIF up to 60 FPS.",
+                        "ILI9486 480×320 · 3:2 · ảnh tĩnh RGB565 · GIF tối đa 60 FPS.")
+                    : L(
+                        $"Converted to a lightweight loop for {productName}.",
+                        $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
+        }
+
+        if (PanelInfoText is not null)
+        {
+            PanelInfoText.Text =
+                IsPixelProActive
+                    ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
+                    : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
         }
 
         if (LumiActionDescriptionText is not null)
