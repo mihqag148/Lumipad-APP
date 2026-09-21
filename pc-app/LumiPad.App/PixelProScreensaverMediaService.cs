@@ -447,38 +447,34 @@ public static class PixelProScreensaverMediaService
 
             case ScreensaverScaleMode.Center:
             {
+                // PIXEL PRO "Center" means original size when possible:
+                // never upscale small media; only shrink if it is larger
+                // than the 480x320 panel, while preserving aspect ratio.
+                double scale =
+                    Math.Min(
+                        1.0,
+                        Math.Min(
+                            width / (double)source.Width,
+                            height / (double)source.Height));
+
                 int drawW =
-                    Math.Min(source.Width, width);
+                    Math.Max(
+                        1,
+                        (int)Math.Round(
+                            source.Width * scale));
 
                 int drawH =
-                    Math.Min(source.Height, height);
-
-                int sx =
                     Math.Max(
-                        0,
-                        (source.Width - drawW) / 2);
-
-                int sy =
-                    Math.Max(
-                        0,
-                        (source.Height - drawH) / 2);
-
-                int dx = (width - drawW) / 2;
-                int dy = (height - drawH) / 2;
+                        1,
+                        (int)Math.Round(
+                            source.Height * scale));
 
                 g.DrawImage(
                     source,
-                    new Drawing.Rectangle(
-                        dx,
-                        dy,
-                        drawW,
-                        drawH),
-                    new Drawing.Rectangle(
-                        sx,
-                        sy,
-                        drawW,
-                        drawH),
-                    Drawing.GraphicsUnit.Pixel);
+                    (width - drawW) / 2,
+                    (height - drawH) / 2,
+                    drawW,
+                    drawH);
                 break;
             }
 
