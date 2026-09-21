@@ -176,6 +176,7 @@ public partial class MainWindow : Window
     private int _pixelGifMaxFps = PixelProScreensaverMediaService.DefaultGifMaxFps;
     private int _pixelGifMaxDurationSeconds = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
     private int _pixelImageJpegQuality = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+    private ScreensaverScaleMode _pixelMediaScaleMode = ScreensaverScaleMode.Fill;
     private int _pixelRgbSelectedKey = -1; // -1 = all 8 keys
     private PixelRgbColor[][] _pixelRgbProfiles = CreateDefaultPixelRgbProfiles();
     private int[] _pixelRgbEffects = Enumerable.Repeat(3, 20).ToArray();
@@ -1108,8 +1109,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · GIF soft target ≈1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
-                        "ILI9486 480×320 · GIF mục tiêu mềm ≈1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
+                        "ILI9486 480×320 · PXQ hard cap <1 MiB · Delta + RLE · auto resolution/FPS/color depth · Fill/Center.",
+                        "ILI9486 480×320 · PXQ bắt buộc <1 MiB · Delta + RLE · tự chọn độ phân giải/FPS/độ sâu màu · Fill/Center.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -1158,38 +1159,33 @@ public partial class MainWindow : Window
 
         if (ScreensaverPreviewBorder is not null)
         {
-            ScreensaverPreviewBorder.Width = 360;
+            ScreensaverPreviewBorder.Width =
+                pixel ? 480 : 360;
+
             ScreensaverPreviewBorder.Height =
-                pixel ? 240 : 193.5;
+                pixel ? 320 : 193.5;
         }
 
         if (ScreensaverPreviewSurface is not null)
         {
-            // The preview viewport is 360×240 for PIXEL PRO. Do not make the
-            // child surface 480×320 inside it or WPF clips the source and
-            // makes the preview look 1.33× zoomed.
             ScreensaverPreviewSurface.Width =
                 pixel
-                    ? 360
+                    ? PixelProScreensaverMediaService.PanelWidth
                     : ScreensaverMediaService.StaticWidth;
 
             ScreensaverPreviewSurface.Height =
                 pixel
-                    ? 240
+                    ? PixelProScreensaverMediaService.PanelHeight
                     : ScreensaverMediaService.StaticHeight;
         }
 
         if (ScreensaverPreviewImage is not null)
         {
             ScreensaverPreviewImage.Stretch =
-                pixel
-                    ? System.Windows.Media.Stretch.Uniform
-                    : System.Windows.Media.Stretch.Fill;
+                System.Windows.Media.Stretch.Fill;
 
             ScreensaverPreviewImage.StretchDirection =
-                pixel
-                    ? System.Windows.Controls.StretchDirection.DownOnly
-                    : System.Windows.Controls.StretchDirection.Both;
+                System.Windows.Controls.StretchDirection.Both;
         }
 
         if (ScreensaverPreviewHint is not null &&
@@ -1219,8 +1215,8 @@ public partial class MainWindow : Window
                     ? PixelProScreensaverMediaService.MinFrameIntervalMs
                     : ScreensaverMediaService.MinFrameIntervalMs);
 
-        // Do not touch _screensaverScaleMode here: it belongs to RYNOR ONE.
-        // PIXEL PRO has its own fixed Center/no-upscale media rule.
+        // RYNOR keeps _screensaverScaleMode. PIXEL PRO uses its separate
+        // Fill/Center selector and always previews a logical 480×320 canvas.
     }
 
     private void UpdateRgbProductUi()
@@ -1263,6 +1259,12 @@ public partial class MainWindow : Window
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
+        if (PixelRgbSaveProfileCombo is not null)
+            PixelRgbSaveProfileCombo.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
         if (PixelRgbSaveHint is not null)
             PixelRgbSaveHint.Visibility =
                 pixel
@@ -1278,7 +1280,7 @@ public partial class MainWindow : Window
         if (RgbSaveProfileButton is not null)
             RgbSaveProfileButton.Content =
                 pixel
-                    ? L("Save RGB + mode to keymap profile", "Lưu RGB + chế độ vào profile keymap")
+                    ? L("Save / copy RGB to selected profile", "Lưu / copy RGB vào profile đã chọn")
                     : L("Save to profile", "Lưu vào profile");
 
         if (RgbSpeedSlider is not null)
@@ -1829,6 +1831,7 @@ public partial class MainWindow : Window
         public int PixelGifMaxFps { get; set; } = PixelProScreensaverMediaService.DefaultGifMaxFps;
         public int PixelGifMaxDurationSeconds { get; set; } = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
         public int PixelImageJpegQuality { get; set; } = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+        public ScreensaverScaleMode PixelMediaScaleMode { get; set; } = ScreensaverScaleMode.Fill;
         public PixelRgbColor[][]? PixelRgbProfiles { get; set; }
         public int[]? PixelRgbEffects { get; set; }
         public int PixelRgbSpeed { get; set; } = 50;
@@ -1898,6 +1901,12 @@ public partial class MainWindow : Window
                     90,
                     100);
 
+            _pixelMediaScaleMode =
+                settings.PixelMediaScaleMode ==
+                    ScreensaverScaleMode.Center
+                    ? ScreensaverScaleMode.Center
+                    : ScreensaverScaleMode.Fill;
+
             if (settings.PixelRgbProfiles is { Length: >= 20 } savedPixelRgb &&
                 savedPixelRgb.Take(20).All(profile => profile is { Length: >= 8 }))
             {
@@ -1917,7 +1926,7 @@ public partial class MainWindow : Window
                     savedEffects
                         .Take(20)
                         .Select(effect =>
-                            effect is >= 0 and <= 3
+                            effect is >= 0 and <= 9
                                 ? effect
                                 : 3)
                         .ToArray();
@@ -1997,6 +2006,7 @@ public partial class MainWindow : Window
                 PixelGifMaxFps = _pixelGifMaxFps,
                 PixelGifMaxDurationSeconds = _pixelGifMaxDurationSeconds,
                 PixelImageJpegQuality = _pixelImageJpegQuality,
+                PixelMediaScaleMode = _pixelMediaScaleMode,
                 PixelRgbProfiles = _pixelRgbProfiles
                     .Select(profile => profile.ToArray())
                     .ToArray(),
@@ -2047,6 +2057,8 @@ public partial class MainWindow : Window
             SelectComboTag(PixelGifFpsCombo, _pixelGifMaxFps.ToString());
         if (PixelGifDurationCombo is not null)
             SelectComboTag(PixelGifDurationCombo, _pixelGifMaxDurationSeconds.ToString());
+        if (PixelMediaScaleCombo is not null)
+            SelectComboTag(PixelMediaScaleCombo, _pixelMediaScaleMode.ToString());
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, _screensaverSource);
 
@@ -6865,11 +6877,31 @@ try {{
     {
         if (IsPixelProActive)
         {
-            int profile =
+            int sourceProfile =
                 Math.Clamp(
                     _pixelSelectedProfile,
                     0,
                     _pixelRgbProfiles.Length - 1);
+
+            int targetProfile =
+                sourceProfile;
+
+            if (PixelRgbSaveProfileCombo?.SelectedItem is ComboBoxItem targetItem &&
+                targetItem.Tag is int selectedTarget)
+            {
+                targetProfile =
+                    Math.Clamp(
+                        selectedTarget,
+                        0,
+                        _pixelProfileCatalog.Count - 1);
+            }
+
+            _pixelRgbProfiles[targetProfile] =
+                _pixelRgbProfiles[sourceProfile]
+                    .ToArray();
+
+            _pixelRgbEffects[targetProfile] =
+                _pixelRgbEffects[sourceProfile];
 
             SaveAppSettings();
 
@@ -6877,21 +6909,27 @@ try {{
                 pixel.IsConnected)
             {
                 pixel.SetPixelRgbProfile(
-                    profile,
-                    _pixelRgbProfiles[profile]);
+                    targetProfile,
+                    _pixelRgbProfiles[targetProfile]);
 
                 pixel.SetPixelRgbEffect(
-                    profile,
-                    _pixelRgbEffects[profile]);
+                    targetProfile,
+                    _pixelRgbEffects[targetProfile]);
 
                 pixel.SetPixelRgbSpeed(
                     _pixelRgbSpeed);
             }
 
+            string targetName =
+                targetProfile <
+                    _pixelProfileCatalog.Names.Length
+                    ? _pixelProfileCatalog.Names[targetProfile]
+                    : $"Profile {targetProfile + 1}";
+
             BottomStatus.Text =
                 L(
-                    $"PIXEL RGB saved to keymap profile {profile + 1}.",
-                    $"Đã lưu RGB PIXEL vào profile keymap {profile + 1}.");
+                    $"PIXEL RGB copied to Profile {targetProfile + 1:00} · {targetName}.",
+                    $"Đã copy RGB PIXEL vào Profile {targetProfile + 1:00} · {targetName}.");
 
             return;
         }
@@ -7402,7 +7440,10 @@ try {{
             Math.Clamp(
                 effect,
                 0,
-                2);
+                9);
+
+        if (effect == 3)
+            effect = 0;
 
         int profile =
             Math.Clamp(
@@ -7623,7 +7664,7 @@ try {{
     private ScreensaverScaleMode SelectedScreensaverScaleMode()
     {
         if (IsPixelProActive)
-            return ScreensaverScaleMode.Center;
+            return _pixelMediaScaleMode;
 
         if (ScreensaverScaleCombo.SelectedItem is ComboBoxItem item &&
             Enum.TryParse<ScreensaverScaleMode>(
@@ -7684,13 +7725,21 @@ try {{
                     : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
         }
 
+        if (PixelMediaScaleCombo?.SelectedValue is string scaleText &&
+            Enum.TryParse<ScreensaverScaleMode>(
+                scaleText,
+                true,
+                out ScreensaverScaleMode parsedScale))
+        {
+            _pixelMediaScaleMode =
+                parsedScale == ScreensaverScaleMode.Center
+                    ? ScreensaverScaleMode.Center
+                    : ScreensaverScaleMode.Fill;
+        }
+
         SaveAppSettings();
 
-        if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
-            string.Equals(
-                IO.Path.GetExtension(_screensaverMediaPath),
-                ".gif",
-                StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(_screensaverMediaPath))
         {
             await PrepareScreensaverMediaAsync();
         }
@@ -7715,7 +7764,7 @@ try {{
                 pixel
                     ? await PixelProScreensaverMediaService.LoadAsync(
                         _screensaverMediaPath,
-                        ScreensaverScaleMode.Center,
+                        _pixelMediaScaleMode,
                         _pixelGifMaxFps,
                         _pixelGifMaxDurationSeconds,
                         _pixelImageJpegQuality)
@@ -7742,8 +7791,8 @@ try {{
 
                     ScreensaverMediaInfo.Text =
                         L(
-                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · no upscale · centered",
-                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · không phóng lớn · căn giữa");
+                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · output {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}",
+                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · output {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}");
                 }
                 else
                 {
@@ -7762,9 +7811,9 @@ try {{
             }
             else
             {
-                var pixelGifInfo =
+                var pixelPackedInfo =
                     pixel
-                        ? PixelProScreensaverMediaService.GetEncodedGifInfo(
+                        ? PixelProScreensaverMediaService.GetPackedAnimationInfo(
                             _screensaverAnimation)
                         : default;
 
@@ -7772,40 +7821,22 @@ try {{
                 if (pixel)
                 {
                     double storedKb =
-                        pixelGifInfo.StoredBytes / 1024.0;
+                        pixelPackedInfo.StoredBytes / 1024.0;
+
                     double sourceKb =
-                        pixelGifInfo.SourceBytes / 1024.0;
-                    double savedPercent =
-                        pixelGifInfo.SourceBytes > 0
-                            ? Math.Max(
-                                0,
-                                (1.0 -
-                                 pixelGifInfo.StoredBytes /
-                                 (double)pixelGifInfo.SourceBytes) *
-                                100.0)
-                            : 0;
+                        pixelPackedInfo.SourceBytes / 1024.0;
 
-                    bool overTarget =
-                        pixelGifInfo.StoredBytes >
-                        PixelProScreensaverMediaService.TargetGifBytes;
-
-                    string targetState =
-                        overTarget
+                    string emergency =
+                        pixelPackedInfo.EmergencyFps
                             ? L(
-                                " · above 1 MiB soft target; flash space checked on upload",
-                                " · vượt mục tiêu mềm 1 MiB; sẽ kiểm tra flash khi tải")
-                            : L(
-                                " · within 1 MiB soft target",
-                                " · trong mục tiêu mềm 1 MiB");
+                                " · emergency FPS used to keep the hard 1 MiB cap",
+                                " · đã hạ FPS khẩn cấp để giữ cứng dưới 1 MiB")
+                            : "";
 
                     pixelGifSummary =
-                        pixelGifInfo.Optimized
-                            ? L(
-                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color palette · no upscale · saved {savedPercent:0.#}%{targetState}",
-                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette 256 màu · không phóng lớn · giảm {savedPercent:0.#}%{targetState}")
-                            : L(
-                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale{targetState}",
-                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn{targetState}");
+                        L(
+                            $"PIXEL PXQ · {storedKb:0.#} KB (<1 MiB hard cap) from {sourceKb:0.#} KB · logical 480×320 · stored {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}",
+                            $"PIXEL PXQ · {storedKb:0.#} KB (<1 MiB bắt buộc) từ {sourceKb:0.#} KB · logical 480×320 · lưu {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -7838,8 +7869,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL PRO media is stored compressed: GIF stays GIF; images are JPEG quality 100. Display refresh remains 60 Hz.",
-                        "Đã sẵn sàng. Media PIXEL PRO được lưu dạng nén: GIF giữ GIF; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
+                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE under 1 MiB; images use JPEG quality 100. Display refresh remains 60 Hz.",
+                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE dưới 1 MiB; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
@@ -8374,6 +8405,9 @@ try {{
             PixelProfileCombo.SelectedIndex =
                 _pixelSelectedProfile;
 
+            RefreshPixelRgbSaveProfileCombo(
+                _pixelSelectedProfile);
+
             if (PixelProfileRenameTextBox is not null)
             {
                 PixelProfileRenameTextBox.Visibility =
@@ -8388,6 +8422,40 @@ try {{
         {
             _pixelViaUpdating = false;
         }
+    }
+
+    private void RefreshPixelRgbSaveProfileCombo(
+        int selectedProfile)
+    {
+        if (PixelRgbSaveProfileCombo is null)
+            return;
+
+        int selected =
+            Math.Clamp(
+                selectedProfile,
+                0,
+                Math.Max(
+                    0,
+                    _pixelProfileCatalog.Count - 1));
+
+        PixelRgbSaveProfileCombo.Items.Clear();
+
+        for (int profile = 0;
+             profile < _pixelProfileCatalog.Count;
+             profile++)
+        {
+            PixelRgbSaveProfileCombo.Items.Add(
+                new ComboBoxItem
+                {
+                    Content =
+                        $"{profile + 1:00} · {_pixelProfileCatalog.Names[profile]}",
+                    Tag =
+                        profile
+                });
+        }
+
+        PixelRgbSaveProfileCombo.SelectedIndex =
+            selected;
     }
 
     private void SetPixelProfileDefaults(
@@ -8899,6 +8967,14 @@ try {{
         }
 
         _pixelRgbSelectedKey = -1;
+
+        if (PixelRgbSaveProfileCombo is not null &&
+            _pixelSelectedProfile <
+                PixelRgbSaveProfileCombo.Items.Count)
+        {
+            PixelRgbSaveProfileCombo.SelectedIndex =
+                _pixelSelectedProfile;
+        }
 
         PixelRgbColor firstColor =
             _pixelRgbProfiles[
