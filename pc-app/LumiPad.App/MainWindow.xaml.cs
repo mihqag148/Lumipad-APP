@@ -914,8 +914,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · 3:2 · static RGB565 · GIF up to 60 FPS.",
-                        "ILI9486 480×320 · 3:2 · ảnh tĩnh RGB565 · GIF tối đa 60 FPS.")
+                        "ILI9486 480×320 · direct full-resolution GIF decode · up to 60 FPS.",
+                        "ILI9486 480×320 · giải mã GIF full độ phân giải trực tiếp · tối đa 60 FPS.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -6373,8 +6373,8 @@ try {{
                 ScreensaverMediaInfo.Text =
                     pixel
                         ? L(
-                            $"{_screensaverAnimation.Frames.Count} stored GIF frames · 240×160 -> 480×320 integer 2× · ILI9486 · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
-                            $"{_screensaverAnimation.Frames.Count} khung GIF lưu · 240×160 -> 480×320 phóng nguyên 2× · ILI9486 · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}")
+                            $"Original GIF · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} preview · {(_screensaverAnimation.EncodedGif?.Length ?? 0) / 1024.0:0.#} KB compressed · no 2× scaling · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS",
+                            $"GIF gốc · xem trước {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · {(_screensaverAnimation.EncodedGif?.Length ?? 0) / 1024.0:0.#} KB đã nén · không phóng 2× · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS")
                         : L(
                             $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
                             $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
@@ -6402,8 +6402,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. Send over USB to store the PIXEL PRO loop in PSRAM.",
-                        "Đã sẵn sàng. Gửi qua USB để lưu vòng lặp PIXEL PRO vào PSRAM.")
+                        "Ready. The original GIF will be copied to PIXEL PRO and decoded on-device.",
+                        "Đã sẵn sàng. GIF gốc sẽ được chép vào PIXEL PRO và giải mã trực tiếp trên thiết bị.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
@@ -6565,8 +6565,8 @@ try {{
         ScreensaverMediaInfo.Text =
             IsPixelProActive
                 ? L(
-                    "PIXEL PRO media uses the ILI9486 480×320 3:2 canvas.",
-                    "Media PIXEL PRO dùng khung ILI9486 480×320 tỉ lệ 3:2.")
+                    "PIXEL PRO uses full-resolution 480×320 / native 320×480 GIF files with no 2× upscaling.",
+                    "PIXEL PRO dùng GIF full độ phân giải 480×320 / native 320×480, không phóng 2×.")
                 : L(
                     "Converted to a lightweight loop for LumiPad.",
                     "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
@@ -6606,8 +6606,8 @@ try {{
                 ScreensaverSendStatus.Text =
                     IsPixelProActive
                         ? L(
-                            "Screensaver is already loaded in PIXEL PRO PSRAM.",
-                            "Bảo vệ màn hình đã có sẵn trong PSRAM của PIXEL PRO.")
+                            "The original GIF is already stored on PIXEL PRO.",
+                            "GIF gốc đã được lưu sẵn trên PIXEL PRO.")
                         : L(
                             "Screensaver is already stored in keyboard flash.",
                             "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
@@ -6660,8 +6660,8 @@ try {{
                 ScreensaverSendStatus.Text =
                     IsPixelProActive
                         ? L(
-                            "PIXEL PRO screensaver restored to PSRAM after reconnect.",
-                            "Đã khôi phục bảo vệ màn hình PIXEL PRO vào PSRAM sau khi kết nối lại.")
+                            "PIXEL PRO screensaver restored after reconnect.",
+                            "Đã khôi phục bảo vệ màn hình PIXEL PRO sau khi kết nối lại.")
                         : L(
                             "Custom screensaver restored because keyboard flash was empty.",
                             "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
