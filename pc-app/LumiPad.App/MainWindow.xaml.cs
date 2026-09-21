@@ -1186,10 +1186,10 @@ public partial class MainWindow : Window
             ScreensaverScaleCombo is not null &&
             SelectedScreensaverScaleMode() == ScreensaverScaleMode.Fill)
         {
-            _screensaverScaleMode = ScreensaverScaleMode.Fit;
+            _screensaverScaleMode = ScreensaverScaleMode.Center;
             SelectComboTag(
                 ScreensaverScaleCombo,
-                ScreensaverScaleMode.Fit.ToString());
+                ScreensaverScaleMode.Center.ToString());
         }
     }
 
@@ -6830,10 +6830,10 @@ try {{
         if (IsPixelProActive &&
             ScreensaverScaleCombo is not null)
         {
-            _screensaverScaleMode = ScreensaverScaleMode.Fit;
+            _screensaverScaleMode = ScreensaverScaleMode.Center;
             SelectComboTag(
                 ScreensaverScaleCombo,
-                ScreensaverScaleMode.Fit.ToString());
+                ScreensaverScaleMode.Center.ToString());
         }
 
         _screensaverSource = "Media";
