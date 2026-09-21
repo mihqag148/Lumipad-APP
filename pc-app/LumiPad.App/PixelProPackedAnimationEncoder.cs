@@ -499,6 +499,10 @@ internal static class PixelProPackedAnimationEncoder
     {
         int spans = 0;
 
+        // Keep at most one delta span per source row. A noisy frame can
+        // otherwise create tens of thousands of tiny spans; merging from the
+        // first changed pixel to the last changed pixel keeps the frame header
+        // bounded while RLE still compresses repeated pixels inside the span.
         for (int y = 0;
              y < height;
              y++)
@@ -507,55 +511,56 @@ internal static class PixelProPackedAnimationEncoder
                 y *
                 width;
 
-            int x = 0;
+            int firstChanged =
+                -1;
 
-            while (x < width)
+            int lastChanged =
+                -1;
+
+            for (int x = 0;
+                 x < width;
+                 x++)
             {
-                while (x < width &&
-                       current[row + x] ==
-                       previous[row + x])
+                if (current[row + x] ==
+                    previous[row + x])
                 {
-                    x++;
+                    continue;
                 }
 
-                if (x >= width)
-                    break;
+                if (firstChanged < 0)
+                    firstChanged = x;
 
-                int start =
-                    x;
-
-                while (x < width &&
-                       current[row + x] !=
-                       previous[row + x])
-                {
-                    x++;
-                }
-
-                int count =
-                    x -
-                    start;
-
-                WriteU16(
-                    output,
-                    y);
-
-                WriteU16(
-                    output,
-                    start);
-
-                WriteU16(
-                    output,
-                    count);
-
-                EncodeRunRle(
-                    output,
-                    current,
-                    row + start,
-                    count,
-                    mode);
-
-                spans++;
+                lastChanged = x;
             }
+
+            if (firstChanged < 0)
+                continue;
+
+            int count =
+                lastChanged -
+                firstChanged +
+                1;
+
+            WriteU16(
+                output,
+                y);
+
+            WriteU16(
+                output,
+                firstChanged);
+
+            WriteU16(
+                output,
+                count);
+
+            EncodeRunRle(
+                output,
+                current,
+                row + firstChanged,
+                count,
+                mode);
+
+            spans++;
         }
 
         return spans;
