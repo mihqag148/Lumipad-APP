@@ -1091,6 +1091,7 @@ public partial class MainWindow : Window
     {
         string productName = _activeProduct.Name;
         UpdateScreensaverProductUi();
+        UpdateRgbProductUi();
 
         if (WorkspaceProductTitle is not null)
             WorkspaceProductTitle.Text = productName;
@@ -1105,8 +1106,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · direct GIF decode · auto Fit / Fill / Stretch · up to 60 FPS.",
-                        "ILI9486 480×320 · giải mã GIF trực tiếp · tự Fit / Fill / Stretch · tối đa 60 FPS.")
+                        "ILI9486 480×320 · GIF target ≤1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
+                        "ILI9486 480×320 · GIF mục tiêu ≤1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -1178,9 +1179,21 @@ public partial class MainWindow : Window
         {
             ScreensaverPreviewHint.Text =
                 pixel
-                    ? "480 × 320 · ILI9486 · Choose a GIF or image"
+                    ? "480 × 320 · ILI9486 · GIF / Image"
                     : "320 × 172 · Choose a GIF or image";
         }
+
+        if (PixelMediaSettingsPanel is not null)
+            PixelMediaSettingsPanel.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (ScreensaverScalePanel is not null)
+            ScreensaverScalePanel.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
 
         _screensaverPreviewTimer.Interval =
             TimeSpan.FromMilliseconds(
@@ -1188,22 +1201,81 @@ public partial class MainWindow : Window
                     ? PixelProScreensaverMediaService.MinFrameIntervalMs
                     : ScreensaverMediaService.MinFrameIntervalMs);
 
-        // PIXEL PRO should open media without crop/zoom by default.
-        // RYNOR keeps its existing saved/default scale behavior.
-        if (pixel &&
-            _screensaverAnimation is null &&
-            ScreensaverScaleCombo is not null &&
-            SelectedScreensaverScaleMode() is
-                ScreensaverScaleMode.Fill or
-                ScreensaverScaleMode.Fit)
-        {
-            // Migrate older PIXEL defaults (Fill/Fit) to true original-size
-            // Center. The user can still explicitly choose another mode later.
-            _screensaverScaleMode = ScreensaverScaleMode.Center;
-            SelectComboTag(
-                ScreensaverScaleCombo,
-                ScreensaverScaleMode.Center.ToString());
-        }
+        // Do not touch _screensaverScaleMode here: it belongs to RYNOR ONE.
+        // PIXEL PRO has its own fixed Center/no-upscale media rule.
+    }
+
+    private void UpdateRgbProductUi()
+    {
+        bool pixel = IsPixelProActive;
+
+        if (PixelRgbKeyPanel is not null)
+            PixelRgbKeyPanel.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (RynorRgbModeTitle is not null)
+            RynorRgbModeTitle.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RynorRgbModeButtons is not null)
+            RynorRgbModeButtons.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RynorRgbPresetsTitle is not null)
+            RynorRgbPresetsTitle.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RgbStaticPresets is not null)
+            RgbStaticPresets.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (RgbDynamicPresets is not null && pixel)
+            RgbDynamicPresets.Visibility =
+                Visibility.Collapsed;
+
+        if (RgbReactivePresets is not null && pixel)
+            RgbReactivePresets.Visibility =
+                Visibility.Collapsed;
+
+        if (RgbProfileCombo is not null)
+            RgbProfileCombo.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (PixelRgbSaveHint is not null)
+            PixelRgbSaveHint.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (RgbProfileTitle is not null)
+            RgbProfileTitle.Text =
+                pixel
+                    ? L("Keymap RGB", "RGB theo keymap")
+                    : "RGB Profile";
+
+        if (RgbSaveProfileButton is not null)
+            RgbSaveProfileButton.Content =
+                pixel
+                    ? L("Save 8 keys to keymap profile", "Lưu 8 phím vào profile keymap")
+                    : L("Save to profile", "Lưu vào profile");
+
+        if (RgbSpeedSlider is not null)
+            RgbSpeedSlider.IsEnabled =
+                !pixel;
+
+        UpdatePixelRgbUi();
     }
 
     private void UpdateProductHubUi()
@@ -7016,15 +7088,8 @@ try {{
 
         _screensaverMediaPath = dialog.FileName;
 
-        if (IsPixelProActive &&
-            ScreensaverScaleCombo is not null)
-        {
-            _screensaverScaleMode = ScreensaverScaleMode.Center;
-            SelectComboTag(
-                ScreensaverScaleCombo,
-                ScreensaverScaleMode.Center.ToString());
-        }
-
+        // PIXEL PRO has its own Center/no-upscale policy. Do not mutate the
+        // shared RYNOR scale preference when choosing PIXEL media.
         _screensaverSource = "Media";
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, "Media");
@@ -7039,6 +7104,9 @@ try {{
 
     private ScreensaverScaleMode SelectedScreensaverScaleMode()
     {
+        if (IsPixelProActive)
+            return ScreensaverScaleMode.Center;
+
         if (ScreensaverScaleCombo.SelectedItem is ComboBoxItem item &&
             Enum.TryParse<ScreensaverScaleMode>(
                 item.Tag?.ToString(),
@@ -7058,6 +7126,9 @@ try {{
         if (!_uiReady)
             return;
 
+        if (IsPixelProActive)
+            return;
+
         _screensaverScaleMode = SelectedScreensaverScaleMode();
         SaveAppSettings();
 
@@ -7065,6 +7136,46 @@ try {{
             return;
 
         await PrepareScreensaverMediaAsync();
+    }
+
+    private async void PixelMediaSetting_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            !IsPixelProActive)
+        {
+            return;
+        }
+
+        if (PixelGifFpsCombo?.SelectedValue is string fpsText &&
+            int.TryParse(fpsText, out int fps))
+        {
+            _pixelGifMaxFps =
+                fps is 20 or 25 or 30 or 40 or 50 or 60
+                    ? fps
+                    : PixelProScreensaverMediaService.DefaultGifMaxFps;
+        }
+
+        if (PixelGifDurationCombo?.SelectedValue is string durationText &&
+            int.TryParse(durationText, out int duration))
+        {
+            _pixelGifMaxDurationSeconds =
+                duration is 5 or 10 or 15 or 20 or 30
+                    ? duration
+                    : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+        }
+
+        SaveAppSettings();
+
+        if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+            string.Equals(
+                IO.Path.GetExtension(_screensaverMediaPath),
+                ".gif",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            await PrepareScreensaverMediaAsync();
+        }
     }
 
     private async Task PrepareScreensaverMediaAsync()
@@ -7086,7 +7197,10 @@ try {{
                 pixel
                     ? await PixelProScreensaverMediaService.LoadAsync(
                         _screensaverMediaPath,
-                        scaleMode)
+                        ScreensaverScaleMode.Center,
+                        _pixelGifMaxFps,
+                        _pixelGifMaxDurationSeconds,
+                        _pixelImageJpegQuality)
                     : await ScreensaverMediaService.LoadAsync(
                         _screensaverMediaPath,
                         scaleMode);
@@ -7102,10 +7216,25 @@ try {{
             if (_screensaverAnimation.PixelFormat ==
                 ScreensaverPixelFormat.Rgb565)
             {
-                ScreensaverMediaInfo.Text =
-                    L(
-                        $"Static image · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 high quality · {scaleMode}",
-                        $"Ảnh tĩnh · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 chất lượng cao · {scaleMode}");
+                if (pixel)
+                {
+                    var jpegInfo =
+                        PixelProScreensaverMediaService.GetEncodedJpegInfo(
+                            _screensaverAnimation);
+
+                    ScreensaverMediaInfo.Text =
+                        L(
+                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · no upscale · centered",
+                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · không phóng lớn · căn giữa");
+                }
+                else
+                {
+                    // RYNOR ONE keeps the original media description/behavior.
+                    ScreensaverMediaInfo.Text =
+                        L(
+                            $"Static image · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 high quality · {scaleMode}",
+                            $"Ảnh tĩnh · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · RGB565 chất lượng cao · {scaleMode}");
+                }
 
                 ScreensaverPreviewImage.Source =
                     CreateRgb565Bitmap(
@@ -7141,11 +7270,11 @@ try {{
                     pixelGifSummary =
                         pixelGifInfo.Optimized
                             ? L(
-                                $"Optimized GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · saved {savedPercent:0.#}% · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Frames} stored frames · {_screensaverScaleMode}",
-                                $"GIF đã tối ưu · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giảm {savedPercent:0.#}% · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Frames} frame lưu · {_screensaverScaleMode}")
+                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} source resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color adaptive palette · saved {savedPercent:0.#}%",
+                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên độ phân giải {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette thích ứng 256 màu · giảm {savedPercent:0.#}%")
                             : L(
-                                $"GIF already compact · {storedKb:0.#} KB · source retained · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {_screensaverScaleMode}",
-                                $"GIF gốc đã đủ gọn · {storedKb:0.#} KB · giữ nguyên nguồn · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {_screensaverScaleMode}");
+                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale",
+                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -7178,8 +7307,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL PRO will receive the compact GIF payload and decode it on-device; no raw frame dump is stored.",
-                        "Đã sẵn sàng. PIXEL PRO sẽ nhận GIF đã tối ưu và giải mã trực tiếp; không lưu dump frame thô.")
+                        "Ready. PIXEL PRO media is stored compressed: GIF stays GIF; images are JPEG quality 100. Display refresh remains 60 Hz.",
+                        "Đã sẵn sàng. Media PIXEL PRO được lưu dạng nén: GIF giữ GIF; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
