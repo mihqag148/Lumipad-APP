@@ -1041,10 +1041,11 @@ public sealed class PixelProCdcLink : IDeviceLink
             if (required > capacity.Value.Free)
             {
                 LastScreensaverError =
-                    $"GIF is {gifBytes.LongLength / 1048576.0:0.00} MB but PIXEL PRO media storage has only " +
-                    $"{capacity.Value.Free / 1048576.0:0.00} MB free " +
-                    $"({capacity.Value.Total / 1048576.0:0.00} MB total). " +
-                    "Use a smaller/optimized GIF or larger flash storage.";
+                    $"GIF file is {gifBytes.LongLength / 1048576.0:0.00} MB. " +
+                    $"PIXEL PRO LittleFS media partition has {capacity.Value.Free / 1048576.0:0.00} MB free " +
+                    $"of {capacity.Value.Total / 1048576.0:0.00} MB, while the physical flash chip is " +
+                    $"{capacity.Value.Flash / 1048576.0:0.00} MB. " +
+                    "GIF is already a compressed format; the original file cannot fit this media partition.";
 
                 Log("WARN", LastScreensaverError);
                 return false;
