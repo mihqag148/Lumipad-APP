@@ -831,7 +831,7 @@
                                     IsEnabled="False"
                                     Margin="0"/>
                         </Grid>
-                    </Grid>                    </Grid>
+                    </Grid>
                 </Grid>
             </TabItem>
 
