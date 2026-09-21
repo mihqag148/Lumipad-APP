@@ -198,7 +198,14 @@ public partial class MainWindow : Window
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "LumiPad-Updater/1.12");
+            "LumiPad-Updater/1.20.6");
+        client.DefaultRequestHeaders.CacheControl =
+            new System.Net.Http.Headers.CacheControlHeaderValue
+            {
+                NoCache = true,
+                NoStore = true
+            };
+        client.DefaultRequestHeaders.Pragma.ParseAdd("no-cache");
         client.Timeout = TimeSpan.FromMinutes(5);
         return client;
     }
@@ -3024,37 +3031,127 @@ public partial class MainWindow : Window
         ParseVersionLoose(latest) >
         ParseVersionLoose(current);
 
-    private static async Task<(string Tag, string Version, string ManifestUrl)>
-        ReadReleaseVersionAsync(string api, string manifestName, string versionProperty)
+    private static string VersionFromReleaseTag(string tag)
     {
-        using var response = await UpdateHttp.GetAsync(api);
+        if (string.IsNullOrWhiteSpace(tag))
+            return "";
+
+        int start =
+            tag.IndexOfAny(
+                ['0', '1', '2', '3', '4',
+                 '5', '6', '7', '8', '9']);
+
+        if (start < 0)
+            return tag.TrimStart('v', 'V');
+
+        string candidate = tag[start..];
+
+        string numeric =
+            new string(
+                candidate.TakeWhile(
+                    ch => char.IsDigit(ch) || ch == '.')
+                         .ToArray());
+
+        return string.IsNullOrWhiteSpace(numeric)
+            ? tag.TrimStart('v', 'V')
+            : numeric;
+    }
+
+    private static async Task<(string Tag, string Version, string ManifestUrl)>
+        ReadReleaseVersionAsync(
+            string api,
+            string manifestName,
+            string versionProperty)
+    {
+        string separator =
+            api.Contains('?') ? "&" : "?";
+
+        string uncachedApi =
+            $"{api}{separator}_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+
+        using var response =
+            await UpdateHttp.GetAsync(uncachedApi);
+
         response.EnsureSuccessStatusCode();
-        using JsonDocument release = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync());
-        string tag = release.RootElement.GetProperty("tag_name").GetString() ?? "";
-        string version = tag.TrimStart('v', 'V');
+
+        using JsonDocument release =
+            JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync());
+
+        string tag =
+            release.RootElement
+                .GetProperty("tag_name")
+                .GetString() ?? "";
+
+        // The GitHub release tag is authoritative. This lets old/new app
+        // releases work even when the optional manifest/CDN is unavailable.
+        string version =
+            VersionFromReleaseTag(tag);
+
         string manifestUrl = "";
-        if (release.RootElement.TryGetProperty("assets", out JsonElement assets))
+
+        if (release.RootElement.TryGetProperty(
+                "assets",
+                out JsonElement assets))
         {
             foreach (JsonElement asset in assets.EnumerateArray())
             {
-                if (!string.Equals(asset.GetProperty("name").GetString(),
-                        manifestName, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(
+                        asset.GetProperty("name").GetString(),
+                        manifestName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
                     continue;
-                manifestUrl = asset.GetProperty("browser_download_url").GetString() ?? "";
+                }
+
+                manifestUrl =
+                    asset.GetProperty(
+                        "browser_download_url").GetString() ?? "";
                 break;
             }
         }
+
+        // Manifest is optional metadata only. Never discard a valid release
+        // tag merely because GitHub's asset CDN cannot serve the manifest.
         if (!string.IsNullOrWhiteSpace(manifestUrl))
         {
-            using var manifestResponse = await UpdateHttp.GetAsync(manifestUrl);
-            manifestResponse.EnsureSuccessStatusCode();
-            using JsonDocument manifest = JsonDocument.Parse(
-                await manifestResponse.Content.ReadAsStringAsync());
-            if (manifest.RootElement.TryGetProperty(versionProperty, out JsonElement value) ||
-                manifest.RootElement.TryGetProperty("version", out value))
-                version = value.GetString() ?? version;
+            try
+            {
+                using var manifestResponse =
+                    await UpdateHttp.GetAsync(manifestUrl);
+
+                if (manifestResponse.IsSuccessStatusCode)
+                {
+                    using JsonDocument manifest =
+                        JsonDocument.Parse(
+                            await manifestResponse.Content.ReadAsStringAsync());
+
+                    JsonElement value;
+
+                    if (manifest.RootElement.TryGetProperty(
+                            versionProperty,
+                            out value) ||
+                        manifest.RootElement.TryGetProperty(
+                            "version",
+                            out value))
+                    {
+                        string manifestVersion =
+                            value.GetString() ?? "";
+
+                        if (ParseVersionLoose(manifestVersion) >
+                            new Version(0, 0, 0))
+                        {
+                            version = manifestVersion;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Tag-derived version remains valid.
+            }
         }
+
         return (tag, version, manifestUrl);
     }
 
