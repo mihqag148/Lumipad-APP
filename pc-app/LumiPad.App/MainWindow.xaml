@@ -1682,41 +1682,48 @@
                                                Text="Keymap Profile 01"
                                                Foreground="{DynamicResource Muted}"
                                                Margin="0,4,0,10"/>
-                                    <UniformGrid Columns="4"
-                                                 Rows="2"
-                                                 Width="260"
-                                                 Height="94"
-                                                 HorizontalAlignment="Left">
-                                        <Button x:Name="PixelRgbK1" Content="K1" Tag="0" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK2" Content="K2" Tag="1" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK3" Content="K3" Tag="2" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK4" Content="K4" Tag="3" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK5" Content="K5" Tag="4" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK6" Content="K6" Tag="5" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK7" Content="K7" Tag="6" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                        <Button x:Name="PixelRgbK8" Content="K8" Tag="7" Click="PixelRgbKey_Click" FontSize="11" Margin="3"/>
-                                    </UniformGrid>
+                                    <Border Background="{DynamicResource Card2}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            CornerRadius="12"
+                                            Padding="8"
+                                            Width="376"
+                                            HorizontalAlignment="Left">
+                                        <UniformGrid Columns="4"
+                                                     Rows="2"
+                                                     Width="360"
+                                                     Height="136">
+                                            <Button x:Name="PixelRgbK1" Content="K1" Tag="0" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK2" Content="K2" Tag="1" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK3" Content="K3" Tag="2" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK4" Content="K4" Tag="3" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK5" Content="K5" Tag="4" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK6" Content="K6" Tag="5" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK7" Content="K7" Tag="6" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                            <Button x:Name="PixelRgbK8" Content="K8" Tag="7" Click="PixelRgbKey_Click" FontSize="13" FontWeight="SemiBold" Margin="4"/>
+                                        </UniformGrid>
+                                    </Border>
                                     <Button x:Name="PixelRgbAllButton"
                                             Content="ALL 8 KEYS"
                                             Tag="-1"
                                             Click="PixelRgbKey_Click"
-                                            Width="254"
-                                            Height="32"
+                                            Width="376"
+                                            Height="38"
                                             HorizontalAlignment="Left"
-                                            Margin="3,6,3,0"/>
+                                            Margin="0,8,0,0"/>
                                     <TextBlock Text="LED: 1→K1 · 2→K2 · 3→K3 · 4→K4 · 5→K8 · 6→K7 · 7→K6 · 8→K5"
-                                               FontSize="9"
+                                               FontSize="10"
                                                Foreground="{DynamicResource Muted}"
                                                TextWrapping="Wrap"
-                                               MaxWidth="260"
+                                               MaxWidth="376"
                                                HorizontalAlignment="Left"
-                                               Margin="3,6,3,12"/>
+                                               Margin="0,7,0,14"/>
 
                                     <Border Height="1"
-                                            Width="260"
+                                            Width="376"
                                             HorizontalAlignment="Left"
                                             Background="{DynamicResource Line}"
-                                            Margin="3,0,0,12"/>
+                                            Margin="0,0,0,12"/>
 
                                     <TextBlock Text="PIXEL RGB MODE"
                                                FontSize="11"
@@ -1740,24 +1747,18 @@
                                     </StackPanel>
                                     <WrapPanel x:Name="PixelRgbDynamicPresets"
                                                Visibility="Collapsed"
-                                               Width="270"
+                                               Width="390"
                                                HorizontalAlignment="Left"
                                                Margin="3,0,0,12">
-                                        <Button Content="Rainbow"
-                                                Tag="0"
-                                                Click="PixelRgbPreset_Click"
-                                                Width="82"
-                                                Height="34"/>
-                                        <Button Content="Purple Ping-Pong"
-                                                Tag="1"
-                                                Click="PixelRgbPreset_Click"
-                                                Width="126"
-                                                Height="34"/>
-                                        <Button Content="Orange Blink"
-                                                Tag="2"
-                                                Click="PixelRgbPreset_Click"
-                                                Width="100"
-                                                Height="34"/>
+                                        <Button Content="Rainbow" Tag="0" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Purple Ping-Pong" Tag="1" Click="PixelRgbPreset_Click" Width="142" Height="36"/>
+                                        <Button Content="Orange Blink" Tag="2" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Fade" Tag="4" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Chase" Tag="5" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Breathe" Tag="6" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Color Shift" Tag="7" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Rain" Tag="8" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
+                                        <Button Content="Wave" Tag="9" Click="PixelRgbPreset_Click" Width="116" Height="36"/>
                                     </WrapPanel>
                                 </StackPanel>
 
@@ -1828,12 +1829,16 @@
                                            FontSize="16"
                                            FontWeight="SemiBold"/>
                                 <TextBlock x:Name="PixelRgbSaveHint"
-                                           Text="Saved with the selected keymap profile"
+                                           Text="Choose the keymap profile that will receive this RGB setup"
                                            Visibility="Collapsed"
                                            Foreground="{DynamicResource Muted}"
                                            FontSize="10"
                                            TextWrapping="Wrap"
                                            Margin="0,5,0,8"/>
+                                <ComboBox x:Name="PixelRgbSaveProfileCombo"
+                                          Visibility="Collapsed"
+                                          SelectedValuePath="Tag"
+                                          Margin="0,0,0,8"/>
                                 <ComboBox x:Name="RgbProfileCombo"
                                           SelectedValuePath="Tag"
                                           SelectionChanged="RgbProfileCombo_SelectionChanged"
