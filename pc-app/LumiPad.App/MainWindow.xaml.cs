@@ -923,8 +923,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · direct full-resolution GIF decode · up to 60 FPS.",
-                        "ILI9486 480×320 · giải mã GIF full độ phân giải trực tiếp · tối đa 60 FPS.")
+                        "ILI9486 480×320 · direct GIF decode · auto Fit / Fill / Stretch · up to 60 FPS.",
+                        "ILI9486 480×320 · giải mã GIF trực tiếp · tự Fit / Fill / Stretch · tối đa 60 FPS.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -6472,8 +6472,8 @@ try {{
                 ScreensaverMediaInfo.Text =
                     pixel
                         ? L(
-                            $"Original GIF · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} preview · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB compressed · no 2× scaling · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS",
-                            $"GIF gốc · xem trước {_screensaverAnimation.Width}×{_screensaverAnimation.Height} · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB đã nén · không phóng 2× · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS")
+                            $"Original GIF kept compressed · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB · scaled on-device with {_screensaverScaleMode} · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS",
+                            $"Giữ nguyên GIF nén · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB · scale trên thiết bị bằng {_screensaverScaleMode} · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS")
                         : L(
                             $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
                             $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
@@ -6664,8 +6664,8 @@ try {{
         ScreensaverMediaInfo.Text =
             IsPixelProActive
                 ? L(
-                    "PIXEL PRO uses full-resolution 480×320 / native 320×480 GIF files with no 2× upscaling.",
-                    "PIXEL PRO dùng GIF full độ phân giải 480×320 / native 320×480, không phóng 2×.")
+                    "PIXEL PRO keeps the original GIF file and scales it on-device to the 480×320 ILI9486.",
+                    "PIXEL PRO giữ nguyên file GIF gốc và scale trực tiếp trên thiết bị ra ILI9486 480×320.")
                 : L(
                     "Converted to a lightweight loop for LumiPad.",
                     "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
