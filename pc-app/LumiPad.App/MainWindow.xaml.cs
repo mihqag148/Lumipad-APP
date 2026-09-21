@@ -6307,11 +6307,11 @@ try {{
                     "Layers"));
         }
 
-        for (byte macro = 0; macro < 8; macro++)
+        for (byte macro = 0; macro < 20; macro++)
         {
             choices.Add(
                 new(
-                    $"M{macro}",
+                    $"M{macro + 1}",
                     PixelProKeyBindingType.Macro,
                     macro,
                     0,
@@ -6384,11 +6384,110 @@ try {{
                 });
         }
 
-        if (PixelMacroSlotCombo is not null)
-            PixelMacroSlotCombo.SelectedIndex = 0;
-
+        RefreshPixelProfileCombo();
         RebuildPixelPalette();
         UpdatePixelLayerButtons();
+        UpdatePixelKeyVisuals();
+        UpdatePixelSelectedEditor();
+        BuildPixelMacroUi();
+    }
+
+    private void RefreshPixelProfileCombo()
+    {
+        if (PixelProfileCombo is null)
+            return;
+
+        _pixelProfileCatalog.Normalize();
+        _pixelSelectedProfile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelProfileCatalog.Count - 1);
+
+        _pixelViaUpdating = true;
+        try
+        {
+            PixelProfileCombo.Items.Clear();
+
+            for (int i = 0; i < _pixelProfileCatalog.Count; i++)
+            {
+                PixelProfileCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = $"{i + 1:00} · {_pixelProfileCatalog.Names[i]}",
+                    Tag = i
+                });
+            }
+
+            PixelProfileCombo.SelectedIndex = _pixelSelectedProfile;
+        }
+        finally
+        {
+            _pixelViaUpdating = false;
+        }
+    }
+
+    private async void PixelAddProfile_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_pixelProfileCatalog.Count >= 20)
+        {
+            PixelKeymapStatusText.Text =
+                L(
+                    "Maximum 20 keymap profiles.",
+                    "Tối đa 20 profile keymap.");
+            return;
+        }
+
+        _pixelProfileCatalog.Count++;
+        int created = _pixelProfileCatalog.Count - 1;
+        _pixelProfileCatalog.Names[created] =
+            $"Profile {_pixelProfileCatalog.Count}";
+        PixelProProfileStore.Save(_pixelProfileCatalog);
+
+        _pixelSelectedProfile = created;
+        RefreshPixelProfileCombo();
+
+        if (_serial is PixelProCdcLink pixel && pixel.IsConnected)
+        {
+            for (int layer = 0; layer < 4; layer++)
+                await LoadPixelLayerAsync(created, layer);
+
+            pixel.SetProfileLayer(created, _pixelSelectedLayer);
+        }
+
+        UpdatePixelKeyVisuals();
+        UpdatePixelSelectedEditor();
+        RefreshAutoProfileMappingsUi();
+    }
+
+    private async void PixelProfileCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_pixelViaUpdating ||
+            PixelProfileCombo?.SelectedItem is not ComboBoxItem item ||
+            item.Tag is not int profile)
+        {
+            return;
+        }
+
+        _pixelSelectedProfile =
+            Math.Clamp(profile, 0, _pixelProfileCatalog.Count - 1);
+
+        if (_serial is PixelProCdcLink pixel && pixel.IsConnected)
+        {
+            for (int layer = 0; layer < 4; layer++)
+            {
+                if (!_pixelLayerLoaded[_pixelSelectedProfile, layer])
+                    await LoadPixelLayerAsync(_pixelSelectedProfile, layer);
+            }
+
+            pixel.SetProfileLayer(
+                _pixelSelectedProfile,
+                _pixelSelectedLayer);
+        }
+
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
     }
@@ -6429,22 +6528,9 @@ try {{
         if (PixelPaletteTitleText is not null)
             PixelPaletteTitleText.Text =
                 _pixelCurrentCategory.ToUpperInvariant();
-
-        if (PixelMacroEditorPanel is not null)
-        {
-            PixelMacroEditorPanel.Visibility =
-                string.Equals(
-                    _pixelCurrentCategory,
-                    "Macro",
-                    StringComparison.OrdinalIgnoreCase) ||
-                _pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey].Type ==
-                    PixelProKeyBindingType.Macro
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-        }
     }
 
-    private async void PixelViaKey_Click(
+    private void PixelViaKey_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -6455,17 +6541,6 @@ try {{
         _pixelSelectedKey = Math.Clamp(index, 0, 7);
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
-
-        if (_pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey].Type ==
-                PixelProKeyBindingType.Macro)
-        {
-            int macro =
-                (int)_pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey].Code;
-            if (PixelMacroSlotCombo is not null)
-                PixelMacroSlotCombo.SelectedIndex = Math.Clamp(macro, 0, 7);
-
-            await LoadPixelMacroAsync(macro);
-        }
     }
 
     private async void PixelLayerButton_Click(
@@ -6480,11 +6555,19 @@ try {{
         layer = Math.Clamp(layer, 0, 3);
         _pixelSelectedLayer = layer;
 
-        if (!_pixelLayerLoaded[layer] &&
+        if (!_pixelLayerLoaded[_pixelSelectedProfile, layer] &&
             _serial is PixelProCdcLink pixel &&
             pixel.IsConnected)
         {
-            await LoadPixelLayerAsync(layer);
+            await LoadPixelLayerAsync(_pixelSelectedProfile, layer);
+        }
+
+        if (_serial is PixelProCdcLink activePixel &&
+            activePixel.IsConnected)
+        {
+            activePixel.SetProfileLayer(
+                _pixelSelectedProfile,
+                _pixelSelectedLayer);
         }
 
         UpdatePixelLayerButtons();
@@ -6521,6 +6604,7 @@ try {{
                 byte modifiers = choice.Aux;
                 if (choice.Code != 0)
                     modifiers |= CurrentPixelModifierMask();
+
                 binding =
                     PixelProKeyBinding.Keyboard(
                         (byte)choice.Code,
@@ -6551,21 +6635,15 @@ try {{
                 break;
         }
 
-        _pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey] = binding;
-        _pixelLayerLoaded[_pixelSelectedLayer] = true;
+        _pixelProfileMaps[_pixelSelectedProfile][_pixelSelectedLayer][_pixelSelectedKey] =
+            binding;
+        _pixelLayerLoaded[_pixelSelectedProfile, _pixelSelectedLayer] = true;
 
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
 
-        if (binding.Type == PixelProKeyBindingType.Macro &&
-            PixelMacroSlotCombo is not null)
-        {
-            PixelMacroSlotCombo.SelectedIndex =
-                Math.Clamp((int)binding.Code, 0, 7);
-            await LoadPixelMacroAsync((int)binding.Code);
-        }
-
         await SavePixelLayerAsync(
+            _pixelSelectedProfile,
             _pixelSelectedLayer,
             quiet: true);
     }
@@ -6590,14 +6668,14 @@ try {{
             return;
 
         PixelProKeyBinding current =
-            _pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey];
+            _pixelProfileMaps[_pixelSelectedProfile][_pixelSelectedLayer][_pixelSelectedKey];
 
         if (current.Type != PixelProKeyBindingType.Keyboard)
             return;
 
         byte modifiers = CurrentPixelModifierMask();
 
-        _pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey] =
+        _pixelProfileMaps[_pixelSelectedProfile][_pixelSelectedLayer][_pixelSelectedKey] =
             current.Code == 0 && modifiers == 0
                 ? PixelProKeyBinding.Disabled()
                 : PixelProKeyBinding.Keyboard(
@@ -6606,7 +6684,9 @@ try {{
 
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
+
         await SavePixelLayerAsync(
+            _pixelSelectedProfile,
             _pixelSelectedLayer,
             quiet: true);
     }
@@ -6641,7 +6721,7 @@ try {{
         {
             PixelViaKeyVisual visual = _pixelViaKeys[i];
             PixelProKeyBinding binding =
-                _pixelLayerMaps[_pixelSelectedLayer][i];
+                _pixelProfileMaps[_pixelSelectedProfile][_pixelSelectedLayer][i];
 
             visual.MainText.Text = $"K{i + 1}";
             visual.SubText.Text = PixelBindingLabel(binding);
@@ -6662,15 +6742,16 @@ try {{
             return;
 
         PixelProKeyBinding binding =
-            _pixelLayerMaps[_pixelSelectedLayer][_pixelSelectedKey];
+            _pixelProfileMaps[_pixelSelectedProfile][_pixelSelectedLayer][_pixelSelectedKey];
 
         if (PixelSelectedKeyTitle is not null)
+        {
             PixelSelectedKeyTitle.Text =
-                $"K{_pixelSelectedKey + 1} · Layer {_pixelSelectedLayer}";
+                $"K{_pixelSelectedKey + 1} · P{_pixelSelectedProfile + 1} · L{_pixelSelectedLayer}";
+        }
 
         if (PixelSelectedBindingText is not null)
-            PixelSelectedBindingText.Text =
-                PixelBindingLabel(binding);
+            PixelSelectedBindingText.Text = PixelBindingLabel(binding);
 
         _pixelViaUpdating = true;
         try
@@ -6696,18 +6777,6 @@ try {{
         {
             _pixelViaUpdating = false;
         }
-
-        if (PixelMacroEditorPanel is not null)
-        {
-            PixelMacroEditorPanel.Visibility =
-                binding.Type == PixelProKeyBindingType.Macro ||
-                string.Equals(
-                    _pixelCurrentCategory,
-                    "Macro",
-                    StringComparison.OrdinalIgnoreCase)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-        }
     }
 
     private static string ModifierPrefix(byte modifiers)
@@ -6732,7 +6801,7 @@ try {{
             return "Transparent";
 
         if (binding.Type == PixelProKeyBindingType.Macro)
-            return $"M{binding.Code}";
+            return $"M{binding.Code + 1}";
 
         if (binding.Type == PixelProKeyBindingType.Layer)
         {
@@ -6776,54 +6845,29 @@ try {{
             : $"{modifiers}+{baseLabel}";
     }
 
-    private async Task<bool> LoadPixelLayerAsync(int layer)
+    private async Task<bool> LoadPixelLayerAsync(
+        int profile,
+        int layer)
     {
         if (_serial is not PixelProCdcLink pixel ||
             !pixel.IsConnected ||
-            layer < 0 ||
-            layer > 3)
+            profile < 0 || profile > 19 ||
+            layer < 0 || layer > 3)
+        {
             return false;
+        }
 
         IReadOnlyList<PixelProKeyBinding>? map =
-            await pixel.GetKeymapAsync(layer);
+            await pixel.GetKeymapAsync(profile, layer);
 
         if (map is null || map.Count != 8)
             return false;
 
         for (int i = 0; i < 8; i++)
-            _pixelLayerMaps[layer][i] = map[i];
+            _pixelProfileMaps[profile][layer][i] = map[i];
 
-        _pixelLayerLoaded[layer] = true;
+        _pixelLayerLoaded[profile, layer] = true;
         return true;
-    }
-
-    private async Task LoadPixelMacroAsync(int index)
-    {
-        if (index < 0 || index > 7)
-            return;
-
-        if (!_pixelMacroLoaded[index] &&
-            _serial is PixelProCdcLink pixel &&
-            pixel.IsConnected)
-        {
-            string? value = await pixel.GetMacroAsync(index);
-            if (value is not null)
-            {
-                _pixelMacros[index] = value;
-                _pixelMacroLoaded[index] = true;
-            }
-        }
-
-        _pixelViaUpdating = true;
-        try
-        {
-            if (PixelMacroTextBox is not null)
-                PixelMacroTextBox.Text = _pixelMacros[index] ?? "";
-        }
-        finally
-        {
-            _pixelViaUpdating = false;
-        }
     }
 
     private async Task LoadPixelProKeymapAsync()
@@ -6846,36 +6890,27 @@ try {{
 
         PixelKeymapStatusText.Text =
             L(
-                "Loading VIA-style keymap…",
-                "Đang tải keymap kiểu VIA…");
+                "Loading profile and layers…",
+                "Đang tải profile và layer…");
         PixelKeymapSaveButton.IsEnabled = false;
 
         bool ok = true;
 
         for (int layer = 0; layer < 4; layer++)
-            ok &= await LoadPixelLayerAsync(layer);
-
-        for (int macro = 0; macro < 8; macro++)
-        {
-            string? value = await pixel.GetMacroAsync(macro);
-            if (value is null)
-            {
-                ok = false;
-                break;
-            }
-
-            _pixelMacros[macro] = value;
-            _pixelMacroLoaded[macro] = true;
-        }
+            ok &= await LoadPixelLayerAsync(_pixelSelectedProfile, layer);
 
         if (!ok)
         {
             PixelKeymapStatusText.Text =
                 L(
-                    "VIA-style keymap requires PIXEL PRO firmware 1.2.0 or newer.",
-                    "Keymap kiểu VIA cần firmware PIXEL PRO 1.2.0 trở lên.");
+                    "20-profile keymap requires PIXEL PRO firmware 1.3.0 or newer.",
+                    "Keymap 20 profile cần firmware PIXEL PRO 1.3.0 trở lên.");
             return;
         }
+
+        pixel.SetProfileLayer(
+            _pixelSelectedProfile,
+            _pixelSelectedLayer);
 
         PixelKeymapSaveButton.IsEnabled = true;
         PixelKeymapStatusText.Text =
@@ -6883,44 +6918,45 @@ try {{
                 "Live · click a key, then choose a keycode.",
                 "Đang hoạt động · chọn phím rồi chọn keycode.");
 
+        RefreshPixelProfileCombo();
         UpdatePixelLayerButtons();
         UpdatePixelKeyVisuals();
         UpdatePixelSelectedEditor();
-
-        if (PixelMacroSlotCombo is not null)
-            await LoadPixelMacroAsync(
-                Math.Clamp(PixelMacroSlotCombo.SelectedIndex, 0, 7));
     }
 
     private async Task<bool> SavePixelLayerAsync(
+        int profile,
         int layer,
         bool quiet = false)
     {
         if (_serial is not PixelProCdcLink pixel ||
             !pixel.IsConnected ||
-            layer < 0 ||
-            layer > 3)
+            profile < 0 || profile > 19 ||
+            layer < 0 || layer > 3)
+        {
             return false;
+        }
 
         bool ok = await pixel.SetKeymapAsync(
+            profile,
             layer,
-            _pixelLayerMaps[layer]);
+            _pixelProfileMaps[profile][layer]);
 
         if (!quiet)
         {
             PixelKeymapStatusText.Text = ok
                 ? L(
-                    $"Layer {layer} saved.",
-                    $"Đã lưu Layer {layer}.")
+                    $"Profile {profile + 1} · Layer {layer} saved.",
+                    $"Đã lưu Profile {profile + 1} · Layer {layer}.")
                 : L(
-                    $"Could not save Layer {layer}.",
-                    $"Không lưu được Layer {layer}.");
+                    $"Could not save Profile {profile + 1} · Layer {layer}.",
+                    $"Không lưu được Profile {profile + 1} · Layer {layer}.");
         }
 
         return ok;
     }
 
-    private async Task<bool> SaveAllPixelConfigurationAsync()
+    private async Task<bool> SaveCurrentPixelProfileAsync()
     {
         if (_serial is not PixelProCdcLink pixel ||
             !pixel.IsConnected)
@@ -6929,17 +6965,12 @@ try {{
         for (int layer = 0; layer < 4; layer++)
         {
             if (!await pixel.SetKeymapAsync(
+                    _pixelSelectedProfile,
                     layer,
-                    _pixelLayerMaps[layer]))
+                    _pixelProfileMaps[_pixelSelectedProfile][layer]))
+            {
                 return false;
-        }
-
-        for (int macro = 0; macro < 8; macro++)
-        {
-            if (!await pixel.SetMacroAsync(
-                    macro,
-                    _pixelMacros[macro] ?? ""))
-                return false;
+            }
         }
 
         return true;
@@ -6949,8 +6980,9 @@ try {{
         object sender,
         RoutedEventArgs e)
     {
-        Array.Fill(_pixelLayerLoaded, false);
-        Array.Fill(_pixelMacroLoaded, false);
+        for (int layer = 0; layer < 4; layer++)
+            _pixelLayerLoaded[_pixelSelectedProfile, layer] = false;
+
         await LoadPixelProKeymapAsync();
     }
 
@@ -6961,18 +6993,18 @@ try {{
         PixelKeymapSaveButton.IsEnabled = false;
         PixelKeymapStatusText.Text =
             L(
-                "Saving layers and macros…",
-                "Đang lưu layer và macro…");
+                "Saving current profile…",
+                "Đang lưu profile hiện tại…");
 
-        bool saved = await SaveAllPixelConfigurationAsync();
+        bool saved = await SaveCurrentPixelProfileAsync();
 
         PixelKeymapSaveButton.IsEnabled =
             _serial.IsConnected;
 
         PixelKeymapStatusText.Text = saved
             ? L(
-                "Saved to PIXEL PRO flash.",
-                "Đã lưu vào flash PIXEL PRO.")
+                "Profile saved to PIXEL PRO flash.",
+                "Đã lưu profile vào flash PIXEL PRO.")
             : L(
                 "Save failed. Open Diagnostics for details.",
                 "Lưu thất bại. Mở Diagnostics để xem chi tiết.");
@@ -6989,8 +7021,8 @@ try {{
         MessageBoxResult answer =
             System.Windows.MessageBox.Show(
                 L(
-                    "Reset all four layers to defaults and clear all macros?",
-                    "Đặt lại cả 4 layer và xóa toàn bộ macro?"),
+                    "Reset all 20 profiles to defaults?",
+                    "Đặt lại toàn bộ 20 profile về mặc định?"),
                 "PIXEL PRO",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -7003,17 +7035,15 @@ try {{
 
         bool ok = await pixel.ResetKeymapAsync();
 
-        if (ok)
+        for (int profile = 0; profile < 20; profile++)
         {
-            for (int macro = 0; macro < 8; macro++)
-            {
-                _pixelMacros[macro] = "";
-                _pixelMacroLoaded[macro] = true;
-                ok &= await pixel.SetMacroAsync(macro, "");
-            }
+            for (int layer = 0; layer < 4; layer++)
+                _pixelLayerLoaded[profile, layer] = false;
         }
 
-        Array.Fill(_pixelLayerLoaded, false);
+        _pixelSelectedProfile = 0;
+        _pixelSelectedLayer = 0;
+        RefreshPixelProfileCombo();
 
         if (ok)
             await LoadPixelProKeymapAsync();
@@ -7022,66 +7052,16 @@ try {{
                 L("Reset failed.", "Đặt lại thất bại.");
     }
 
-    private async void PixelMacroSlotCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
-    {
-        if (_pixelViaUpdating ||
-            PixelMacroSlotCombo is null ||
-            PixelMacroSlotCombo.SelectedIndex < 0)
-            return;
-
-        await LoadPixelMacroAsync(
-            Math.Clamp(PixelMacroSlotCombo.SelectedIndex, 0, 7));
-    }
-
-    private async void PixelMacroSave_Click(
-        object sender,
-        RoutedEventArgs e)
-    {
-        if (PixelMacroSlotCombo is null ||
-            PixelMacroTextBox is null)
-            return;
-
-        int index =
-            Math.Clamp(PixelMacroSlotCombo.SelectedIndex, 0, 7);
-
-        string value = new(
-            (PixelMacroTextBox.Text ?? "")
-                .Where(ch => ch >= 0x20 && ch <= 0x7E)
-                .Take(80)
-                .ToArray());
-
-        _pixelMacros[index] = value;
-        _pixelMacroLoaded[index] = true;
-
-        if (_serial is not PixelProCdcLink pixel ||
-            !pixel.IsConnected)
-        {
-            PixelKeymapStatusText.Text =
-                L(
-                    "Macro cached locally; connect PIXEL PRO to save it.",
-                    "Macro đang lưu tạm; kết nối PIXEL PRO để lưu.");
-            return;
-        }
-
-        bool ok = await pixel.SetMacroAsync(index, value);
-
-        PixelKeymapStatusText.Text = ok
-            ? $"M{index} saved"
-            : $"M{index} save failed";
-    }
-
     private async void PixelKeymapExport_Click(
         object sender,
         RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Export PIXEL PRO keymap",
+            Title = "Export PIXEL PRO keymap profile",
             Filter = "PIXEL PRO keymap (*.json)|*.json",
             DefaultExt = ".json",
-            FileName = "PIXEL-PRO-keymap.json"
+            FileName = $"PIXEL-PRO-profile-{_pixelSelectedProfile + 1}.json"
         };
 
         if (dialog.ShowDialog(this) != true)
@@ -7089,11 +7069,12 @@ try {{
 
         var export = new PixelViaExport
         {
-            Version = 1,
-            Layers = _pixelLayerMaps
+            Version = 2,
+            ProfileIndex = _pixelSelectedProfile,
+            ProfileName = _pixelProfileCatalog.NameAt(_pixelSelectedProfile),
+            Layers = _pixelProfileMaps[_pixelSelectedProfile]
                 .Select(layer => layer.ToArray())
-                .ToArray(),
-            Macros = _pixelMacros.ToArray()
+                .ToArray()
         };
 
         string json = JsonSerializer.Serialize(
@@ -7109,7 +7090,7 @@ try {{
             Encoding.UTF8);
 
         PixelKeymapStatusText.Text =
-            L("Keymap exported.", "Đã xuất keymap.");
+            L("Profile exported.", "Đã xuất profile.");
     }
 
     private async void PixelKeymapImport_Click(
@@ -7118,7 +7099,7 @@ try {{
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Import PIXEL PRO keymap",
+            Title = "Import PIXEL PRO keymap profile",
             Filter = "PIXEL PRO keymap (*.json)|*.json"
         };
 
@@ -7137,9 +7118,7 @@ try {{
 
             if (import?.Layers is null ||
                 import.Layers.Length != 4 ||
-                import.Layers.Any(layer => layer is null || layer.Length != 8) ||
-                import.Macros is null ||
-                import.Macros.Length != 8)
+                import.Layers.Any(layer => layer is null || layer.Length != 8))
             {
                 throw new System.IO.InvalidDataException(
                     "Invalid PIXEL PRO keymap file.");
@@ -7148,20 +7127,20 @@ try {{
             for (int layer = 0; layer < 4; layer++)
             {
                 for (int key = 0; key < 8; key++)
-                    _pixelLayerMaps[layer][key] = import.Layers[layer][key];
+                {
+                    _pixelProfileMaps[_pixelSelectedProfile][layer][key] =
+                        import.Layers[layer][key];
+                }
 
-                _pixelLayerLoaded[layer] = true;
+                _pixelLayerLoaded[_pixelSelectedProfile, layer] = true;
             }
 
-            for (int macro = 0; macro < 8; macro++)
+            if (!string.IsNullOrWhiteSpace(import.ProfileName))
             {
-                _pixelMacros[macro] =
-                    new(
-                        (import.Macros[macro] ?? "")
-                            .Where(ch => ch >= 0x20 && ch <= 0x7E)
-                            .Take(80)
-                            .ToArray());
-                _pixelMacroLoaded[macro] = true;
+                _pixelProfileCatalog.Names[_pixelSelectedProfile] =
+                    import.ProfileName.Trim();
+                PixelProProfileStore.Save(_pixelProfileCatalog);
+                RefreshPixelProfileCombo();
             }
 
             UpdatePixelKeyVisuals();
@@ -7169,7 +7148,7 @@ try {{
 
             bool applied =
                 _serial.IsConnected &&
-                await SaveAllPixelConfigurationAsync();
+                await SaveCurrentPixelProfileAsync();
 
             PixelKeymapStatusText.Text =
                 applied
@@ -7209,7 +7188,7 @@ try {{
                     as System.Windows.Media.Brush;
             visual.Button.Opacity = 0.82;
             PixelKeymapStatusText.Text =
-                $"K{index + 1} DOWN · Layer {layer}";
+                $"K{index + 1} DOWN · P{_pixelSelectedProfile + 1} · L{layer}";
         }
         else
         {
@@ -7218,6 +7197,349 @@ try {{
                     as System.Windows.Media.Brush;
             visual.Button.Opacity = 1.0;
             UpdatePixelKeyVisuals();
+        }
+    }
+
+    private void BuildPixelMacroUi()
+    {
+        if (PixelMacroList is null)
+            return;
+
+        PixelMacroList.ItemsSource = null;
+        PixelMacroList.ItemsSource = _pixelMacros;
+        PixelMacroStepTypeCombo.SelectedIndex = 0;
+
+        _pixelSelectedMacroSlot =
+            Math.Clamp(_pixelSelectedMacroSlot, 1, 20);
+        PixelMacroList.SelectedIndex = _pixelSelectedMacroSlot - 1;
+        RefreshPixelMacroEditor();
+    }
+
+    private PixelProMacroDefinition CurrentPixelMacro =>
+        _pixelMacros[Math.Clamp(_pixelSelectedMacroSlot - 1, 0, 19)];
+
+    private void PixelMacroList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (PixelMacroList?.SelectedItem is not PixelProMacroDefinition macro)
+            return;
+
+        _pixelSelectedMacroSlot = Math.Clamp(macro.Slot, 1, 20);
+        RefreshPixelMacroEditor();
+    }
+
+    private void RefreshPixelMacroEditor()
+    {
+        if (PixelMacroTitleText is null ||
+            PixelMacroNameTextBox is null ||
+            PixelMacroStepsList is null)
+        {
+            return;
+        }
+
+        PixelProMacroDefinition macro = CurrentPixelMacro;
+
+        _pixelViaUpdating = true;
+        try
+        {
+            PixelMacroTitleText.Text = $"M{macro.Slot}";
+            PixelMacroNameTextBox.Text = macro.Name;
+            PixelMacroStepsList.ItemsSource = null;
+            PixelMacroStepsList.ItemsSource = macro.Steps;
+        }
+        finally
+        {
+            _pixelViaUpdating = false;
+        }
+    }
+
+    private void PixelMacroStepTypeCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (PixelMacroStepTypeCombo?.SelectedItem is not ComboBoxItem item)
+            return;
+
+        string tag = item.Tag?.ToString() ?? "";
+        string type = tag.Split(':')[0];
+
+        PixelMacroStepHintText.Text =
+            type switch
+            {
+                "Action" =>
+                    "Enter Lumi Action ID 1–32.",
+                "Keys" =>
+                    "Example: Ctrl+Shift+S",
+                "Text" =>
+                    "Text to type.",
+                "Run" =>
+                    "Path or URI to open.",
+                "Delay" =>
+                    "Milliseconds, e.g. 100",
+                "Media" =>
+                    "PLAY, NEXT, PREV, STOP, MUTE, VOLUP, VOLDOWN",
+                "MouseWheel" =>
+                    "Wheel ticks, e.g. 1 or -1",
+                "MouseMove" =>
+                    "Relative dx,dy, e.g. 20,-10",
+                "MouseClick" =>
+                    "Mouse button click.",
+                _ =>
+                    "Choose a value."
+            };
+
+        if (tag.StartsWith("MouseClick:", StringComparison.Ordinal))
+            PixelMacroStepValueTextBox.Text = tag.Split(':')[1];
+    }
+
+    private void PixelMacroAddStep_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (PixelMacroStepTypeCombo?.SelectedItem is not ComboBoxItem item)
+            return;
+
+        string tag = item.Tag?.ToString() ?? "";
+        string type = tag.Split(':')[0];
+        string value = PixelMacroStepValueTextBox?.Text?.Trim() ?? "";
+
+        if (tag.StartsWith("MouseClick:", StringComparison.Ordinal))
+            value = tag.Split(':')[1];
+
+        CurrentPixelMacro.Steps.Add(
+            new ActionScriptStep
+            {
+                Type = type,
+                Value = value
+            });
+
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+
+        if (PixelMacroStepsList is not null)
+            PixelMacroStepsList.SelectedIndex =
+                CurrentPixelMacro.Steps.Count - 1;
+    }
+
+    private void PixelMacroQuickStep_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button ||
+            button.Tag is not string tag)
+            return;
+
+        int sep = tag.IndexOf('|');
+        string type = sep >= 0 ? tag[..sep] : tag;
+        string value = sep >= 0 ? tag[(sep + 1)..] : "";
+
+        CurrentPixelMacro.Steps.Add(
+            new ActionScriptStep
+            {
+                Type = type,
+                Value = value
+            });
+
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+    }
+
+    private void PixelMacroSave_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        PixelProMacroDefinition macro = CurrentPixelMacro;
+
+        macro.Name =
+            string.IsNullOrWhiteSpace(PixelMacroNameTextBox?.Text)
+                ? $"Macro {macro.Slot}"
+                : PixelMacroNameTextBox.Text.Trim();
+
+        PixelProMacroStore.Save(_pixelMacros);
+        BuildPixelMacroUi();
+
+        PixelMacroList.SelectedIndex = macro.Slot - 1;
+        PixelMacroStatusText.Text =
+            L(
+                $"M{macro.Slot} saved.",
+                $"Đã lưu M{macro.Slot}.");
+    }
+
+    private void PixelMacroStepDelete_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        int index = PixelMacroStepsList?.SelectedIndex ?? -1;
+
+        if (index < 0 || index >= CurrentPixelMacro.Steps.Count)
+            return;
+
+        CurrentPixelMacro.Steps.RemoveAt(index);
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+    }
+
+    private void PixelMacroStepUp_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        int index = PixelMacroStepsList?.SelectedIndex ?? -1;
+
+        if (index <= 0 || index >= CurrentPixelMacro.Steps.Count)
+            return;
+
+        (CurrentPixelMacro.Steps[index - 1],
+         CurrentPixelMacro.Steps[index]) =
+            (CurrentPixelMacro.Steps[index],
+             CurrentPixelMacro.Steps[index - 1]);
+
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+        PixelMacroStepsList.SelectedIndex = index - 1;
+    }
+
+    private void PixelMacroStepDown_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        int index = PixelMacroStepsList?.SelectedIndex ?? -1;
+
+        if (index < 0 || index >= CurrentPixelMacro.Steps.Count - 1)
+            return;
+
+        (CurrentPixelMacro.Steps[index + 1],
+         CurrentPixelMacro.Steps[index]) =
+            (CurrentPixelMacro.Steps[index],
+             CurrentPixelMacro.Steps[index + 1]);
+
+        PixelProMacroStore.Save(_pixelMacros);
+        RefreshPixelMacroEditor();
+        PixelMacroStepsList.SelectedIndex = index + 1;
+    }
+
+    private async void PixelMacroTest_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await ExecutePixelMacroAsync(_pixelSelectedMacroSlot);
+
+    private async Task ExecutePixelMacroAsync(
+        int slot,
+        int sourceKey = 0,
+        int profile = 0,
+        int layer = 0)
+    {
+        slot = Math.Clamp(slot, 1, 20);
+
+        if (!_runningPixelMacroSlots.Add(slot))
+        {
+            AddLog(
+                "WARN",
+                "MACRO",
+                $"M{slot} ignored because it is already running");
+            return;
+        }
+
+        PixelProMacroDefinition macro = _pixelMacros[slot - 1];
+
+        try
+        {
+            if (PixelMacroStatusText is not null &&
+                _pixelSelectedMacroSlot == slot)
+            {
+                PixelMacroStatusText.Text =
+                    L(
+                        $"Running M{slot}…",
+                        $"Đang chạy M{slot}…");
+            }
+
+            AddLog(
+                "INFO",
+                "MACRO",
+                $"Run M{slot} from key {sourceKey}, profile {profile + 1}, layer {layer}");
+
+            foreach (ActionScriptStep step in macro.Steps.ToArray())
+            {
+                if (step.Type.Equals(
+                        "Action",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!int.TryParse(step.Value, out int actionId))
+                        continue;
+
+                    ActionScriptDefinition? action =
+                        _actionScripts.FirstOrDefault(
+                            x => x.ActionId == actionId);
+
+                    if (action is null)
+                    {
+                        AddLog(
+                            "WARN",
+                            "MACRO",
+                            $"M{slot}: Lumi Action {actionId} not found");
+                        continue;
+                    }
+
+                    await ActionScriptEngine.ExecuteAsync(
+                        action,
+                        progress: text =>
+                        {
+                            if (PixelMacroStatusText is not null &&
+                                _pixelSelectedMacroSlot == slot)
+                            {
+                                Dispatcher.Invoke(() =>
+                                    PixelMacroStatusText.Text =
+                                        $"M{slot} · {text}");
+                            }
+                        });
+                }
+                else
+                {
+                    var single = new ActionScriptDefinition
+                    {
+                        Name = $"M{slot}",
+                        Steps =
+                        [
+                            new ActionScriptStep
+                            {
+                                Type = step.Type,
+                                Value = step.Value
+                            }
+                        ]
+                    };
+
+                    await ActionScriptEngine.ExecuteAsync(single);
+                }
+            }
+
+            if (PixelMacroStatusText is not null &&
+                _pixelSelectedMacroSlot == slot)
+            {
+                PixelMacroStatusText.Text =
+                    L(
+                        $"M{slot} completed.",
+                        $"M{slot} hoàn tất.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "ERROR",
+                "MACRO",
+                $"M{slot} failed: {ex.Message}");
+
+            if (PixelMacroStatusText is not null &&
+                _pixelSelectedMacroSlot == slot)
+            {
+                PixelMacroStatusText.Text =
+                    L(
+                        $"M{slot} failed: {ex.Message}",
+                        $"M{slot} lỗi: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _runningPixelMacroSlots.Remove(slot);
         }
     }
 
