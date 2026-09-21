@@ -171,6 +171,15 @@ public partial class MainWindow : Window
     private bool _rgbEnabled = true;
     private int _rgbProfileIndex;
     private RgbProfileSetting[] _rgbProfiles = CreateDefaultRgbProfiles();
+
+    // PIXEL PRO keeps its media/RGB state separate from RYNOR ONE.
+    private int _pixelGifMaxFps = PixelProScreensaverMediaService.DefaultGifMaxFps;
+    private int _pixelGifMaxDurationSeconds = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+    private int _pixelImageJpegQuality = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+    private int _pixelRgbSelectedKey = -1; // -1 = all 8 keys
+    private PixelRgbColor[][] _pixelRgbProfiles = CreateDefaultPixelRgbProfiles();
+
+    // This remains the RYNOR scale preference. PIXEL PRO uses fixed Center/no-upscale.
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
     private string _screensaverSource = "Media";
 
@@ -1672,6 +1681,22 @@ public partial class MainWindow : Window
         new() { Effect = 3, R = 80, G = 255, B = 100 },
     ];
 
+    private static PixelRgbColor[][] CreateDefaultPixelRgbProfiles() =>
+        Enumerable.Range(0, 20)
+            .Select(profile =>
+                Enumerable.Range(0, 8)
+                    .Select(key =>
+                    {
+                        // Slightly different defaults make the 8-key preview
+                        // readable before the user customizes it.
+                        byte r = (byte)Math.Clamp(255 - key * 16, 0, 255);
+                        byte g = (byte)Math.Clamp(96 + key * 18, 0, 255);
+                        byte b = (byte)Math.Clamp(profile * 5, 0, 120);
+                        return new PixelRgbColor(r, g, b);
+                    })
+                    .ToArray())
+            .ToArray();
+
     private sealed class AppSettings
     {
         public bool RgbEnabled { get; set; } = true;
@@ -1683,6 +1708,10 @@ public partial class MainWindow : Window
         public byte G { get; set; } = 120;
         public byte B { get; set; }
         public RgbProfileSetting[]? RgbProfiles { get; set; }
+        public int PixelGifMaxFps { get; set; } = PixelProScreensaverMediaService.DefaultGifMaxFps;
+        public int PixelGifMaxDurationSeconds { get; set; } = PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+        public int PixelImageJpegQuality { get; set; } = PixelProScreensaverMediaService.DefaultImageJpegQuality;
+        public PixelRgbColor[][]? PixelRgbProfiles { get; set; }
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public int RgbIdleDelaySeconds { get; set; } = 60;
@@ -1731,6 +1760,35 @@ public partial class MainWindow : Window
                         B = p.B
                     })
                     .ToArray();
+            }
+
+            _pixelGifMaxFps =
+                settings.PixelGifMaxFps is 20 or 25 or 30 or 40 or 50 or 60
+                    ? settings.PixelGifMaxFps
+                    : PixelProScreensaverMediaService.DefaultGifMaxFps;
+
+            _pixelGifMaxDurationSeconds =
+                settings.PixelGifMaxDurationSeconds is 5 or 10 or 15 or 20 or 30
+                    ? settings.PixelGifMaxDurationSeconds
+                    : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+
+            _pixelImageJpegQuality =
+                Math.Clamp(
+                    settings.PixelImageJpegQuality,
+                    90,
+                    100);
+
+            if (settings.PixelRgbProfiles is { Length: >= 20 } savedPixelRgb &&
+                savedPixelRgb.Take(20).All(profile => profile is { Length: >= 8 }))
+            {
+                _pixelRgbProfiles =
+                    savedPixelRgb
+                        .Take(20)
+                        .Select(profile =>
+                            profile
+                                .Take(8)
+                                .ToArray())
+                        .ToArray();
             }
 
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
@@ -1798,12 +1856,19 @@ public partial class MainWindow : Window
                         B = p.B
                     })
                     .ToArray(),
+                PixelGifMaxFps = _pixelGifMaxFps,
+                PixelGifMaxDurationSeconds = _pixelGifMaxDurationSeconds,
+                PixelImageJpegQuality = _pixelImageJpegQuality,
+                PixelRgbProfiles = _pixelRgbProfiles
+                    .Select(profile => profile.ToArray())
+                    .ToArray(),
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
                 DeepSleepDelaySeconds = _deepSleepDelaySeconds,
                 ScreensaverMediaPath = _screensaverMediaPath,
-                ScreensaverScaleMode = SelectedScreensaverScaleMode(),
+                // Preserve RYNOR's scale even while PIXEL PRO is active.
+                ScreensaverScaleMode = _screensaverScaleMode,
                 PcMonitorEnabled = _pcMonitorEnabled,
                 PcMonitorIntervalMs = _pcMonitorIntervalMs,
                 PcMonitorGpuId = _pcMonitorGpuId,
@@ -1838,6 +1903,10 @@ public partial class MainWindow : Window
         SelectComboTag(RgbIdleDelayCombo, _rgbIdleDelaySeconds.ToString());
         SelectComboTag(DeepSleepDelayCombo, _deepSleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
+        if (PixelGifFpsCombo is not null)
+            SelectComboTag(PixelGifFpsCombo, _pixelGifMaxFps.ToString());
+        if (PixelGifDurationCombo is not null)
+            SelectComboTag(PixelGifDurationCombo, _pixelGifMaxDurationSeconds.ToString());
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, _screensaverSource);
 
@@ -1857,23 +1926,8 @@ public partial class MainWindow : Window
 
     private static void SelectComboTag(System.Windows.Controls.ComboBox combo, string tag)
     {
-        // Most LumiPad ComboBoxes store their logical value in ComboBoxItem.Tag
-        // and do not declare SelectedValuePath. Assigning SelectedValue directly
-        // therefore does not select the requested item and previously left the
-        // PIXEL PRO GIF scale stuck on Fill even when the app intended Center.
-        foreach (object entry in combo.Items)
-        {
-            if (entry is ComboBoxItem item &&
-                string.Equals(
-                    item.Tag?.ToString(),
-                    tag,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                combo.SelectedItem = item;
-                return;
-            }
-        }
-
+        // Keep the original shared/Rynor behavior. PIXEL-specific controls
+        // declare SelectedValuePath=Tag and do not need a global workaround.
         combo.SelectedValue = tag;
     }
 
