@@ -32,6 +32,7 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     public event Action<string>? LinkError;
     public event Action<string, string>? Diagnostic;
+    public event Action<int, bool, int>? KeyStateChanged;
 
     public string FirmwareHello { get; private set; } = "";
     public int ProtocolVersion { get; private set; }
@@ -321,6 +322,29 @@ public sealed class PixelProCdcLink : IDeviceLink
                         ? "KEY"
                         : "CDC";
 
+                if (line.StartsWith("KEY|", StringComparison.Ordinal))
+                {
+                    string[] parts = line.Split('|');
+                    if (parts.Length >= 3 &&
+                        int.TryParse(parts[1], out int keyIndex))
+                    {
+                        bool down = string.Equals(
+                            parts[2],
+                            "DOWN",
+                            StringComparison.OrdinalIgnoreCase);
+                        int layer = 0;
+
+                        if (parts.Length >= 4 &&
+                            parts[3].StartsWith("L=", StringComparison.Ordinal) &&
+                            int.TryParse(parts[3][2..], out int parsedLayer))
+                        {
+                            layer = parsedLayer;
+                        }
+
+                        KeyStateChanged?.Invoke(keyIndex - 1, down, layer);
+                    }
+                }
+
                 Log(category, line);
             }
             catch (TimeoutException)
@@ -485,17 +509,22 @@ public sealed class PixelProCdcLink : IDeviceLink
     }
 
     public async Task<IReadOnlyList<PixelProKeyBinding>?> GetKeymapAsync(
+        int layer = 0,
         CancellationToken cancellationToken = default)
     {
-        string? line = await RequestLineAsync(
-            "GET_KEYMAP",
-            "KEYMAP|",
-            cancellationToken);
-
-        if (line is null || !line.StartsWith("KEYMAP|", StringComparison.Ordinal))
+        if (layer < 0 || layer > 3)
             return null;
 
-        string[] entries = line["KEYMAP|".Length..].Split(',');
+        string? line = await RequestLineAsync(
+            $"GET_KEYMAP|{layer}",
+            $"KEYMAP|{layer}|",
+            cancellationToken);
+
+        string prefix = $"KEYMAP|{layer}|";
+        if (line is null || !line.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        string[] entries = line[prefix.Length..].Split(',');
         if (entries.Length != 8)
             return null;
 
@@ -511,15 +540,24 @@ public sealed class PixelProCdcLink : IDeviceLink
                 return null;
             }
 
-            PixelProKeyBinding binding = parts[0] switch
+            PixelProKeyBinding? binding = parts[0] switch
             {
                 "K" when code <= byte.MaxValue =>
                     PixelProKeyBinding.Keyboard((byte)code, modifiers),
                 "C" =>
                     PixelProKeyBinding.Consumer(code),
+                "L" when code <= 3 &&
+                         Enum.IsDefined(typeof(PixelProLayerAction), modifiers) =>
+                    PixelProKeyBinding.Layer(
+                        (byte)code,
+                        (PixelProLayerAction)modifiers),
+                "M" when code <= 7 =>
+                    PixelProKeyBinding.Macro((byte)code),
+                "T" when code == 0 && modifiers == 0 =>
+                    PixelProKeyBinding.Transparent(),
                 "D" when code == 0 && modifiers == 0 =>
                     PixelProKeyBinding.Disabled(),
-                _ => null!
+                _ => null
             };
 
             if (binding is null)
@@ -532,10 +570,11 @@ public sealed class PixelProCdcLink : IDeviceLink
     }
 
     public async Task<bool> SetKeymapAsync(
+        int layer,
         IReadOnlyList<PixelProKeyBinding> bindings,
         CancellationToken cancellationToken = default)
     {
-        if (bindings.Count != 8)
+        if (layer < 0 || layer > 3 || bindings.Count != 8)
             return false;
 
         static string Serialize(PixelProKeyBinding binding) =>
@@ -545,18 +584,90 @@ public sealed class PixelProCdcLink : IDeviceLink
                     $"K:{binding.Code}:{binding.Modifiers & 0x0F}",
                 PixelProKeyBindingType.Consumer =>
                     $"C:{binding.Code}:0",
+                PixelProKeyBindingType.Layer =>
+                    $"L:{binding.Code}:{binding.Modifiers}",
+                PixelProKeyBindingType.Macro =>
+                    $"M:{binding.Code}:0",
+                PixelProKeyBindingType.Transparent =>
+                    "T:0:0",
                 _ => "D:0:0"
             };
 
         string command =
-            "SET_KEYMAP|" + string.Join(",", bindings.Select(Serialize));
+            $"SET_KEYMAP|{layer}|" +
+            string.Join(",", bindings.Select(Serialize));
 
         string? response = await RequestLineAsync(
             command,
-            "OK|KEYMAP",
+            $"OK|KEYMAP|{layer}",
             cancellationToken);
 
-        return string.Equals(response, "OK|KEYMAP", StringComparison.Ordinal);
+        return string.Equals(
+            response,
+            $"OK|KEYMAP|{layer}",
+            StringComparison.Ordinal);
+    }
+
+    public Task<bool> SetKeymapAsync(
+        IReadOnlyList<PixelProKeyBinding> bindings,
+        CancellationToken cancellationToken = default) =>
+        SetKeymapAsync(0, bindings, cancellationToken);
+
+    public async Task<string?> GetMacroAsync(
+        int index,
+        CancellationToken cancellationToken = default)
+    {
+        if (index < 0 || index > 7)
+            return null;
+
+        string prefix = $"MACRO|{index}|";
+        string? line = await RequestLineAsync(
+            $"GET_MACRO|{index}",
+            prefix,
+            cancellationToken);
+
+        if (line is null || !line.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        string hex = line[prefix.Length..];
+
+        try
+        {
+            byte[] bytes = Convert.FromHexString(hex);
+            return System.Text.Encoding.ASCII.GetString(bytes);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<bool> SetMacroAsync(
+        int index,
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        if (index < 0 || index > 7)
+            return false;
+
+        string ascii = new(
+            (text ?? "")
+                .Where(ch => ch >= 0x20 && ch <= 0x7E)
+                .Take(80)
+                .ToArray());
+
+        string hex = Convert.ToHexString(
+            System.Text.Encoding.ASCII.GetBytes(ascii));
+
+        string? response = await RequestLineAsync(
+            $"SET_MACRO|{index}|{hex}",
+            $"OK|MACRO|{index}",
+            cancellationToken);
+
+        return string.Equals(
+            response,
+            $"OK|MACRO|{index}",
+            StringComparison.Ordinal);
     }
 
     public async Task<bool> ResetKeymapAsync(
