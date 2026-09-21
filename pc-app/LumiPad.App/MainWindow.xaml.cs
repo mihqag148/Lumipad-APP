@@ -8968,6 +8968,14 @@ try {{
 
         _pixelRgbSelectedKey = -1;
 
+        if (PixelRgbSaveProfileCombo is not null &&
+            _pixelSelectedProfile <
+                PixelRgbSaveProfileCombo.Items.Count)
+        {
+            PixelRgbSaveProfileCombo.SelectedIndex =
+                _pixelSelectedProfile;
+        }
+
         PixelRgbColor firstColor =
             _pixelRgbProfiles[
                 _pixelSelectedProfile][0];
