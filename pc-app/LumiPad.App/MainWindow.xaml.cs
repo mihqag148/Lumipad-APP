@@ -878,6 +878,12 @@ public partial class MainWindow : Window
 
             await DetectAsync();
 
+            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+                System.IO.File.Exists(_screensaverMediaPath))
+            {
+                await PrepareScreensaverMediaAsync();
+            }
+
         }
         catch (Exception ex)
         {
