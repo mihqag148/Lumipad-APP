@@ -321,8 +321,24 @@ public partial class MainWindow : Window
 
             _connectionPreference = "auto";
             _autoReconnectEnabled = true;
-            AddLog("INFO", "APP", "Auto-connect enabled by default (USB first, Bluetooth fallback)");
-            await DetectAsync();
+            AddLog("INFO", "APP", "Auto-connect enabled by default");
+
+            if (!string.Equals(
+                    _activeProduct.Id,
+                    ProductCatalog.PixelPro.Id,
+                    StringComparison.OrdinalIgnoreCase) &&
+                PixelProCdcLink.IsDevicePresent(ProductCatalog.PixelPro))
+            {
+                AddLog(
+                    "INFO",
+                    "APP",
+                    "Live PIXEL PRO USB CDC detected; selecting PIXEL PRO automatically");
+                await SwitchActiveProductAsync(ProductCatalog.PixelPro);
+            }
+            else
+            {
+                await DetectAsync();
+            }
             await CheckForUpdatesAsync(silent: true);
             _updateCheckTimer.Start();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
@@ -6136,8 +6152,8 @@ try {{
         {
             ConfiguratorStatus.Text = string.IsNullOrWhiteSpace(url)
                 ? L(
-                    "PIXEL PRO phase 1 uses the LumiPad vendor HID link; no embedded configurator is required.",
-                    "PIXEL PRO phase 1 dùng vendor HID của LumiPad; chưa cần trình cấu hình nhúng.")
+                    "PIXEL PRO uses native USB CDC; no embedded configurator is required.",
+                    "PIXEL PRO dùng USB CDC native; chưa cần trình cấu hình nhúng.")
                 : $"Embedded {url}";
         }
     }
