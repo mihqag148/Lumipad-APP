@@ -3,7 +3,7 @@ namespace LumiPad.App;
 public enum DeviceDriverKind
 {
     LumiZmk,
-    QmkRawHid,
+    PixelProZmkHid,
     Esp32Companion
 }
 
@@ -33,35 +33,18 @@ public static class ProductCatalog
 
 
     public static ProductDefinition PixelPro { get; } =
-        CreateQmkProduct(
+        new(
             "pixel-pro",
             "PIXEL PRO",
-            "USB QMK/VIA macro control pad",
+            "USB ZMK macro control pad",
             "PP-01",
-            0x303A,
-            0x4009,
-            supportsBattery: false,
-            rawReportId: 0);
-
-    public static ProductDefinition CreateQmkProduct(
-        string id,
-        string name,
-        string subtitle,
-        string productCode,
-        int vendorId,
-        int productId,
-        bool supportsBattery = false,
-        byte rawReportId = 0) =>
-        new(
-            id,
-            name,
-            subtitle,
-            productCode,
-            supportsBattery,
-            DeviceDriverKind.QmkRawHid,
-            vendorId,
-            productId,
-            RawReportId: rawReportId);
+            false,
+            DeviceDriverKind.PixelProZmkHid,
+            0x1209,
+            0x0001,
+            RawUsagePage: 0xFF00,
+            RawUsageId: 0x0001,
+            RawReportId: 0);
 
     public static IReadOnlyList<ProductDefinition> All { get; } =
     [
