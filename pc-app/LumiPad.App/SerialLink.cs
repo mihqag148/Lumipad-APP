@@ -1573,8 +1573,7 @@ public sealed class SerialLink : IDeviceLink
         return (parts[1], refreshHz, spiHz, gifMaxFps);
     }
 
-    public async Task<(long FlashUsed, long FlashTotal, long RamUsed, long RamTotal)?>
-        ReadMemoryUsageAsync()
+    public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
     {
         if (!SupportsMemoryInfo)
             return null;
@@ -1632,7 +1631,13 @@ public sealed class SerialLink : IDeviceLink
             return null;
         }
 
-        return (flashUsed, flashTotal, ramUsed, ramTotal);
+        return new DeviceMemoryUsage(
+            flashUsed,
+            flashTotal,
+            ramUsed,
+            ramTotal,
+            0,
+            0);
     }
 
     public async Task<(uint Seq, int ActionId, int Position)?>
