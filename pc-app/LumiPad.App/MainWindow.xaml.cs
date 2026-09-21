@@ -1275,7 +1275,7 @@ public partial class MainWindow : Window
         if (RgbSaveProfileButton is not null)
             RgbSaveProfileButton.Content =
                 pixel
-                    ? L("Save 8 keys to keymap profile", "Lưu 8 phím vào profile keymap")
+                    ? L("Save RGB + mode to keymap profile", "Lưu RGB + chế độ vào profile keymap")
                     : L("Save to profile", "Lưu vào profile");
 
         if (RgbSpeedSlider is not null)
@@ -7756,14 +7756,27 @@ try {{
                                 100.0)
                             : 0;
 
+                    bool overTarget =
+                        pixelGifInfo.StoredBytes >
+                        PixelProScreensaverMediaService.TargetGifBytes;
+
+                    string targetState =
+                        overTarget
+                            ? L(
+                                " · above 1 MiB soft target; flash space checked on upload",
+                                " · vượt mục tiêu mềm 1 MiB; sẽ kiểm tra flash khi tải")
+                            : L(
+                                " · within 1 MiB soft target",
+                                " · trong mục tiêu mềm 1 MiB");
+
                     pixelGifSummary =
                         pixelGifInfo.Optimized
                             ? L(
-                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} source resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color adaptive palette · saved {savedPercent:0.#}%",
-                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên độ phân giải {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette thích ứng 256 màu · giảm {savedPercent:0.#}%")
+                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color palette · no upscale · saved {savedPercent:0.#}%{targetState}",
+                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette 256 màu · không phóng lớn · giảm {savedPercent:0.#}%{targetState}")
                             : L(
-                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale",
-                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn");
+                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale{targetState}",
+                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn{targetState}");
                 }
 
                 ScreensaverMediaInfo.Text =
