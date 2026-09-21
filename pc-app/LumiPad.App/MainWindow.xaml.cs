@@ -26,6 +26,21 @@ public partial class MainWindow : Window
 {
     private ProductDefinition _activeProduct = ProductCatalog.DialDesk;
     private IDeviceLink _serial;
+    private readonly Dictionary<string, IDeviceLink> _deviceLinks =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _connectionPreferences =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _autoReconnectByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _sleepingByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int?> _batteryByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> _firmwareLogSeqByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> _actionEventSeqByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly NowPlayingService _nowPlaying = new();
     private readonly PcMonitorService _pcMonitorService = new();
 
@@ -36,9 +51,63 @@ public partial class MainWindow : Window
     private bool _trayTipShown;
     private bool _configuratorInitialized;
     private string _loadedConfiguratorUrl = "";
-    private bool _autoReconnectEnabled = true;
-    private string _connectionPreference = "auto";
-    private bool _keyboardSleeping;
+
+    private bool _autoReconnectEnabled
+    {
+        get => !_autoReconnectByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out bool enabled) || enabled;
+        set => _autoReconnectByProduct[_activeProduct.Id] = value;
+    }
+
+    private string _connectionPreference
+    {
+        get => _connectionPreferences.TryGetValue(
+                   _activeProduct.Id,
+                   out string? value)
+               ? value
+               : "auto";
+        set => _connectionPreferences[_activeProduct.Id] = value;
+    }
+
+    private bool _keyboardSleeping
+    {
+        get => _sleepingByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out bool sleeping) && sleeping;
+        set => _sleepingByProduct[_activeProduct.Id] = value;
+    }
+
+    private uint _lastActionEventSeq
+    {
+        get => _actionEventSeqByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out uint value)
+               ? value
+               : 0;
+        set => _actionEventSeqByProduct[_activeProduct.Id] = value;
+    }
+
+    private uint _firmwareLogSeq
+    {
+        get => _firmwareLogSeqByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out uint value)
+               ? value
+               : 0;
+        set => _firmwareLogSeqByProduct[_activeProduct.Id] = value;
+    }
+
+    private int? _activeBatteryPercent
+    {
+        get => _batteryByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out int? value)
+               ? value
+               : null;
+        set => _batteryByProduct[_activeProduct.Id] = value;
+    }
+
     private readonly CancellationTokenSource _reconnectCts = new();
     private static readonly HttpClient UpdateHttp = CreateUpdateHttpClient();
     private const string UpdateReleaseApi =
@@ -90,8 +159,6 @@ public partial class MainWindow : Window
     private bool _loadingActionScriptUi;
     private readonly HashSet<int> _runningActionIds = [];
     private ActionKeymapWindow? _actionKeymapWindow;
-    private uint _lastActionEventSeq;
-    private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
@@ -118,7 +185,6 @@ public partial class MainWindow : Window
 
     private readonly Dictionary<string, ProductCardVisual> _productCardVisuals =
         new(StringComparer.OrdinalIgnoreCase);
-    private int? _activeBatteryPercent;
     private bool _pcMonitorEnabled = true;
     private int _pcMonitorIntervalMs = 1000;
     private bool _pcMonitorPolling;
