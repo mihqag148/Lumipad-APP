@@ -5,6 +5,11 @@ using System.Text.RegularExpressions;
 
 namespace LumiPad.App;
 
+public readonly record struct PixelRgbColor(byte R, byte G, byte B)
+{
+    public string Hex => $"{R:X2}{G:X2}{B:X2}";
+}
+
 /// <summary>
 /// Native ESP32-S2 USB CDC transport for PIXEL PRO.
 /// The HID keyboard remains independent; LumiPad owns only the CDC interface.
@@ -38,6 +43,7 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     public string FirmwareHello { get; private set; } = "";
     public int ProtocolVersion { get; private set; }
+    private int _activeProfile;
     public string? LastScreensaverError { get; private set; }
 
     public bool SupportsDiagnostics => true;
@@ -699,6 +705,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     {
         profile = Math.Clamp(profile, 0, 19);
         layer = Math.Clamp(layer, 0, 3);
+        _activeProfile = profile;
         SendCommand($"SET_PROFILE|{profile}|{layer}");
     }
 
@@ -871,13 +878,25 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out byte[] encodedGif,
                 out ScreensaverScaleMode scaleMode))
         {
-            // SerialPort.ReadLine is synchronous. Keep the complete GIF
-            // transfer state machine off the WPF dispatcher so multi-megabyte
-            // uploads cannot freeze the app window.
             return await Task.Run(
                     () => SendEncodedGifAsync(
                         encodedGif,
                         scaleMode,
+                        progress))
+                .ConfigureAwait(false);
+        }
+
+        if (PixelProScreensaverMediaService.TryGetEncodedJpeg(
+                animation,
+                out byte[] encodedJpeg,
+                out int jpegWidth,
+                out int jpegHeight))
+        {
+            return await Task.Run(
+                    () => SendEncodedJpegAsync(
+                        encodedJpeg,
+                        jpegWidth,
+                        jpegHeight,
                         progress))
                 .ConfigureAwait(false);
         }
@@ -1248,6 +1267,160 @@ public sealed class PixelProCdcLink : IDeviceLink
         }
     }
 
+    private async Task<bool> SendEncodedJpegAsync(
+        byte[] jpegBytes,
+        int width,
+        int height,
+        IProgress<int>? progress)
+    {
+        (long Total, long Used, long Free, long Flash)? capacity =
+            await ReadSaverCapacityAsync();
+
+        if (capacity is not null &&
+            jpegBytes.LongLength + 4096 >
+            capacity.Value.Free)
+        {
+            LastScreensaverError =
+                $"JPEG file is {jpegBytes.LongLength / 1048576.0:0.00} MB but PIXEL PRO has " +
+                $"{capacity.Value.Free / 1048576.0:0.00} MB free for media.";
+            return false;
+        }
+
+        if (jpegBytes.Length < 4 ||
+            jpegBytes[0] != 0xFF ||
+            jpegBytes[1] != 0xD8)
+        {
+            throw new InvalidDataException(
+                "Invalid JPEG payload.");
+        }
+
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 500;
+                port.WriteTimeout = 5000;
+                try { port.DiscardInBuffer(); } catch { }
+
+                string begin =
+                    $"SAVJPGBEGIN|{jpegBytes.Length}|{width}|{height}";
+
+                Log("TX", begin);
+                port.WriteLine(begin);
+
+                string? beginAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVJPGBEGIN",
+                        TimeSpan.FromSeconds(8));
+
+                if (!string.Equals(
+                        beginAck,
+                        "OK|SAVJPGBEGIN",
+                        StringComparison.Ordinal))
+                {
+                    LastScreensaverError =
+                        string.IsNullOrWhiteSpace(beginAck)
+                            ? "PIXEL PRO did not answer JPEG upload start."
+                            : $"PIXEL PRO rejected JPEG upload: {beginAck}";
+                    return false;
+                }
+
+                const int RawChunkSize = 1024;
+
+                for (int offset = 0;
+                     offset < jpegBytes.Length;
+                     offset += RawChunkSize)
+                {
+                    int len =
+                        Math.Min(
+                            RawChunkSize,
+                            jpegBytes.Length - offset);
+
+                    string encoded =
+                        Convert.ToBase64String(
+                            jpegBytes,
+                            offset,
+                            len);
+
+                    port.WriteLine(
+                        $"SAVJPGDATA|{offset}|{encoded}");
+
+                    int nextOffset =
+                        offset + len;
+
+                    string expected =
+                        $"OK|SAVJPGDATA|{nextOffset}";
+
+                    string? ack =
+                        await ReadExpectedLineAsync(
+                            port,
+                            expected,
+                            TimeSpan.FromSeconds(5));
+
+                    if (!string.Equals(
+                            ack,
+                            expected,
+                            StringComparison.Ordinal))
+                    {
+                        LastScreensaverError =
+                            string.IsNullOrWhiteSpace(ack)
+                                ? "PIXEL PRO stopped answering during JPEG upload."
+                                : $"PIXEL PRO rejected JPEG data: {ack}";
+                        return false;
+                    }
+
+                    progress?.Report(
+                        (int)Math.Clamp(
+                            nextOffset * 95L /
+                            Math.Max(1, jpegBytes.Length),
+                            0,
+                            95));
+                }
+
+                port.WriteLine("SAVJPGEND");
+
+                string? finalAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVER|READY",
+                        TimeSpan.FromSeconds(10));
+
+                bool ready =
+                    string.Equals(
+                        finalAck,
+                        "OK|SAVER|READY",
+                        StringComparison.Ordinal);
+
+                if (ready)
+                    progress?.Report(100);
+                else
+                    LastScreensaverError =
+                        string.IsNullOrWhiteSpace(finalAck)
+                            ? "PIXEL PRO did not confirm JPEG storage."
+                            : $"PIXEL PRO rejected JPEG storage: {finalAck}";
+
+                return ready;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
     private async Task<(long Total, long Used, long Free, long Flash)?>
         ReadSaverCapacityAsync()
     {
@@ -1518,13 +1691,141 @@ public sealed class PixelProCdcLink : IDeviceLink
         Task.FromResult<(uint, int, int)?>(null);
 
     public void SetActiveProfile(int profile) => SetProfileLayer(profile, 0);
-    public void SetRgbProfile(int index, int effect, byte r, byte g, byte b) { }
-    public void SetEnabled(bool enabled) { }
-    public void SetBrightness(int percent) { }
+
+    public async Task<PixelRgbColor[]?> GetPixelRgbProfileAsync(
+        int profile,
+        CancellationToken cancellationToken = default)
+    {
+        profile = Math.Clamp(profile, 0, 19);
+
+        string prefix =
+            $"RGB_PROFILE|{profile}|";
+
+        string? line =
+            await RequestLineAsync(
+                $"GET_RGB_PROFILE|{profile}",
+                prefix,
+                cancellationToken);
+
+        if (line is null ||
+            !line.StartsWith(
+                prefix,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string[] values =
+            line[prefix.Length..]
+                .Split(',');
+
+        if (values.Length != 8)
+            return null;
+
+        var colors =
+            new PixelRgbColor[8];
+
+        for (int i = 0; i < colors.Length; i++)
+        {
+            string hex =
+                values[i].Trim();
+
+            if (hex.Length != 6 ||
+                !byte.TryParse(
+                    hex[..2],
+                    System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out byte r) ||
+                !byte.TryParse(
+                    hex.Substring(2, 2),
+                    System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out byte g) ||
+                !byte.TryParse(
+                    hex.Substring(4, 2),
+                    System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out byte b))
+            {
+                return null;
+            }
+
+            colors[i] =
+                new PixelRgbColor(
+                    r,
+                    g,
+                    b);
+        }
+
+        return colors;
+    }
+
+    public void SetPixelRgbKey(
+        int profile,
+        int keyIndex,
+        PixelRgbColor color)
+    {
+        profile = Math.Clamp(profile, 0, 19);
+        keyIndex = Math.Clamp(keyIndex, 0, 7);
+
+        SendCommand(
+            $"RGB_KEY|{profile}|{keyIndex}|{color.R}|{color.G}|{color.B}");
+    }
+
+    public void SetPixelRgbAll(
+        int profile,
+        PixelRgbColor color)
+    {
+        profile = Math.Clamp(profile, 0, 19);
+
+        SendCommand(
+            $"RGB_ALL|{profile}|{color.R}|{color.G}|{color.B}");
+    }
+
+    public void SetPixelRgbProfile(
+        int profile,
+        IReadOnlyList<PixelRgbColor> colors)
+    {
+        if (colors.Count != 8)
+            return;
+
+        profile = Math.Clamp(profile, 0, 19);
+
+        string payload =
+            string.Join(
+                ",",
+                colors.Select(
+                    color => color.Hex));
+
+        SendCommand(
+            $"RGB_PROFILE_SET|{profile}|{payload}");
+    }
+
+    public void SetRgbProfile(int index, int effect, byte r, byte g, byte b)
+    {
+        // Legacy shared UI compatibility. PIXEL PRO stores RGB by keymap
+        // profile; RYNOR's effect/profile protocol is not reused here.
+    }
+
+    public void SetEnabled(bool enabled) =>
+        SendCommand(
+            $"RGB_ENABLE|{(enabled ? 1 : 0)}");
+
+    public void SetBrightness(int percent) =>
+        SendCommand(
+            $"RGB_BRIGHTNESS|{Math.Clamp(percent, 0, 100)}");
+
     public void SetSpeed(int percent) { }
     public void SetAutoLayer() { }
     public void SetEffect(int effect) { }
-    public void SetSolid(byte r, byte g, byte b) { }
+
+    public void SetSolid(byte r, byte g, byte b) =>
+        SetPixelRgbAll(
+            _activeProfile,
+            new PixelRgbColor(
+                r,
+                g,
+                b));
 
     public Task RestartKeyboardAsync()
     {
