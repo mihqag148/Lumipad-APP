@@ -6385,6 +6385,16 @@ try {{
             return;
 
         _screensaverMediaPath = dialog.FileName;
+
+        if (IsPixelProActive &&
+            ScreensaverScaleCombo is not null)
+        {
+            _screensaverScaleMode = ScreensaverScaleMode.Fit;
+            SelectComboTag(
+                ScreensaverScaleCombo,
+                ScreensaverScaleMode.Fit.ToString());
+        }
+
         _screensaverSource = "Media";
         if (ScreensaverSourceCombo is not null)
             SelectComboTag(ScreensaverSourceCombo, "Media");
@@ -6600,9 +6610,16 @@ try {{
                 SetScreensaverUploadState(
                     L("Upload failed", "Tải lên thất bại"),
                     MediaColor.FromRgb(255, 69, 58));
+
+                string? pixelReason =
+                    (_serial as PixelProCdcLink)?.LastScreensaverError;
+
                 ScreensaverSendStatus.Text =
-                    L("LumiPad did not confirm the upload. Flash the matching firmware and try again.",
-                      "LumiPad chưa xác nhận dữ liệu. Hãy flash đúng firmware đi kèm rồi thử lại.");
+                    !string.IsNullOrWhiteSpace(pixelReason)
+                        ? pixelReason
+                        : L(
+                            "LumiPad did not confirm the upload. Check the diagnostic log and firmware version.",
+                            "LumiPad chưa xác nhận dữ liệu. Hãy kiểm tra log chẩn đoán và phiên bản firmware.");
             }
         }
         catch (Exception ex)
@@ -7605,6 +7622,12 @@ try {{
     {
         if (PixelModifierCanvas is null ||
             PixelModifiersPanel is null)
+        {
+            return;
+        }
+
+        if (e.OriginalSource is DependencyObject source &&
+            PixelMacroFindAncestor<System.Windows.Controls.CheckBox>(source) is not null)
         {
             return;
         }
