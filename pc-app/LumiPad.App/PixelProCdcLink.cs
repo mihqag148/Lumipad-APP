@@ -1005,9 +1005,10 @@ public sealed class PixelProCdcLink : IDeviceLink
                 }
                 else
                 {
-                    SetSaverProtocolError(
-                        finalAck,
-                        gifBytes);
+                    LastScreensaverError =
+                        string.IsNullOrWhiteSpace(finalAck)
+                            ? "PIXEL PRO did not confirm the screensaver upload."
+                            : $"PIXEL PRO rejected the screensaver upload: {finalAck}";
                 }
 
                 return ready;
