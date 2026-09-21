@@ -137,28 +137,38 @@ public partial class MainWindow : Window
 
     private sealed class PixelViaExport
     {
-        public int Version { get; set; } = 1;
+        public int Version { get; set; } = 2;
+        public int ProfileIndex { get; set; }
+        public string ProfileName { get; set; } = "";
         public PixelProKeyBinding[][] Layers { get; set; } = [];
-        public string[] Macros { get; set; } = [];
     }
 
     private readonly List<PixelViaKeyVisual> _pixelViaKeys = [];
-    private readonly PixelProKeyBinding[][] _pixelLayerMaps =
-        Enumerable.Range(0, 4)
-            .Select(layer =>
-                Enumerable.Range(0, 8)
-                    .Select(i =>
-                        layer == 0
-                            ? PixelProKeyBinding.Keyboard((byte)(4 + i))
-                            : PixelProKeyBinding.Transparent())
+    private readonly PixelProKeyBinding[][][] _pixelProfileMaps =
+        Enumerable.Range(0, 20)
+            .Select(_ =>
+                Enumerable.Range(0, 4)
+                    .Select(layer =>
+                        Enumerable.Range(0, 8)
+                            .Select(i =>
+                                layer == 0
+                                    ? PixelProKeyBinding.Keyboard((byte)(4 + i))
+                                    : PixelProKeyBinding.Transparent())
+                            .ToArray())
                     .ToArray())
             .ToArray();
-    private readonly bool[] _pixelLayerLoaded = new bool[4];
-    private readonly string[] _pixelMacros = new string[8];
-    private readonly bool[] _pixelMacroLoaded = new bool[8];
+    private readonly bool[,] _pixelLayerLoaded = new bool[20, 4];
 
+    private readonly PixelProProfileCatalog _pixelProfileCatalog =
+        PixelProProfileStore.Load();
+    private readonly List<PixelProMacroDefinition> _pixelMacros =
+        PixelProMacroStore.Load();
+    private readonly HashSet<int> _runningPixelMacroSlots = [];
+
+    private int _pixelSelectedProfile;
     private int _pixelSelectedLayer;
     private int _pixelSelectedKey;
+    private int _pixelSelectedMacroSlot = 1;
     private string _pixelCurrentCategory = "Basic";
     private bool _pixelViaUiBuilt;
     private bool _pixelViaUpdating;
