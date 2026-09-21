@@ -821,7 +821,9 @@ public sealed class PixelProCdcLink : IDeviceLink
         if (!IsConnected)
             return false;
 
-        if (animation.EncodedGif is { Length: > 0 } encodedGif)
+        if (PixelProScreensaverMediaService.TryGetEncodedGif(
+                animation,
+                out byte[] encodedGif))
         {
             return await SendEncodedGifAsync(
                 encodedGif,
