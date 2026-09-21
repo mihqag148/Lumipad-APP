@@ -5295,7 +5295,8 @@ try {{
             return;
         }
 
-        RunningAppInfo? app = AutoProfileService.GetForegroundApplication();
+        RunningAppInfo? app =
+            AutoProfileService.GetForegroundApplication();
 
         if (app is not null &&
             AutoProfileService.PathsEqual(
@@ -5316,23 +5317,58 @@ try {{
                     m.ExecutablePath,
                     app.ExecutablePath));
 
-        int target = mapping?.ProfileIndex ??
-                     Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4);
+        bool pixel = IsPixelProActive;
 
-        string appName = app?.Name ??
-                         L("Desktop", "Màn hình chính");
-        string profileName = ProfileName(target);
+        int targetProfile = pixel
+            ? mapping?.PixelProfileIndex ??
+              Math.Clamp(
+                  _autoProfileSettings.DefaultPixelProfile,
+                  0,
+                  Math.Max(0, _pixelProfileCatalog.Count - 1))
+            : mapping?.ProfileIndex ??
+              Math.Clamp(
+                  _autoProfileSettings.DefaultProfile,
+                  0,
+                  4);
+
+        targetProfile = pixel
+            ? Math.Clamp(
+                targetProfile,
+                0,
+                Math.Max(0, _pixelProfileCatalog.Count - 1))
+            : Math.Clamp(targetProfile, 0, 4);
+
+        int targetLayer = pixel
+            ? Math.Clamp(
+                mapping?.LayerIndex ??
+                _autoProfileSettings.DefaultLayer,
+                0,
+                3)
+            : 0;
+
+        string appName =
+            app?.Name ?? L("Desktop", "Màn hình chính");
+
+        string profileName =
+            pixel
+                ? PixelProfileName(targetProfile)
+                : ProfileName(targetProfile);
 
         AutoProfileStatusText.Text =
-            mapping is null
-                ? $"{appName} → Default · {profileName}"
-                : $"{appName} → {profileName}";
+            pixel
+                ? mapping is null
+                    ? $"{appName} → Default · {profileName} · L{targetLayer}"
+                    : $"{appName} → {profileName} · L{targetLayer}"
+                : mapping is null
+                    ? $"{appName} → Default · {profileName}"
+                    : $"{appName} → {profileName}";
 
         string? foregroundPath = app?.ExecutablePath;
 
         bool changed =
             force ||
-            target != _lastAppliedAutoProfile ||
+            targetProfile != _lastAppliedAutoProfile ||
+            targetLayer != _lastAppliedAutoLayer ||
             !AutoProfileService.PathsEqual(
                 foregroundPath,
                 _lastForegroundAppPath);
@@ -5340,14 +5376,25 @@ try {{
         if (!changed || !_serial.IsConnected)
             return;
 
-        _serial.SetActiveProfile(target);
-        _lastAppliedAutoProfile = target;
+        if (pixel && _serial is PixelProCdcLink pixelLink)
+        {
+            pixelLink.SetProfileLayer(targetProfile, targetLayer);
+        }
+        else
+        {
+            _serial.SetActiveProfile(targetProfile);
+        }
+
+        _lastAppliedAutoProfile = targetProfile;
+        _lastAppliedAutoLayer = targetLayer;
         _lastForegroundAppPath = foregroundPath;
 
         AddLog(
             "INFO",
             "AUTO",
-            $"Profile {target + 1} ({profileName}) for {appName}");
+            pixel
+                ? $"PIXEL PRO profile {targetProfile + 1} ({profileName}), layer {targetLayer} for {appName}"
+                : $"Profile {targetProfile + 1} ({profileName}) for {appName}");
     }
 
     private async Task PollLumiActionAsync()
