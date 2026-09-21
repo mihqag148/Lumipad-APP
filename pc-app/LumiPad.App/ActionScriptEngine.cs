@@ -160,6 +160,16 @@ public static class ActionScriptEngine
             {
                 SendChord(value);
             }
+            else if (type.Equals("KeyDown", StringComparison.OrdinalIgnoreCase))
+            {
+                if (TryVirtualKey(value, out byte key))
+                    KeyDown(key);
+            }
+            else if (type.Equals("KeyUp", StringComparison.OrdinalIgnoreCase))
+            {
+                if (TryVirtualKey(value, out byte key))
+                    KeyUp(key);
+            }
             else if (type.Equals("Text", StringComparison.OrdinalIgnoreCase))
             {
                 SendUnicodeText(value);
@@ -322,6 +332,23 @@ public static class ActionScriptEngine
             ["UP"] = 0x26,
             ["RIGHT"] = 0x27,
             ["DOWN"] = 0x28,
+            ["CTRL"] = 0x11,
+            ["CONTROL"] = 0x11,
+            ["SHIFT"] = 0x10,
+            ["ALT"] = 0x12,
+            ["WIN"] = 0x5B,
+            ["WINDOWS"] = 0x5B,
+            ["MINUS"] = 0xBD,
+            ["PLUS"] = 0xBB,
+            ["COMMA"] = 0xBC,
+            ["PERIOD"] = 0xBE,
+            ["SLASH"] = 0xBF,
+            ["SEMICOLON"] = 0xBA,
+            ["QUOTE"] = 0xDE,
+            ["LBRACKET"] = 0xDB,
+            ["RBRACKET"] = 0xDD,
+            ["BACKSLASH"] = 0xDC,
+            ["TILDE"] = 0xC0,
         };
 
         return map.TryGetValue(key, out vk);
