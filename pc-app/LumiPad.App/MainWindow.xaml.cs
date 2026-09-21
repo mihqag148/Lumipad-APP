@@ -6063,95 +6063,124 @@ try {{
     private async Task PollLumiActionAsync()
     {
         if (!_uiReady ||
-            !_serial.IsConnected ||
-            !_serial.SupportsActions ||
             _actionScripts.Count == 0)
         {
             return;
         }
 
-        var actionEvent =
-            await _serial.ReadActionEventAsync(_lastActionEventSeq);
-
-        if (actionEvent is null)
-            return;
-
-        _lastActionEventSeq = actionEvent.Value.Seq;
-
-        ActionScriptDefinition? script =
-            _actionScripts.FirstOrDefault(
-                s => s.ActionId == actionEvent.Value.ActionId);
-
-        if (script is null)
+        foreach (ProductDefinition product in ProductCatalog.All)
         {
-            AddLog(
-                "WARN",
-                "ACTION",
-                $"No script assigned to Lumi Action {actionEvent.Value.ActionId}");
-            return;
-        }
+            IDeviceLink link =
+                LinkFor(product);
 
-        if (!_runningActionIds.Add(script.ActionId))
-        {
-            AddLog(
-                "WARN",
-                "ACTION",
-                $"Lumi Action {script.ActionId} ignored because it is already running");
-            return;
-        }
-
-        try
-        {
-            if (SelectedActionScript?.Id == script.Id &&
-                ActionScriptStatusText is not null)
+            if (!link.IsConnected ||
+                !link.SupportsActions)
             {
-                ActionScriptStatusText.Text =
-                    L("Triggered from keyboard…", "Đã kích hoạt từ bàn phím…");
+                continue;
             }
 
-            AddLog(
-                "INFO",
-                "ACTION",
-                $"Run #{script.ActionId:00} {script.Name} from key position {actionEvent.Value.Position}");
+            uint afterSeq =
+                _actionEventSeqByProduct.TryGetValue(
+                    product.Id,
+                    out uint storedSeq)
+                    ? storedSeq
+                    : 0;
 
-            await ActionScriptEngine.ExecuteAsync(
-                script,
-                step =>
+            var actionEvent =
+                await link.ReadActionEventAsync(
+                    afterSeq);
+
+            if (actionEvent is null)
+                continue;
+
+            _actionEventSeqByProduct[product.Id] =
+                actionEvent.Value.Seq;
+
+            ActionScriptDefinition? script =
+                _actionScripts.FirstOrDefault(
+                    s =>
+                        s.ActionId ==
+                        actionEvent.Value.ActionId);
+
+            if (script is null)
+            {
+                AddLog(
+                    "WARN",
+                    product.Name,
+                    $"No script assigned to Lumi Action {actionEvent.Value.ActionId}");
+                continue;
+            }
+
+            if (!_runningActionIds.Add(script.ActionId))
+            {
+                AddLog(
+                    "WARN",
+                    product.Name,
+                    $"Lumi Action {script.ActionId} ignored because it is already running");
+                continue;
+            }
+
+            try
+            {
+                if (SelectedActionScript?.Id == script.Id &&
+                    ActionScriptStatusText is not null)
                 {
-                    if (SelectedActionScript?.Id != script.Id ||
-                        ActionScriptStatusText is null)
+                    ActionScriptStatusText.Text =
+                        L(
+                            "Triggered from keyboard…",
+                            "Đã kích hoạt từ bàn phím…");
+                }
+
+                AddLog(
+                    "INFO",
+                    product.Name,
+                    $"Run #{script.ActionId:00} {script.Name} from key position {actionEvent.Value.Position}");
+
+                await ActionScriptEngine.ExecuteAsync(
+                    script,
+                    step =>
                     {
-                        return;
-                    }
+                        if (SelectedActionScript?.Id != script.Id ||
+                            ActionScriptStatusText is null)
+                        {
+                            return;
+                        }
 
-                    Dispatcher.Invoke(() =>
-                        ActionScriptStatusText.Text = step);
-                });
+                        Dispatcher.Invoke(() =>
+                            ActionScriptStatusText.Text =
+                                step);
+                    });
 
-            if (SelectedActionScript?.Id == script.Id &&
-                ActionScriptStatusText is not null)
-            {
-                ActionScriptStatusText.Text =
-                    L("Completed", "Hoàn tất");
+                if (SelectedActionScript?.Id == script.Id &&
+                    ActionScriptStatusText is not null)
+                {
+                    ActionScriptStatusText.Text =
+                        L(
+                            "Completed",
+                            "Hoàn tất");
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            AddLog(
-                "ERROR",
-                "ACTION",
-                $"Lumi Action {script.ActionId} failed: {ex.Message}");
-
-            if (SelectedActionScript?.Id == script.Id &&
-                ActionScriptStatusText is not null)
+            catch (Exception ex)
             {
-                ActionScriptStatusText.Text =
-                    L($"Failed: {ex.Message}", $"Lỗi: {ex.Message}");
+                AddLog(
+                    "ERROR",
+                    product.Name,
+                    $"Lumi Action {script.ActionId} failed: {ex.Message}");
+
+                if (SelectedActionScript?.Id == script.Id &&
+                    ActionScriptStatusText is not null)
+                {
+                    ActionScriptStatusText.Text =
+                        L(
+                            $"Failed: {ex.Message}",
+                            $"Lỗi: {ex.Message}");
+                }
             }
-        }
-        finally
-        {
-            _runningActionIds.Remove(script.ActionId);
+            finally
+            {
+                _runningActionIds.Remove(
+                    script.ActionId);
+            }
         }
     }
 
