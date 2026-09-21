@@ -935,19 +935,80 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <Grid Margin="6,3">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="88"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Type}"
+                                            <Grid x:Name="GenericStepRow">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="88"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Type}"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Muted}"/>
+                                                <TextBox Grid.Column="1"
+                                                         Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                         LostFocus="PixelMacroStepValue_LostFocus"
+                                                         Margin="6,0,0,0"/>
+                                            </Grid>
+
+                                            <TextBlock x:Name="KeyDownGlyph"
+                                                       Text="↓"
+                                                       Visibility="Collapsed"
+                                                       HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource Muted}"/>
-                                            <TextBox Grid.Column="1"
-                                                     Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
-                                                     LostFocus="PixelMacroStepValue_LostFocus"
-                                                     Margin="6,0,0,0"/>
+                                                       FontSize="24"
+                                                       FontWeight="Bold"/>
+
+                                            <StackPanel x:Name="DelayEditor"
+                                                        Visibility="Collapsed"
+                                                        Orientation="Horizontal"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center">
+                                                <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                         LostFocus="PixelMacroStepValue_LostFocus"
+                                                         Width="72"
+                                                         TextAlignment="Center"
+                                                         VerticalContentAlignment="Center"/>
+                                                <TextBlock Text="ms"
+                                                           VerticalAlignment="Center"
+                                                           Margin="6,0,0,0"
+                                                           Foreground="{DynamicResource Muted}"/>
+                                            </StackPanel>
+
+                                            <TextBlock x:Name="KeyLabelText"
+                                                       Text="{Binding Value}"
+                                                       Visibility="Collapsed"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="18"
+                                                       FontWeight="SemiBold"/>
+
+                                            <TextBlock x:Name="KeyUpGlyph"
+                                                       Text="↑"
+                                                       Visibility="Collapsed"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="24"
+                                                       FontWeight="Bold"/>
                                         </Grid>
+
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding Type}" Value="KeyDown">
+                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="KeyDownGlyph" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Type}" Value="Delay">
+                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="DelayEditor" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Type}" Value="KeyLabel">
+                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="KeyLabelText" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Type}" Value="KeyUp">
+                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="KeyUpGlyph" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
@@ -1021,7 +1082,7 @@
                                            FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="Click the box and press one key. It adds Key Down → Delay → Key Up."
+                                <TextBlock Text="Click the box and press one key. It adds ↓ / delay / key / delay / ↑."
                                            FontSize="11"
                                            Foreground="{DynamicResource Muted}"
                                            TextWrapping="Wrap"
