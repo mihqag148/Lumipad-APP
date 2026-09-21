@@ -286,8 +286,28 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        _serial = DeviceLinkFactory.Create(_activeProduct);
         InitializeComponent();
+
+        foreach (ProductDefinition product in ProductCatalog.All)
+        {
+            IDeviceLink link =
+                DeviceLinkFactory.Create(product);
+
+            _deviceLinks[product.Id] = link;
+            _connectionPreferences[product.Id] = "auto";
+            _autoReconnectByProduct[product.Id] = true;
+            _sleepingByProduct[product.Id] = false;
+            _batteryByProduct[product.Id] = null;
+            _firmwareLogSeqByProduct[product.Id] = 0;
+            _actionEventSeqByProduct[product.Id] = 0;
+
+            AttachDeviceLinkEvents(
+                product,
+                link);
+        }
+
+        _serial = LinkFor(_activeProduct);
+
         BuildPixelProKeymapUi();
         InitializeTrayIcon();
 
@@ -395,8 +415,6 @@ public partial class MainWindow : Window
         _updateCheckTimer.Tick += async (_, _) =>
             await CheckForUpdatesAsync(silent: true);
 
-        AttachDeviceLinkEvents(_serial);
-
         System.Windows.Application.Current.DispatcherUnhandledException += (_, args) =>
         {
             AddLog("ERROR", "APP", $"Unhandled UI exception: {args.Exception}");
@@ -493,6 +511,15 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
         StateChanged += MainWindow_StateChanged;
     }
+
+    private IDeviceLink LinkFor(ProductDefinition product) =>
+        _deviceLinks[product.Id];
+
+    private bool IsActiveProduct(ProductDefinition product) =>
+        string.Equals(
+            _activeProduct.Id,
+            product.Id,
+            StringComparison.OrdinalIgnoreCase);
 
     private void BuildProductCards()
     {
