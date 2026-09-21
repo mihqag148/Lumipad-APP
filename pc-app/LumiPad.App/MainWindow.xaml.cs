@@ -250,10 +250,10 @@ public partial class MainWindow : Window
     private int _pixelSelectedMacroSlot = 1;
     private int _pixelMacroDragIndex = -1;
     private System.Windows.Point _pixelMacroDragStartPoint;
-    private bool _pixelModifierDragging;
+    private bool _pixelProfileRenameActive;
+    private bool _pixelModifierOrderDragging;
+    private System.Windows.Controls.Border? _pixelModifierDragCard;
     private System.Windows.Point _pixelModifierDragStart;
-    private double _pixelModifierStartLeft;
-    private double _pixelModifierStartTop;
     private string _pixelCurrentCategory = "Basic";
     private bool _pixelViaUiBuilt;
     private bool _pixelViaUpdating;
@@ -1745,19 +1745,50 @@ public partial class MainWindow : Window
         new() { Effect = 3, R = 80, G = 255, B = 100 },
     ];
 
+    private static PixelRgbColor[] CreateDefaultPixelRgbProfile(
+        int profile) =>
+        Enumerable.Range(0, 8)
+            .Select(key =>
+            {
+                byte r =
+                    (byte)Math.Clamp(
+                        255 - key * 16,
+                        0,
+                        255);
+
+                byte g =
+                    (byte)Math.Clamp(
+                        96 + key * 18,
+                        0,
+                        255);
+
+                byte b =
+                    (byte)Math.Clamp(
+                        profile * 5,
+                        0,
+                        120);
+
+                return new PixelRgbColor(
+                    r,
+                    g,
+                    b);
+            })
+            .ToArray();
+
     private static PixelRgbColor[][] CreateDefaultPixelRgbProfiles() =>
         Enumerable.Range(0, 20)
-            .Select(profile =>
+            .Select(CreateDefaultPixelRgbProfile)
+            .ToArray();
+
+    private static PixelProKeyBinding[][] CreateDefaultPixelProfileLayers() =>
+        Enumerable.Range(0, 4)
+            .Select(layer =>
                 Enumerable.Range(0, 8)
                     .Select(key =>
-                    {
-                        // Slightly different defaults make the 8-key preview
-                        // readable before the user customizes it.
-                        byte r = (byte)Math.Clamp(255 - key * 16, 0, 255);
-                        byte g = (byte)Math.Clamp(96 + key * 18, 0, 255);
-                        byte b = (byte)Math.Clamp(profile * 5, 0, 120);
-                        return new PixelRgbColor(r, g, b);
-                    })
+                        layer == 0
+                            ? PixelProKeyBinding.Keyboard(
+                                (byte)(4 + key))
+                            : PixelProKeyBinding.Transparent())
                     .ToArray())
             .ToArray();
 
