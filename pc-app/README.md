@@ -1,28 +1,12 @@
-# LumiPad Windows App
+# LumiPad Windows app
 
-Windows companion app for RYNOR ONE and PIXEL PRO. See the [repository README](../README.md) for build and independent release instructions.
+.NET 8 WPF application for RYNOR ONE and PIXEL PRO.
 
-Current functions:
+PIXEL PRO uses two independent native USB functions:
 
-- Reads the Windows Now Playing / SMTC session from supported players.
-- Sends title, artist, play/pause state, elapsed time and duration to the macropad.
-- Shows an iPod-inspired Now Playing screen on the 320x172 ST7789.
-- Controls the four WS2812B LEDs:
-  - Auto by Layer
-  - Rainbow
-  - Warm Purple Ping-Pong
-  - Orange Blink
-  - Solid Color
-  - LED On/Off
-  - Brightness 5-50%
-- Uses a second USB CDC serial interface, so ZMK Studio keeps its own USB serial connection.
+1. HID keyboard for normal keys.
+2. CDC serial for LumiPad commands, diagnostics and future display/profile transfers.
 
-## Use
+The app does not need to open or claim the keyboard interface. It finds PIXEL PRO by probing COM ports for the `PIXELPRO|1|` HELLO response.
 
-1. Flash the firmware for your selected product from its own repository.
-2. Connect the macropad to the Windows PC by USB.
-3. Open `Lumi Macropad.exe` and select RYNOR ONE or PIXEL PRO.
-4. Press Detect LumiPad if it is not detected automatically.
-5. Start playing music.
-
-Advanced Now Playing functions require the Windows app to stay running. Normal ZMK keyboard/BLE functionality does not.
+Diagnostics show the selected COM port, protocol response, key events and serial errors.
