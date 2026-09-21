@@ -34,6 +34,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     public event Action<string, string>? Diagnostic;
     public event Action<int, bool, int>? KeyStateChanged;
     public event Action<int, int, int, int>? MacroTriggered;
+    public event Action<int, int, int, int>? ActionTriggered;
 
     public string FirmwareHello { get; private set; } = "";
     public int ProtocolVersion { get; private set; }
@@ -371,6 +372,30 @@ public sealed class PixelProCdcLink : IDeviceLink
                         MacroTriggered?.Invoke(slot, key, profile, layer);
                     }
                 }
+                else if (line.StartsWith("ACTION|", StringComparison.Ordinal))
+                {
+                    string[] parts = line.Split('|');
+
+                    if (parts.Length >= 2 &&
+                        int.TryParse(parts[1], out int actionId))
+                    {
+                        int key = 0;
+                        int profile = 0;
+                        int layer = 0;
+
+                        foreach (string part in parts.Skip(2))
+                        {
+                            if (part.StartsWith("KEY=", StringComparison.Ordinal))
+                                _ = int.TryParse(part[4..], out key);
+                            else if (part.StartsWith("P=", StringComparison.Ordinal))
+                                _ = int.TryParse(part[2..], out profile);
+                            else if (part.StartsWith("L=", StringComparison.Ordinal))
+                                _ = int.TryParse(part[2..], out layer);
+                        }
+
+                        ActionTriggered?.Invoke(actionId, key, profile, layer);
+                    }
+                }
 
                 Log(category, line);
             }
@@ -581,6 +606,8 @@ public sealed class PixelProCdcLink : IDeviceLink
                         (PixelProLayerAction)modifiers),
                 "M" when code <= 19 =>
                     PixelProKeyBinding.Macro((byte)code),
+                "A" when code is >= 1 and <= 32 && modifiers == 0 =>
+                    PixelProKeyBinding.Action((byte)code),
                 "T" when code == 0 && modifiers == 0 =>
                     PixelProKeyBinding.Transparent(),
                 "D" when code == 0 && modifiers == 0 =>
@@ -626,6 +653,8 @@ public sealed class PixelProCdcLink : IDeviceLink
                     $"L:{binding.Code}:{binding.Modifiers}",
                 PixelProKeyBindingType.Macro =>
                     $"M:{binding.Code}:0",
+                PixelProKeyBindingType.Action =>
+                    $"A:{binding.Code}:0",
                 PixelProKeyBindingType.Transparent =>
                     "T:0:0",
                 _ => "D:0:0"

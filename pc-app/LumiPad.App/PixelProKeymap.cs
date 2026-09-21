@@ -7,7 +7,8 @@ public enum PixelProKeyBindingType : byte
     Consumer = 2,
     Layer = 3,
     Macro = 4,
-    Transparent = 5
+    Transparent = 5,
+    Action = 6
 }
 
 public enum PixelProLayerAction : byte
@@ -33,6 +34,9 @@ public sealed record PixelProKeyBinding(
 
     public static PixelProKeyBinding Macro(byte index) =>
         new(PixelProKeyBindingType.Macro, index, 0);
+
+    public static PixelProKeyBinding Action(byte actionId) =>
+        new(PixelProKeyBindingType.Action, actionId, 0);
 
     public static PixelProKeyBinding Transparent() =>
         new(PixelProKeyBindingType.Transparent, 0, 0);
