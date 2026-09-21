@@ -1165,14 +1165,17 @@ public partial class MainWindow : Window
 
         if (ScreensaverPreviewSurface is not null)
         {
+            // The preview viewport is 360×240 for PIXEL PRO. Do not make the
+            // child surface 480×320 inside it or WPF clips the source and
+            // makes the preview look 1.33× zoomed.
             ScreensaverPreviewSurface.Width =
                 pixel
-                    ? PixelProScreensaverMediaService.PanelWidth
+                    ? 360
                     : ScreensaverMediaService.StaticWidth;
 
             ScreensaverPreviewSurface.Height =
                 pixel
-                    ? PixelProScreensaverMediaService.PanelHeight
+                    ? 240
                     : ScreensaverMediaService.StaticHeight;
         }
 
