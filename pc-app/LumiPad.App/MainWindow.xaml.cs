@@ -163,6 +163,8 @@ public partial class MainWindow : Window
 
     private readonly PixelProProfileCatalog _pixelProfileCatalog =
         PixelProProfileStore.Load();
+    private readonly PixelProModifierPositionCatalog _pixelModifierPositions =
+        PixelProKeyEditorUiStore.Load();
     private readonly List<PixelProMacroDefinition> _pixelMacros =
         PixelProMacroStore.Load();
     private readonly HashSet<int> _runningPixelMacroSlots = [];
@@ -173,6 +175,10 @@ public partial class MainWindow : Window
     private int _pixelSelectedMacroSlot = 1;
     private int _pixelMacroDragIndex = -1;
     private System.Windows.Point _pixelMacroDragStartPoint;
+    private bool _pixelModifierDragging;
+    private System.Windows.Point _pixelModifierDragStart;
+    private double _pixelModifierStartLeft;
+    private double _pixelModifierStartTop;
     private string _pixelCurrentCategory = "Basic";
     private bool _pixelViaUiBuilt;
     private bool _pixelViaUpdating;
@@ -7123,6 +7129,30 @@ try {{
                 $"Đã bỏ Profile {removed + 1} khỏi danh sách.");
     }
 
+    private void PixelRenameProfile_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (PixelProfileCombo is null)
+            return;
+
+        PixelProfileCombo.IsDropDownOpen = false;
+        PixelProfileCombo.Focus();
+
+        Dispatcher.BeginInvoke(
+            new Action(() =>
+            {
+                if (PixelProfileCombo.Template.FindName(
+                        "PART_EditableTextBox",
+                        PixelProfileCombo) is System.Windows.Controls.TextBox editor)
+                {
+                    editor.Focus();
+                    editor.SelectAll();
+                }
+            }),
+            System.Windows.Threading.DispatcherPriority.Input);
+    }
+
     private void PixelProfileCombo_KeyDown(
         object sender,
         System.Windows.Input.KeyEventArgs e)
@@ -7527,6 +7557,156 @@ try {{
         {
             _pixelViaUpdating = false;
         }
+
+        ApplyPixelModifierPanelPosition();
+    }
+
+    private string PixelModifierPositionKey() =>
+        $"{_pixelSelectedProfile}:{_pixelSelectedLayer}:{_pixelSelectedKey}";
+
+    private void ApplyPixelModifierPanelPosition()
+    {
+        if (PixelModifierCanvas is null ||
+            PixelModifiersPanel is null)
+        {
+            return;
+        }
+
+        PixelProModifierPosition pos =
+            _pixelModifierPositions.Get(
+                _pixelSelectedProfile,
+                _pixelSelectedLayer,
+                _pixelSelectedKey);
+
+        double maxLeft =
+            Math.Max(
+                0,
+                PixelModifierCanvas.ActualWidth -
+                Math.Max(0, PixelModifiersPanel.ActualWidth));
+
+        double maxTop =
+            Math.Max(
+                0,
+                PixelModifierCanvas.ActualHeight -
+                Math.Max(0, PixelModifiersPanel.ActualHeight));
+
+        Canvas.SetLeft(
+            PixelModifiersPanel,
+            Math.Clamp(pos.Left, 0, maxLeft));
+
+        Canvas.SetTop(
+            PixelModifiersPanel,
+            Math.Clamp(pos.Top, 0, maxTop));
+    }
+
+    private void PixelModifiersPanel_PreviewMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (PixelModifierCanvas is null ||
+            PixelModifiersPanel is null)
+        {
+            return;
+        }
+
+        _pixelModifierDragging = true;
+        _pixelModifierDragStart =
+            e.GetPosition(PixelModifierCanvas);
+
+        _pixelModifierStartLeft =
+            double.IsNaN(Canvas.GetLeft(PixelModifiersPanel))
+                ? 0
+                : Canvas.GetLeft(PixelModifiersPanel);
+
+        _pixelModifierStartTop =
+            double.IsNaN(Canvas.GetTop(PixelModifiersPanel))
+                ? 0
+                : Canvas.GetTop(PixelModifiersPanel);
+
+        PixelModifiersPanel.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PixelModifiersPanel_PreviewMouseMove(
+        object sender,
+        System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_pixelModifierDragging ||
+            e.LeftButton != MouseButtonState.Pressed ||
+            PixelModifierCanvas is null ||
+            PixelModifiersPanel is null)
+        {
+            return;
+        }
+
+        System.Windows.Point current =
+            e.GetPosition(PixelModifierCanvas);
+
+        double left =
+            _pixelModifierStartLeft +
+            current.X - _pixelModifierDragStart.X;
+
+        double top =
+            _pixelModifierStartTop +
+            current.Y - _pixelModifierDragStart.Y;
+
+        double maxLeft =
+            Math.Max(
+                0,
+                PixelModifierCanvas.ActualWidth -
+                PixelModifiersPanel.ActualWidth);
+
+        double maxTop =
+            Math.Max(
+                0,
+                PixelModifierCanvas.ActualHeight -
+                PixelModifiersPanel.ActualHeight);
+
+        Canvas.SetLeft(
+            PixelModifiersPanel,
+            Math.Clamp(left, 0, maxLeft));
+
+        Canvas.SetTop(
+            PixelModifiersPanel,
+            Math.Clamp(top, 0, maxTop));
+
+        e.Handled = true;
+    }
+
+    private void PixelModifiersPanel_PreviewMouseLeftButtonUp(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (!_pixelModifierDragging ||
+            PixelModifiersPanel is null)
+        {
+            return;
+        }
+
+        _pixelModifierDragging = false;
+        PixelModifiersPanel.ReleaseMouseCapture();
+
+        double left =
+            double.IsNaN(Canvas.GetLeft(PixelModifiersPanel))
+                ? 0
+                : Canvas.GetLeft(PixelModifiersPanel);
+
+        double top =
+            double.IsNaN(Canvas.GetTop(PixelModifiersPanel))
+                ? 0
+                : Canvas.GetTop(PixelModifiersPanel);
+
+        _pixelModifierPositions.Set(
+            _pixelSelectedProfile,
+            _pixelSelectedLayer,
+            _pixelSelectedKey,
+            left,
+            top);
+
+        PixelProKeyEditorUiStore.Save(
+            _pixelModifierPositions);
+
+        e.Handled = true;
     }
 
     private static string ModifierPrefix(byte modifiers)
