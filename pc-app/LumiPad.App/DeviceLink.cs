@@ -7,7 +7,7 @@ namespace LumiPad.App;
 
 /// <summary>
 /// Physical connection lifecycle. A future product can implement this with
-/// USB CDC/BLE, QMK Raw HID, WinUSB, or another transport without changing
+/// USB CDC/BLE, ZMK vendor HID, WinUSB, or another transport without changing
 /// the application UI.
 /// </summary>
 public interface IDeviceTransport : IDisposable
@@ -103,7 +103,7 @@ public interface IDeviceLink : IDeviceTransport, IDeviceProtocol
 
 /// <summary>
 /// Single point where a product selects its firmware/transport driver.
-/// Adding a QMK product no longer requires changing MainWindow.
+/// Product-specific transports stay isolated from MainWindow.
 /// </summary>
 public static class DeviceLinkFactory
 {
@@ -111,7 +111,7 @@ public static class DeviceLinkFactory
         product.Driver switch
         {
             DeviceDriverKind.LumiZmk => new SerialLink(),
-            DeviceDriverKind.QmkRawHid => new QmkRawHidLink(product),
+            DeviceDriverKind.PixelProZmkHid => new PixelProZmkLink(product),
             DeviceDriverKind.Esp32Companion => throw new NotSupportedException(
                 $"ESP32 companion driver is not registered for {product.ProductCode}."),
             _ => throw new ArgumentOutOfRangeException(
