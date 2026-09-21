@@ -127,6 +127,24 @@ public partial class MainWindow : Window
     private bool _syncingPcMetricUi;
     private int[] _pcMonitorMetricSlots = [0, 3, 6, 9, 10, 11];
 
+    private sealed class PixelKeyEditor
+    {
+        public required int Index { get; init; }
+        public required System.Windows.Controls.ComboBox Action { get; init; }
+        public required System.Windows.Controls.CheckBox Ctrl { get; init; }
+        public required System.Windows.Controls.CheckBox Shift { get; init; }
+        public required System.Windows.Controls.CheckBox Alt { get; init; }
+        public required System.Windows.Controls.CheckBox Win { get; init; }
+        public required TextBlock Summary { get; init; }
+    }
+
+    private readonly List<PixelKeyEditor> _pixelKeyEditors = [];
+    private bool _pixelKeymapUiBuilt;
+    private bool _pixelKeymapLoading;
+
+    private static readonly PixelProKeyChoice[] PixelKeyChoices =
+        CreatePixelKeyChoices();
+
     private static readonly (int Id, string Name)[] PcMonitorMetricChoices =
     [
         (0, "CPU usage"),
@@ -156,6 +174,7 @@ public partial class MainWindow : Window
     {
         _serial = DeviceLinkFactory.Create(_activeProduct);
         InitializeComponent();
+        BuildPixelProKeymapUi();
         InitializeTrayIcon();
 
         // Keep the preview on an absolute playback timeline, just like the
@@ -2166,6 +2185,13 @@ public partial class MainWindow : Window
 
         if (SleepKeyboardButton is not null)
             SleepKeyboardButton.IsEnabled = connected;
+
+        if (PixelKeymapSaveButton is not null)
+        {
+            PixelKeymapSaveButton.IsEnabled =
+                connected &&
+                _activeProduct.Driver == DeviceDriverKind.PixelProCdc;
+        }
 
         UpdateSettingsInfo();
         UpdateTransportIndicators();
@@ -6123,11 +6149,389 @@ try {{
         }
     }
 
+    private static PixelProKeyChoice[] CreatePixelKeyChoices()
+    {
+        var choices = new List<PixelProKeyChoice>
+        {
+            new("Disabled", PixelProKeyBindingType.Disabled, 0)
+        };
+
+        for (int i = 0; i < 26; i++)
+        {
+            choices.Add(
+                new(
+                    ((char)('A' + i)).ToString(),
+                    PixelProKeyBindingType.Keyboard,
+                    (ushort)(4 + i)));
+        }
+
+        string[] digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+        for (int i = 0; i < digits.Length; i++)
+        {
+            choices.Add(
+                new(
+                    digits[i],
+                    PixelProKeyBindingType.Keyboard,
+                    (ushort)(30 + i)));
+        }
+
+        choices.AddRange(
+        [
+            new("Enter", PixelProKeyBindingType.Keyboard, 40),
+            new("Escape", PixelProKeyBindingType.Keyboard, 41),
+            new("Backspace", PixelProKeyBindingType.Keyboard, 42),
+            new("Tab", PixelProKeyBindingType.Keyboard, 43),
+            new("Space", PixelProKeyBindingType.Keyboard, 44),
+            new("-", PixelProKeyBindingType.Keyboard, 45),
+            new("=", PixelProKeyBindingType.Keyboard, 46),
+            new("[", PixelProKeyBindingType.Keyboard, 47),
+            new("]", PixelProKeyBindingType.Keyboard, 48),
+            new("\\", PixelProKeyBindingType.Keyboard, 49),
+            new(";", PixelProKeyBindingType.Keyboard, 51),
+            new("Quote", PixelProKeyBindingType.Keyboard, 52),
+            new(",", PixelProKeyBindingType.Keyboard, 54),
+            new(".", PixelProKeyBindingType.Keyboard, 55),
+            new("/", PixelProKeyBindingType.Keyboard, 56),
+            new("Caps Lock", PixelProKeyBindingType.Keyboard, 57),
+            new("F1", PixelProKeyBindingType.Keyboard, 58),
+            new("F2", PixelProKeyBindingType.Keyboard, 59),
+            new("F3", PixelProKeyBindingType.Keyboard, 60),
+            new("F4", PixelProKeyBindingType.Keyboard, 61),
+            new("F5", PixelProKeyBindingType.Keyboard, 62),
+            new("F6", PixelProKeyBindingType.Keyboard, 63),
+            new("F7", PixelProKeyBindingType.Keyboard, 64),
+            new("F8", PixelProKeyBindingType.Keyboard, 65),
+            new("F9", PixelProKeyBindingType.Keyboard, 66),
+            new("F10", PixelProKeyBindingType.Keyboard, 67),
+            new("F11", PixelProKeyBindingType.Keyboard, 68),
+            new("F12", PixelProKeyBindingType.Keyboard, 69),
+            new("Print Screen", PixelProKeyBindingType.Keyboard, 70),
+            new("Insert", PixelProKeyBindingType.Keyboard, 73),
+            new("Home", PixelProKeyBindingType.Keyboard, 74),
+            new("Page Up", PixelProKeyBindingType.Keyboard, 75),
+            new("Delete", PixelProKeyBindingType.Keyboard, 76),
+            new("End", PixelProKeyBindingType.Keyboard, 77),
+            new("Page Down", PixelProKeyBindingType.Keyboard, 78),
+            new("→ Right", PixelProKeyBindingType.Keyboard, 79),
+            new("← Left", PixelProKeyBindingType.Keyboard, 80),
+            new("↓ Down", PixelProKeyBindingType.Keyboard, 81),
+            new("↑ Up", PixelProKeyBindingType.Keyboard, 82),
+
+            new("Media · Play / Pause", PixelProKeyBindingType.Consumer, 0x00CD),
+            new("Media · Next Track", PixelProKeyBindingType.Consumer, 0x00B5),
+            new("Media · Previous Track", PixelProKeyBindingType.Consumer, 0x00B6),
+            new("Media · Stop", PixelProKeyBindingType.Consumer, 0x00B7),
+            new("Media · Mute", PixelProKeyBindingType.Consumer, 0x00E2),
+            new("Media · Volume +", PixelProKeyBindingType.Consumer, 0x00E9),
+            new("Media · Volume -", PixelProKeyBindingType.Consumer, 0x00EA),
+            new("Brightness +", PixelProKeyBindingType.Consumer, 0x006F),
+            new("Brightness -", PixelProKeyBindingType.Consumer, 0x0070),
+            new("Browser · Back", PixelProKeyBindingType.Consumer, 0x0224),
+            new("Browser · Forward", PixelProKeyBindingType.Consumer, 0x0225),
+            new("Browser · Refresh", PixelProKeyBindingType.Consumer, 0x0227),
+            new("Browser · Home", PixelProKeyBindingType.Consumer, 0x0223),
+            new("Calculator", PixelProKeyBindingType.Consumer, 0x0192)
+        ]);
+
+        return choices.ToArray();
+    }
+
+    private void BuildPixelProKeymapUi()
+    {
+        if (_pixelKeymapUiBuilt || PixelKeymapGrid is null)
+            return;
+
+        _pixelKeymapUiBuilt = true;
+        PixelKeymapGrid.Children.Clear();
+        _pixelKeyEditors.Clear();
+
+        for (int i = 0; i < 8; i++)
+        {
+            var combo = new System.Windows.Controls.ComboBox
+            {
+                ItemsSource = PixelKeyChoices,
+                DisplayMemberPath = nameof(PixelProKeyChoice.Label),
+                SelectedIndex = Math.Min(i + 1, PixelKeyChoices.Length - 1),
+                Margin = new Thickness(0, 10, 0, 12)
+            };
+
+            var ctrl = new System.Windows.Controls.CheckBox { Content = "Ctrl", Margin = new Thickness(0, 0, 10, 0) };
+            var shift = new System.Windows.Controls.CheckBox { Content = "Shift", Margin = new Thickness(0, 0, 10, 0) };
+            var alt = new System.Windows.Controls.CheckBox { Content = "Alt", Margin = new Thickness(0, 0, 10, 0) };
+            var win = new System.Windows.Controls.CheckBox { Content = "Win", Margin = new Thickness(0) };
+            var summary = new TextBlock
+            {
+                Foreground = TryFindResource("Muted") as System.Windows.Media.Brush,
+                FontSize = 11,
+                Margin = new Thickness(0, 10, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            var editor = new PixelKeyEditor
+            {
+                Index = i,
+                Action = combo,
+                Ctrl = ctrl,
+                Shift = shift,
+                Alt = alt,
+                Win = win,
+                Summary = summary
+            };
+
+            combo.SelectionChanged += (_, _) =>
+                UpdatePixelKeyEditorSummary(editor);
+            ctrl.Checked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            ctrl.Unchecked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            shift.Checked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            shift.Unchecked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            alt.Checked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            alt.Unchecked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            win.Checked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+            win.Unchecked += (_, _) => UpdatePixelKeyEditorSummary(editor);
+
+            var modifiers = new StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal
+            };
+            modifiers.Children.Add(ctrl);
+            modifiers.Children.Add(shift);
+            modifiers.Children.Add(alt);
+            modifiers.Children.Add(win);
+
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"K{i + 1}",
+                FontSize = 22,
+                FontWeight = FontWeights.SemiBold
+            });
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"GPIO{i + 1}",
+                Foreground = TryFindResource("Muted") as System.Windows.Media.Brush,
+                FontSize = 11
+            });
+            stack.Children.Add(combo);
+            stack.Children.Add(modifiers);
+            stack.Children.Add(summary);
+
+            PixelKeymapGrid.Children.Add(new Border
+            {
+                Background = TryFindResource("Card2") as System.Windows.Media.Brush,
+                BorderBrush = TryFindResource("Line") as System.Windows.Media.Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(16),
+                Margin = new Thickness(7),
+                Child = stack
+            });
+
+            _pixelKeyEditors.Add(editor);
+            UpdatePixelKeyEditorSummary(editor);
+        }
+    }
+
+    private void UpdatePixelKeyEditorSummary(PixelKeyEditor editor)
+    {
+        if (_pixelKeymapLoading)
+            return;
+
+        PixelProKeyChoice? choice =
+            editor.Action.SelectedItem as PixelProKeyChoice;
+        bool keyboard =
+            choice?.Type == PixelProKeyBindingType.Keyboard;
+
+        editor.Ctrl.IsEnabled = keyboard;
+        editor.Shift.IsEnabled = keyboard;
+        editor.Alt.IsEnabled = keyboard;
+        editor.Win.IsEnabled = keyboard;
+
+        if (!keyboard)
+        {
+            editor.Ctrl.IsChecked = false;
+            editor.Shift.IsChecked = false;
+            editor.Alt.IsChecked = false;
+            editor.Win.IsChecked = false;
+        }
+
+        if (choice is null)
+        {
+            editor.Summary.Text = "Not assigned";
+            return;
+        }
+
+        var prefix = new List<string>();
+        if (editor.Ctrl.IsChecked == true) prefix.Add("Ctrl");
+        if (editor.Shift.IsChecked == true) prefix.Add("Shift");
+        if (editor.Alt.IsChecked == true) prefix.Add("Alt");
+        if (editor.Win.IsChecked == true) prefix.Add("Win");
+
+        editor.Summary.Text =
+            prefix.Count == 0
+                ? choice.Label
+                : string.Join(" + ", prefix.Append(choice.Label));
+    }
+
+    private PixelProKeyBinding BindingFromEditor(PixelKeyEditor editor)
+    {
+        PixelProKeyChoice choice =
+            editor.Action.SelectedItem as PixelProKeyChoice ??
+            PixelKeyChoices[0];
+
+        if (choice.Type == PixelProKeyBindingType.Disabled)
+            return PixelProKeyBinding.Disabled();
+
+        if (choice.Type == PixelProKeyBindingType.Consumer)
+            return PixelProKeyBinding.Consumer(choice.Code);
+
+        byte modifiers = 0;
+        if (editor.Ctrl.IsChecked == true) modifiers |= 0x01;
+        if (editor.Shift.IsChecked == true) modifiers |= 0x02;
+        if (editor.Alt.IsChecked == true) modifiers |= 0x04;
+        if (editor.Win.IsChecked == true) modifiers |= 0x08;
+
+        return PixelProKeyBinding.Keyboard((byte)choice.Code, modifiers);
+    }
+
+    private void ApplyPixelKeymap(IReadOnlyList<PixelProKeyBinding> bindings)
+    {
+        if (bindings.Count != 8)
+            return;
+
+        _pixelKeymapLoading = true;
+        try
+        {
+            for (int i = 0; i < 8 && i < _pixelKeyEditors.Count; i++)
+            {
+                PixelProKeyBinding binding = bindings[i];
+                PixelKeyEditor editor = _pixelKeyEditors[i];
+
+                PixelProKeyChoice? choice = PixelKeyChoices.FirstOrDefault(
+                    x => x.Type == binding.Type && x.Code == binding.Code);
+
+                editor.Action.SelectedItem = choice ?? PixelKeyChoices[0];
+                editor.Ctrl.IsChecked = (binding.Modifiers & 0x01) != 0;
+                editor.Shift.IsChecked = (binding.Modifiers & 0x02) != 0;
+                editor.Alt.IsChecked = (binding.Modifiers & 0x04) != 0;
+                editor.Win.IsChecked = (binding.Modifiers & 0x08) != 0;
+            }
+        }
+        finally
+        {
+            _pixelKeymapLoading = false;
+        }
+
+        foreach (PixelKeyEditor editor in _pixelKeyEditors)
+            UpdatePixelKeyEditorSummary(editor);
+    }
+
+    private async Task LoadPixelProKeymapAsync()
+    {
+        BuildPixelProKeymapUi();
+
+        if (_activeProduct.Driver != DeviceDriverKind.PixelProCdc)
+            return;
+
+        if (_serial is not PixelProCdcLink pixel || !pixel.IsConnected)
+        {
+            PixelKeymapStatusText.Text =
+                L("Connect PIXEL PRO to load the keymap.",
+                  "Kết nối PIXEL PRO để tải keymap.");
+            PixelKeymapSaveButton.IsEnabled = false;
+            return;
+        }
+
+        PixelKeymapStatusText.Text =
+            L("Loading keymap from PIXEL PRO…",
+              "Đang tải keymap từ PIXEL PRO…");
+        PixelKeymapSaveButton.IsEnabled = false;
+
+        IReadOnlyList<PixelProKeyBinding>? map =
+            await pixel.GetKeymapAsync();
+
+        if (map is null)
+        {
+            PixelKeymapStatusText.Text =
+                L("Keymap unavailable. PIXEL PRO firmware 1.1.0 or newer is required.",
+                  "Chưa đọc được keymap. Cần firmware PIXEL PRO 1.1.0 trở lên.");
+            return;
+        }
+
+        ApplyPixelKeymap(map);
+        PixelKeymapSaveButton.IsEnabled = true;
+        PixelKeymapStatusText.Text =
+            L("Loaded from PIXEL PRO flash.",
+              "Đã tải từ flash PIXEL PRO.");
+    }
+
+    private async void PixelKeymapReload_Click(
+        object sender,
+        RoutedEventArgs e) =>
+        await LoadPixelProKeymapAsync();
+
+    private async void PixelKeymapSave_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_serial is not PixelProCdcLink pixel || !pixel.IsConnected)
+        {
+            PixelKeymapStatusText.Text =
+                L("PIXEL PRO is not connected.",
+                  "PIXEL PRO chưa kết nối.");
+            return;
+        }
+
+        PixelKeymapSaveButton.IsEnabled = false;
+        PixelKeymapStatusText.Text =
+            L("Saving to PIXEL PRO flash…",
+              "Đang lưu vào flash PIXEL PRO…");
+
+        PixelProKeyBinding[] bindings =
+            _pixelKeyEditors
+                .OrderBy(x => x.Index)
+                .Select(BindingFromEditor)
+                .ToArray();
+
+        bool saved = await pixel.SetKeymapAsync(bindings);
+
+        PixelKeymapSaveButton.IsEnabled = true;
+        PixelKeymapStatusText.Text = saved
+            ? L("Saved. The keymap survives unplug/reboot.",
+                "Đã lưu. Keymap vẫn giữ sau khi rút nguồn/khởi động lại.")
+            : L("Save failed. Check Diagnostics and firmware version.",
+                "Lưu thất bại. Kiểm tra Diagnostics và phiên bản firmware.");
+    }
+
+    private async void PixelKeymapReset_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_serial is not PixelProCdcLink pixel || !pixel.IsConnected)
+        {
+            PixelKeymapStatusText.Text =
+                L("PIXEL PRO is not connected.",
+                  "PIXEL PRO chưa kết nối.");
+            return;
+        }
+
+        PixelKeymapStatusText.Text =
+            L("Restoring K1=A … K8=H…",
+              "Đang khôi phục K1=A … K8=H…");
+
+        bool reset = await pixel.ResetKeymapAsync();
+        if (reset)
+            await LoadPixelProKeymapAsync();
+        else
+            PixelKeymapStatusText.Text =
+                L("Reset failed.",
+                  "Khôi phục thất bại.");
+    }
+
     private string CurrentConfiguratorName() =>
         _activeProduct.Driver switch
         {
             DeviceDriverKind.RynorSerial => "Device Config",
-            DeviceDriverKind.PixelProCdc => "PIXEL PRO",
+            DeviceDriverKind.PixelProCdc => "Keymap",
             DeviceDriverKind.Esp32Companion => "Device Config",
             _ => "Device Config"
         };
@@ -6141,21 +6545,25 @@ try {{
 
     private void UpdateDeviceConfiguratorUi()
     {
-        string name = CurrentConfiguratorName();
-        string url = CurrentConfiguratorUrl();
+        bool pixel =
+            _activeProduct.Driver == DeviceDriverKind.PixelProCdc;
 
-        ConfiguratorTab.Header = name;
-        if (DeviceConfiguratorTitle is not null)
-            DeviceConfiguratorTitle.Text = name;
+        ConfiguratorTab.Header =
+            pixel ? "Keymap" : CurrentConfiguratorName();
 
-        if (ConfiguratorStatus is not null)
-        {
-            ConfiguratorStatus.Text = string.IsNullOrWhiteSpace(url)
-                ? L(
-                    "PIXEL PRO uses native USB CDC; no embedded configurator is required.",
-                    "PIXEL PRO dùng USB CDC native; chưa cần trình cấu hình nhúng.")
-                : $"Embedded {url}";
-        }
+        if (RynorConfiguratorPanel is not null)
+            RynorConfiguratorPanel.Visibility =
+                pixel ? Visibility.Collapsed : Visibility.Visible;
+
+        if (PixelProKeymapPanel is not null)
+            PixelProKeymapPanel.Visibility =
+                pixel ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!pixel && DeviceConfiguratorTitle is not null)
+            DeviceConfiguratorTitle.Text = CurrentConfiguratorName();
+
+        if (pixel && PixelKeymapSaveButton is not null)
+            PixelKeymapSaveButton.IsEnabled = _serial.IsConnected;
     }
 
     private async void MainTabs_SelectionChanged(
@@ -6171,7 +6579,12 @@ try {{
         UpdateDeviceConfiguratorUi();
 
         if (ConfiguratorTab.IsSelected)
-            await EnsureDeviceConfiguratorAsync();
+        {
+            if (_activeProduct.Driver == DeviceDriverKind.PixelProCdc)
+                await LoadPixelProKeymapAsync();
+            else
+                await EnsureDeviceConfiguratorAsync();
+        }
     }
 
     private async Task EnsureDeviceConfiguratorAsync(bool force = false)
