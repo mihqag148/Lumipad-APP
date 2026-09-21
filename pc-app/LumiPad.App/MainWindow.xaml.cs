@@ -7704,11 +7704,7 @@ try {{
 
         SaveAppSettings();
 
-        if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
-            string.Equals(
-                IO.Path.GetExtension(_screensaverMediaPath),
-                ".gif",
-                StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(_screensaverMediaPath))
         {
             await PrepareScreensaverMediaAsync();
         }
@@ -7760,8 +7756,8 @@ try {{
 
                     ScreensaverMediaInfo.Text =
                         L(
-                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · no upscale · centered",
-                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · không phóng lớn · căn giữa");
+                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · output {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}",
+                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · output {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}");
                 }
                 else
                 {
@@ -7780,9 +7776,9 @@ try {{
             }
             else
             {
-                var pixelGifInfo =
+                var pixelPackedInfo =
                     pixel
-                        ? PixelProScreensaverMediaService.GetEncodedGifInfo(
+                        ? PixelProScreensaverMediaService.GetPackedAnimationInfo(
                             _screensaverAnimation)
                         : default;
 
@@ -7790,40 +7786,22 @@ try {{
                 if (pixel)
                 {
                     double storedKb =
-                        pixelGifInfo.StoredBytes / 1024.0;
+                        pixelPackedInfo.StoredBytes / 1024.0;
+
                     double sourceKb =
-                        pixelGifInfo.SourceBytes / 1024.0;
-                    double savedPercent =
-                        pixelGifInfo.SourceBytes > 0
-                            ? Math.Max(
-                                0,
-                                (1.0 -
-                                 pixelGifInfo.StoredBytes /
-                                 (double)pixelGifInfo.SourceBytes) *
-                                100.0)
-                            : 0;
+                        pixelPackedInfo.SourceBytes / 1024.0;
 
-                    bool overTarget =
-                        pixelGifInfo.StoredBytes >
-                        PixelProScreensaverMediaService.TargetGifBytes;
-
-                    string targetState =
-                        overTarget
+                    string emergency =
+                        pixelPackedInfo.EmergencyFps
                             ? L(
-                                " · above 1 MiB soft target; flash space checked on upload",
-                                " · vượt mục tiêu mềm 1 MiB; sẽ kiểm tra flash khi tải")
-                            : L(
-                                " · within 1 MiB soft target",
-                                " · trong mục tiêu mềm 1 MiB");
+                                " · emergency FPS used to keep the hard 1 MiB cap",
+                                " · đã hạ FPS khẩn cấp để giữ cứng dưới 1 MiB")
+                            : "";
 
                     pixelGifSummary =
-                        pixelGifInfo.Optimized
-                            ? L(
-                                $"PIXEL GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} resolution kept · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · 256-color palette · no upscale · saved {savedPercent:0.#}%{targetState}",
-                                $"GIF PIXEL · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giữ nguyên {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · palette 256 màu · không phóng lớn · giảm {savedPercent:0.#}%{targetState}")
-                            : L(
-                                $"PIXEL GIF · source retained · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} s · no upscale{targetState}",
-                                $"GIF PIXEL · giữ file gốc · {storedKb:0.#} KB · {pixelGifInfo.Width}×{pixelGifInfo.Height} · ~{pixelGifInfo.Fps} FPS · {pixelGifInfo.DurationMs / 1000.0:0.#} giây · không phóng lớn{targetState}");
+                        L(
+                            $"PIXEL PXQ · {storedKb:0.#} KB (<1 MiB hard cap) from {sourceKb:0.#} KB · logical 480×320 · stored {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}",
+                            $"PIXEL PXQ · {storedKb:0.#} KB (<1 MiB bắt buộc) từ {sourceKb:0.#} KB · logical 480×320 · lưu {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -7856,8 +7834,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL PRO media is stored compressed: GIF stays GIF; images are JPEG quality 100. Display refresh remains 60 Hz.",
-                        "Đã sẵn sàng. Media PIXEL PRO được lưu dạng nén: GIF giữ GIF; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
+                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE under 1 MiB; images use JPEG quality 100. Display refresh remains 60 Hz.",
+                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE dưới 1 MiB; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
