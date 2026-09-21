@@ -1108,8 +1108,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · GIF target ≤1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
-                        "ILI9486 480×320 · GIF mục tiêu ≤1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
+                        "ILI9486 480×320 · GIF soft target ≈1 MiB, 20–60 FPS, source resolution preserved · image → JPEG quality 100 · no upscale.",
+                        "ILI9486 480×320 · GIF mục tiêu mềm ≈1 MiB, 20–60 FPS, giữ nguyên độ phân giải nguồn · ảnh → JPEG quality 100 · không phóng lớn.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -1174,6 +1174,19 @@ public partial class MainWindow : Window
                 pixel
                     ? PixelProScreensaverMediaService.PanelHeight
                     : ScreensaverMediaService.StaticHeight;
+        }
+
+        if (ScreensaverPreviewImage is not null)
+        {
+            ScreensaverPreviewImage.Stretch =
+                pixel
+                    ? System.Windows.Media.Stretch.Uniform
+                    : System.Windows.Media.Stretch.Fill;
+
+            ScreensaverPreviewImage.StretchDirection =
+                pixel
+                    ? System.Windows.Controls.StretchDirection.DownOnly
+                    : System.Windows.Controls.StretchDirection.Both;
         }
 
         if (ScreensaverPreviewHint is not null &&
