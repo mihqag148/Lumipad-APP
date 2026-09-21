@@ -1259,6 +1259,12 @@ public partial class MainWindow : Window
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
+        if (PixelRgbSaveProfileCombo is not null)
+            PixelRgbSaveProfileCombo.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
         if (PixelRgbSaveHint is not null)
             PixelRgbSaveHint.Visibility =
                 pixel
@@ -1274,7 +1280,7 @@ public partial class MainWindow : Window
         if (RgbSaveProfileButton is not null)
             RgbSaveProfileButton.Content =
                 pixel
-                    ? L("Save RGB + mode to keymap profile", "Lưu RGB + chế độ vào profile keymap")
+                    ? L("Save / copy RGB to selected profile", "Lưu / copy RGB vào profile đã chọn")
                     : L("Save to profile", "Lưu vào profile");
 
         if (RgbSpeedSlider is not null)
@@ -1920,7 +1926,7 @@ public partial class MainWindow : Window
                     savedEffects
                         .Take(20)
                         .Select(effect =>
-                            effect is >= 0 and <= 3
+                            effect is >= 0 and <= 9
                                 ? effect
                                 : 3)
                         .ToArray();
@@ -6871,11 +6877,31 @@ try {{
     {
         if (IsPixelProActive)
         {
-            int profile =
+            int sourceProfile =
                 Math.Clamp(
                     _pixelSelectedProfile,
                     0,
                     _pixelRgbProfiles.Length - 1);
+
+            int targetProfile =
+                sourceProfile;
+
+            if (PixelRgbSaveProfileCombo?.SelectedItem is ComboBoxItem targetItem &&
+                targetItem.Tag is int selectedTarget)
+            {
+                targetProfile =
+                    Math.Clamp(
+                        selectedTarget,
+                        0,
+                        _pixelProfileCatalog.Count - 1);
+            }
+
+            _pixelRgbProfiles[targetProfile] =
+                _pixelRgbProfiles[sourceProfile]
+                    .ToArray();
+
+            _pixelRgbEffects[targetProfile] =
+                _pixelRgbEffects[sourceProfile];
 
             SaveAppSettings();
 
@@ -6883,21 +6909,27 @@ try {{
                 pixel.IsConnected)
             {
                 pixel.SetPixelRgbProfile(
-                    profile,
-                    _pixelRgbProfiles[profile]);
+                    targetProfile,
+                    _pixelRgbProfiles[targetProfile]);
 
                 pixel.SetPixelRgbEffect(
-                    profile,
-                    _pixelRgbEffects[profile]);
+                    targetProfile,
+                    _pixelRgbEffects[targetProfile]);
 
                 pixel.SetPixelRgbSpeed(
                     _pixelRgbSpeed);
             }
 
+            string targetName =
+                targetProfile <
+                    _pixelProfileCatalog.Names.Length
+                    ? _pixelProfileCatalog.Names[targetProfile]
+                    : $"Profile {targetProfile + 1}";
+
             BottomStatus.Text =
                 L(
-                    $"PIXEL RGB saved to keymap profile {profile + 1}.",
-                    $"Đã lưu RGB PIXEL vào profile keymap {profile + 1}.");
+                    $"PIXEL RGB copied to Profile {targetProfile + 1:00} · {targetName}.",
+                    $"Đã copy RGB PIXEL vào Profile {targetProfile + 1:00} · {targetName}.");
 
             return;
         }
@@ -7408,7 +7440,10 @@ try {{
             Math.Clamp(
                 effect,
                 0,
-                2);
+                9);
+
+        if (effect == 3)
+            effect = 0;
 
         int profile =
             Math.Clamp(
@@ -8370,6 +8405,9 @@ try {{
             PixelProfileCombo.SelectedIndex =
                 _pixelSelectedProfile;
 
+            RefreshPixelRgbSaveProfileCombo(
+                _pixelSelectedProfile);
+
             if (PixelProfileRenameTextBox is not null)
             {
                 PixelProfileRenameTextBox.Visibility =
@@ -8384,6 +8422,40 @@ try {{
         {
             _pixelViaUpdating = false;
         }
+    }
+
+    private void RefreshPixelRgbSaveProfileCombo(
+        int selectedProfile)
+    {
+        if (PixelRgbSaveProfileCombo is null)
+            return;
+
+        int selected =
+            Math.Clamp(
+                selectedProfile,
+                0,
+                Math.Max(
+                    0,
+                    _pixelProfileCatalog.Count - 1));
+
+        PixelRgbSaveProfileCombo.Items.Clear();
+
+        for (int profile = 0;
+             profile < _pixelProfileCatalog.Count;
+             profile++)
+        {
+            PixelRgbSaveProfileCombo.Items.Add(
+                new ComboBoxItem
+                {
+                    Content =
+                        $"{profile + 1:00} · {_pixelProfileCatalog.Names[profile]}",
+                    Tag =
+                        profile
+                });
+        }
+
+        PixelRgbSaveProfileCombo.SelectedIndex =
+            selected;
     }
 
     private void SetPixelProfileDefaults(
