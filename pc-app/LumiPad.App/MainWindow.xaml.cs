@@ -8585,7 +8585,7 @@ try {{
 
     private void PixelMacroStepsList_Drop(
         object sender,
-        DragEventArgs e)
+        System.Windows.DragEventArgs e)
     {
         if (PixelMacroStepsList is null ||
             !e.Data.GetDataPresent(
@@ -8622,7 +8622,7 @@ try {{
                         .IndexFromContainer(
                             targetItem);
 
-                Point inside =
+                System.Windows.Point inside =
                     e.GetPosition(targetItem);
 
                 if (inside.Y >
