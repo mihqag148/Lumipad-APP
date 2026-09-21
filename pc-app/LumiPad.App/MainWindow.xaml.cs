@@ -795,6 +795,13 @@ public partial class MainWindow : Window
                 UpdateSleepButtonUi();
                 UpdateProductHubUi();
             });
+
+        if (link is PixelProCdcLink pixel)
+        {
+            pixel.KeyStateChanged += (index, down, layer) =>
+                Dispatcher.Invoke(() =>
+                    UpdatePixelMatrixTest(index, down, layer));
+        }
     }
 
     private async Task SwitchActiveProductAsync(ProductDefinition product)
