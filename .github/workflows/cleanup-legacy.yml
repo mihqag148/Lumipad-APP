@@ -23,7 +23,6 @@ jobs:
           gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name' |
           while IFS= read -r branch; do
             [ "$branch" = "main" ] && continue
-            [ "$branch" = "archive/screensaver-tearing-vdb" ] && continue
             encoded="${branch//\//%2F}"
             echo "Delete branch: $branch"
             gh api -X DELETE "repos/$REPO/git/refs/heads/$encoded" || true
