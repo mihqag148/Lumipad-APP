@@ -873,6 +873,17 @@ public sealed class PixelProCdcLink : IDeviceLink
             return false;
         }
 
+        if (PixelProScreensaverMediaService.TryGetPackedAnimation(
+                animation,
+                out byte[] packedAnimation))
+        {
+            return await Task.Run(
+                    () => SendPackedAnimationAsync(
+                        packedAnimation,
+                        progress))
+                .ConfigureAwait(false);
+        }
+
         if (PixelProScreensaverMediaService.TryGetEncodedGif(
                 animation,
                 out byte[] encodedGif,
@@ -1072,6 +1083,199 @@ public sealed class PixelProCdcLink : IDeviceLink
                         string.IsNullOrWhiteSpace(finalAck)
                             ? "PIXEL PRO did not confirm the screensaver upload."
                             : $"PIXEL PRO rejected the screensaver upload: {finalAck}";
+                }
+
+                return ready;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    private async Task<bool> SendPackedAnimationAsync(
+        byte[] packedBytes,
+        IProgress<int>? progress)
+    {
+        if (packedBytes.Length < 26 ||
+            packedBytes[0] != (byte)'P' ||
+            packedBytes[1] != (byte)'X' ||
+            packedBytes[2] != (byte)'Q' ||
+            packedBytes[3] != (byte)'1')
+        {
+            throw new InvalidDataException(
+                "Invalid PIXEL packed animation payload.");
+        }
+
+        if (packedBytes.LongLength >=
+            1024L * 1024L)
+        {
+            LastScreensaverError =
+                "PIXEL packed animation must stay below 1 MiB.";
+
+            return false;
+        }
+
+        (long Total, long Used, long Free, long Flash)? capacity =
+            await ReadSaverCapacityAsync();
+
+        if (capacity is not null &&
+            packedBytes.LongLength + 4096 >
+            capacity.Value.Free)
+        {
+            LastScreensaverError =
+                $"Packed animation is {packedBytes.LongLength / 1048576.0:0.00} MB but PIXEL PRO has " +
+                $"{capacity.Value.Free / 1048576.0:0.00} MB free for media.";
+
+            return false;
+        }
+
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port =
+                _port;
+
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 500;
+                port.WriteTimeout = 5000;
+
+                try
+                {
+                    port.DiscardInBuffer();
+                }
+                catch
+                {
+                }
+
+                string begin =
+                    $"SAVPXBEGIN|{packedBytes.Length}";
+
+                Log(
+                    "TX",
+                    begin);
+
+                port.WriteLine(
+                    begin);
+
+                string? beginAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVPXBEGIN",
+                        TimeSpan.FromSeconds(8));
+
+                if (!string.Equals(
+                        beginAck,
+                        "OK|SAVPXBEGIN",
+                        StringComparison.Ordinal))
+                {
+                    LastScreensaverError =
+                        string.IsNullOrWhiteSpace(
+                            beginAck)
+                            ? "PIXEL PRO did not answer packed animation upload start."
+                            : $"PIXEL PRO rejected packed animation: {beginAck}";
+
+                    return false;
+                }
+
+                const int RawChunkSize = 1024;
+
+                for (int offset = 0;
+                     offset < packedBytes.Length;
+                     offset += RawChunkSize)
+                {
+                    int length =
+                        Math.Min(
+                            RawChunkSize,
+                            packedBytes.Length -
+                            offset);
+
+                    string encoded =
+                        Convert.ToBase64String(
+                            packedBytes,
+                            offset,
+                            length);
+
+                    port.WriteLine(
+                        $"SAVPXDATA|{offset}|{encoded}");
+
+                    int nextOffset =
+                        offset +
+                        length;
+
+                    string expected =
+                        $"OK|SAVPXDATA|{nextOffset}";
+
+                    string? ack =
+                        await ReadExpectedLineAsync(
+                            port,
+                            expected,
+                            TimeSpan.FromSeconds(5));
+
+                    if (!string.Equals(
+                            ack,
+                            expected,
+                            StringComparison.Ordinal))
+                    {
+                        LastScreensaverError =
+                            string.IsNullOrWhiteSpace(
+                                ack)
+                                ? "PIXEL PRO stopped answering during packed animation upload."
+                                : $"PIXEL PRO rejected packed animation data: {ack}";
+
+                        return false;
+                    }
+
+                    progress?.Report(
+                        (int)Math.Clamp(
+                            nextOffset *
+                            95L /
+                            Math.Max(
+                                1,
+                                packedBytes.Length),
+                            0,
+                            95));
+                }
+
+                port.WriteLine(
+                    "SAVPXEND");
+
+                string? finalAck =
+                    await ReadExpectedLineAsync(
+                        port,
+                        "OK|SAVER|READY",
+                        TimeSpan.FromSeconds(10));
+
+                bool ready =
+                    string.Equals(
+                        finalAck,
+                        "OK|SAVER|READY",
+                        StringComparison.Ordinal);
+
+                if (ready)
+                {
+                    progress?.Report(
+                        100);
+                }
+                else
+                {
+                    LastScreensaverError =
+                        string.IsNullOrWhiteSpace(
+                            finalAck)
+                            ? "PIXEL PRO did not confirm packed animation storage."
+                            : $"PIXEL PRO rejected packed animation storage: {finalAck}";
                 }
 
                 return ready;
