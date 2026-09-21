@@ -1184,8 +1184,12 @@ public partial class MainWindow : Window
         if (pixel &&
             _screensaverAnimation is null &&
             ScreensaverScaleCombo is not null &&
-            SelectedScreensaverScaleMode() == ScreensaverScaleMode.Fill)
+            SelectedScreensaverScaleMode() is
+                ScreensaverScaleMode.Fill or
+                ScreensaverScaleMode.Fit)
         {
+            // Migrate older PIXEL defaults (Fill/Fit) to true original-size
+            // Center. The user can still explicitly choose another mode later.
             _screensaverScaleMode = ScreensaverScaleMode.Center;
             SelectComboTag(
                 ScreensaverScaleCombo,
@@ -6926,11 +6930,42 @@ try {{
             }
             else
             {
+                var pixelGifInfo =
+                    pixel
+                        ? PixelProScreensaverMediaService.GetEncodedGifInfo(
+                            _screensaverAnimation)
+                        : default;
+
+                string pixelGifSummary = "";
+                if (pixel)
+                {
+                    double storedKb =
+                        pixelGifInfo.StoredBytes / 1024.0;
+                    double sourceKb =
+                        pixelGifInfo.SourceBytes / 1024.0;
+                    double savedPercent =
+                        pixelGifInfo.SourceBytes > 0
+                            ? Math.Max(
+                                0,
+                                (1.0 -
+                                 pixelGifInfo.StoredBytes /
+                                 (double)pixelGifInfo.SourceBytes) *
+                                100.0)
+                            : 0;
+
+                    pixelGifSummary =
+                        pixelGifInfo.Optimized
+                            ? L(
+                                $"Optimized GIF · {storedKb:0.#} KB from {sourceKb:0.#} KB · saved {savedPercent:0.#}% · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Frames} stored frames · {_screensaverScaleMode}",
+                                $"GIF đã tối ưu · {storedKb:0.#} KB từ {sourceKb:0.#} KB · giảm {savedPercent:0.#}% · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {pixelGifInfo.Frames} frame lưu · {_screensaverScaleMode}")
+                            : L(
+                                $"GIF already compact · {storedKb:0.#} KB · source retained · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {_screensaverScaleMode}",
+                                $"GIF gốc đã đủ gọn · {storedKb:0.#} KB · giữ nguyên nguồn · {pixelGifInfo.Width}×{pixelGifInfo.Height} · {_screensaverScaleMode}");
+                }
+
                 ScreensaverMediaInfo.Text =
                     pixel
-                        ? L(
-                            $"Original GIF kept compressed · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB · scaled on-device with {_screensaverScaleMode} · max {PixelProScreensaverMediaService.MaxPlaybackFps} FPS",
-                            $"Giữ nguyên GIF nén · {PixelProScreensaverMediaService.GetEncodedGifSize(_screensaverAnimation) / 1024.0:0.#} KB · scale trên thiết bị bằng {_screensaverScaleMode} · tối đa {PixelProScreensaverMediaService.MaxPlaybackFps} FPS")
+                        ? pixelGifSummary
                         : L(
                             $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
                             $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
@@ -6958,8 +6993,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. The original GIF will be copied to PIXEL PRO and decoded on-device.",
-                        "Đã sẵn sàng. GIF gốc sẽ được chép vào PIXEL PRO và giải mã trực tiếp trên thiết bị.")
+                        "Ready. PIXEL PRO will receive the compact GIF payload and decode it on-device; no raw frame dump is stored.",
+                        "Đã sẵn sàng. PIXEL PRO sẽ nhận GIF đã tối ưu và giải mã trực tiếp; không lưu dump frame thô.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
