@@ -26,6 +26,21 @@ public partial class MainWindow : Window
 {
     private ProductDefinition _activeProduct = ProductCatalog.DialDesk;
     private IDeviceLink _serial;
+    private readonly Dictionary<string, IDeviceLink> _deviceLinks =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _connectionPreferences =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _autoReconnectByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _sleepingByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int?> _batteryByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> _firmwareLogSeqByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, uint> _actionEventSeqByProduct =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly NowPlayingService _nowPlaying = new();
     private readonly PcMonitorService _pcMonitorService = new();
 
@@ -36,9 +51,63 @@ public partial class MainWindow : Window
     private bool _trayTipShown;
     private bool _configuratorInitialized;
     private string _loadedConfiguratorUrl = "";
-    private bool _autoReconnectEnabled = true;
-    private string _connectionPreference = "auto";
-    private bool _keyboardSleeping;
+
+    private bool _autoReconnectEnabled
+    {
+        get => !_autoReconnectByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out bool enabled) || enabled;
+        set => _autoReconnectByProduct[_activeProduct.Id] = value;
+    }
+
+    private string _connectionPreference
+    {
+        get => _connectionPreferences.TryGetValue(
+                   _activeProduct.Id,
+                   out string? value)
+               ? value
+               : "auto";
+        set => _connectionPreferences[_activeProduct.Id] = value;
+    }
+
+    private bool _keyboardSleeping
+    {
+        get => _sleepingByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out bool sleeping) && sleeping;
+        set => _sleepingByProduct[_activeProduct.Id] = value;
+    }
+
+    private uint _lastActionEventSeq
+    {
+        get => _actionEventSeqByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out uint value)
+               ? value
+               : 0;
+        set => _actionEventSeqByProduct[_activeProduct.Id] = value;
+    }
+
+    private uint _firmwareLogSeq
+    {
+        get => _firmwareLogSeqByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out uint value)
+               ? value
+               : 0;
+        set => _firmwareLogSeqByProduct[_activeProduct.Id] = value;
+    }
+
+    private int? _activeBatteryPercent
+    {
+        get => _batteryByProduct.TryGetValue(
+                   _activeProduct.Id,
+                   out int? value)
+               ? value
+               : null;
+        set => _batteryByProduct[_activeProduct.Id] = value;
+    }
+
     private readonly CancellationTokenSource _reconnectCts = new();
     private static readonly HttpClient UpdateHttp = CreateUpdateHttpClient();
     private const string UpdateReleaseApi =
@@ -90,8 +159,6 @@ public partial class MainWindow : Window
     private bool _loadingActionScriptUi;
     private readonly HashSet<int> _runningActionIds = [];
     private ActionKeymapWindow? _actionKeymapWindow;
-    private uint _lastActionEventSeq;
-    private uint _firmwareLogSeq;
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
     private bool _rgbAuto;
@@ -118,7 +185,6 @@ public partial class MainWindow : Window
 
     private readonly Dictionary<string, ProductCardVisual> _productCardVisuals =
         new(StringComparer.OrdinalIgnoreCase);
-    private int? _activeBatteryPercent;
     private bool _pcMonitorEnabled = true;
     private int _pcMonitorIntervalMs = 1000;
     private bool _pcMonitorPolling;
@@ -206,7 +272,7 @@ public partial class MainWindow : Window
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "LumiPad-Updater/1.20.6");
+            "LumiPad-Updater/1.20.8");
         client.DefaultRequestHeaders.CacheControl =
             new System.Net.Http.Headers.CacheControlHeaderValue
             {
@@ -220,8 +286,31 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        _serial = DeviceLinkFactory.Create(_activeProduct);
+        foreach (ProductDefinition product in ProductCatalog.All)
+        {
+            IDeviceLink link =
+                DeviceLinkFactory.Create(product);
+
+            _deviceLinks[product.Id] = link;
+            _connectionPreferences[product.Id] = "auto";
+            _autoReconnectByProduct[product.Id] = true;
+            _sleepingByProduct[product.Id] = false;
+            _batteryByProduct[product.Id] = null;
+            _firmwareLogSeqByProduct[product.Id] = 0;
+            _actionEventSeqByProduct[product.Id] = 0;
+        }
+
+        _serial = LinkFor(_activeProduct);
+
         InitializeComponent();
+
+        foreach (ProductDefinition product in ProductCatalog.All)
+        {
+            AttachDeviceLinkEvents(
+                product,
+                LinkFor(product));
+        }
+
         BuildPixelProKeymapUi();
         InitializeTrayIcon();
 
@@ -329,8 +418,6 @@ public partial class MainWindow : Window
         _updateCheckTimer.Tick += async (_, _) =>
             await CheckForUpdatesAsync(silent: true);
 
-        AttachDeviceLinkEvents(_serial);
-
         System.Windows.Application.Current.DispatcherUnhandledException += (_, args) =>
         {
             AddLog("ERROR", "APP", $"Unhandled UI exception: {args.Exception}");
@@ -389,26 +476,18 @@ public partial class MainWindow : Window
                 BottomStatus.Text = L($"Now Playing unavailable: {ex.Message}", $"Không dùng được Now Playing: {ex.Message}");
             }
 
-            _connectionPreference = "auto";
-            _autoReconnectEnabled = true;
-            AddLog("INFO", "APP", "Auto-connect enabled by default");
+            foreach (ProductDefinition product in ProductCatalog.All)
+            {
+                _connectionPreferences[product.Id] = "auto";
+                _autoReconnectByProduct[product.Id] = true;
+            }
 
-            if (!string.Equals(
-                    _activeProduct.Id,
-                    ProductCatalog.PixelPro.Id,
-                    StringComparison.OrdinalIgnoreCase) &&
-                PixelProCdcLink.IsDevicePresent(ProductCatalog.PixelPro))
-            {
-                AddLog(
-                    "INFO",
-                    "APP",
-                    "Live PIXEL PRO USB CDC detected; selecting PIXEL PRO automatically");
-                await SwitchActiveProductAsync(ProductCatalog.PixelPro);
-            }
-            else
-            {
-                await DetectAsync();
-            }
+            AddLog(
+                "INFO",
+                "APP",
+                "Parallel auto-connect enabled for RYNOR ONE and PIXEL PRO");
+
+            await ConnectAllProductsAsync();
             await CheckForUpdatesAsync(silent: true);
             _updateCheckTimer.Start();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
@@ -427,6 +506,15 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
         StateChanged += MainWindow_StateChanged;
     }
+
+    private IDeviceLink LinkFor(ProductDefinition product) =>
+        _deviceLinks[product.Id];
+
+    private bool IsActiveProduct(ProductDefinition product) =>
+        string.Equals(
+            _activeProduct.Id,
+            product.Id,
+            StringComparison.OrdinalIgnoreCase);
 
     private void BuildProductCards()
     {
@@ -805,24 +893,48 @@ public partial class MainWindow : Window
         await UpdateProductOverviewAsync();
     }
 
-    private void AttachDeviceLinkEvents(IDeviceLink link)
+    private void AttachDeviceLinkEvents(
+        ProductDefinition product,
+        IDeviceLink link)
     {
         link.Diagnostic += (level, message) =>
-            Dispatcher.Invoke(() => AddLog(level, "APP", message));
+            Dispatcher.Invoke(() =>
+                AddLog(
+                    level,
+                    product.Name,
+                    message));
 
         link.LinkError += message =>
             Dispatcher.Invoke(() =>
             {
-                AddLog("ERROR", "LINK", message);
-                DeviceStatus.Text = L("Device link error", "Lỗi kết nối thiết bị");
-                DeviceDot.Fill =
-                    new SolidColorBrush(MediaColor.FromRgb(255, 69, 58));
-                BottomStatus.Text = message;
-                _keyboardSleeping = false;
-                _activeBatteryPercent = null;
-                SetDeviceControlsEnabled(false);
-                UpdateTransportIndicators();
-                UpdateSleepButtonUi();
+                AddLog(
+                    "ERROR",
+                    product.Name,
+                    message);
+
+                _sleepingByProduct[product.Id] = false;
+                _batteryByProduct[product.Id] = null;
+
+                if (IsActiveProduct(product))
+                {
+                    DeviceStatus.Text =
+                        L(
+                            "Device link error",
+                            "Lỗi kết nối thiết bị");
+
+                    DeviceDot.Fill =
+                        new SolidColorBrush(
+                            MediaColor.FromRgb(
+                                255,
+                                69,
+                                58));
+
+                    BottomStatus.Text = message;
+                    SetDeviceControlsEnabled(false);
+                    UpdateTransportIndicators();
+                    UpdateSleepButtonUi();
+                }
+
                 UpdateProductHubUi();
             });
 
@@ -830,7 +942,15 @@ public partial class MainWindow : Window
         {
             pixel.KeyStateChanged += (index, down, layer) =>
                 Dispatcher.Invoke(() =>
-                    UpdatePixelMatrixTest(index, down, layer));
+                {
+                    if (IsActiveProduct(product))
+                    {
+                        UpdatePixelMatrixTest(
+                            index,
+                            down,
+                            layer);
+                    }
+                });
 
             pixel.MacroTriggered += (slot, key, profile, layer) =>
                 Dispatcher.BeginInvoke(
@@ -854,61 +974,108 @@ public partial class MainWindow : Window
 
     private async Task SwitchActiveProductAsync(ProductDefinition product)
     {
-        _autoReconnectEnabled = false;
         try
         {
-            try
-            {
-                _serial.Disconnect();
-                _serial.Dispose();
-            }
-            catch
-            {
-            }
-
             _activeProduct = product;
-            _activeBatteryPercent = null;
-            _keyboardSleeping = false;
-            _lastActionEventSeq = 0;
-            _firmwareLogSeq = 0;
-            _connectionPreference = "auto";
-
-            _serial = DeviceLinkFactory.Create(product);
-            AttachDeviceLinkEvents(_serial);
+            _serial = LinkFor(product);
 
             _configuratorInitialized = false;
             _loadedConfiguratorUrl = "";
+
             UpdateDeviceConfiguratorUi();
             UpdateProductSpecificText();
 
-            SetDeviceControlsEnabled(false);
+            SetDeviceControlsEnabled(_serial.IsConnected);
             UpdateTransportIndicators();
             UpdateSleepButtonUi();
             UpdateProductHubUi();
+            UpdateSettingsInfo();
 
             AddLog(
                 "INFO",
                 "APP",
-                $"Active product: {product.Name} ({product.Driver})");
+                $"Active page: {product.Name} ({product.Driver}); connection kept alive");
 
-            await DetectAsync();
-
-            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
-                System.IO.File.Exists(_screensaverMediaPath))
+            if (!_serial.IsConnected)
             {
-                await PrepareScreensaverMediaAsync();
+                await DetectAsync();
             }
-
+            else
+            {
+                await UpdateMemoryUsageAsync();
+                await UpdatePanelInfoAsync();
+                await CheckForUpdatesAsync(silent: true);
+            }
         }
         catch (Exception ex)
         {
-            AddLog("ERROR", "APP", $"Cannot activate {product.Name}: {ex.Message}");
+            AddLog(
+                "ERROR",
+                "APP",
+                $"Cannot activate {product.Name}: {ex.Message}");
+
             BottomStatus.Text = ex.Message;
         }
-        finally
+    }
+
+    private async Task ConnectAllProductsAsync()
+    {
+        foreach (ProductDefinition product in ProductCatalog.All)
         {
-            _autoReconnectEnabled = true;
+            IDeviceLink link = LinkFor(product);
+
+            if (link.IsConnected)
+                continue;
+
+            try
+            {
+                string? connection =
+                    await link.AutoDetectAsync();
+
+                if (connection is null)
+                {
+                    AddLog(
+                        "INFO",
+                        product.Name,
+                        "Parallel auto-connect: not found");
+                    continue;
+                }
+
+                AddLog(
+                    "INFO",
+                    product.Name,
+                    $"Parallel auto-connect: {connection}");
+
+                _sleepingByProduct[product.Id] = false;
+                _batteryByProduct[product.Id] =
+                    await link.ReadBatteryPercentAsync();
+
+                if (IsActiveProduct(product))
+                {
+                    DeviceStatus.Text = connection;
+                    DeviceDot.Fill =
+                        new SolidColorBrush(
+                            MediaColor.FromRgb(
+                                48,
+                                209,
+                                88));
+
+                    SetDeviceControlsEnabled(true);
+                    UpdateTransportIndicators();
+                    UpdateSleepButtonUi();
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLog(
+                    "WARN",
+                    product.Name,
+                    $"Parallel auto-connect failed: {ex.Message}");
+            }
         }
+
+        UpdateProductHubUi();
+        await UpdateProductOverviewAsync();
     }
 
     private void UpdateProductSpecificText()
@@ -936,12 +1103,21 @@ public partial class MainWindow : Window
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
         }
 
-        if (PanelInfoText is not null)
+        if (IsPixelProActive)
         {
-            PanelInfoText.Text =
-                IsPixelProActive
-                    ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
-                    : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+            if (PanelInfoText is not null)
+            {
+                PanelInfoText.Text =
+                    "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS";
+            }
+        }
+        else
+        {
+            if (RynorPanelInfoText is not null)
+            {
+                RynorPanelInfoText.Text =
+                    "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+            }
         }
 
         if (LumiActionDescriptionText is not null)
@@ -1022,87 +1198,131 @@ public partial class MainWindow : Window
         foreach (var pair in _productCardVisuals)
         {
             ProductCardVisual visual = pair.Value;
-            bool active = string.Equals(
-                visual.Product.Id,
-                _activeProduct.Id,
-                StringComparison.OrdinalIgnoreCase);
-            bool connected = active && _serial.IsConnected;
+            IDeviceLink link =
+                LinkFor(visual.Product);
+
+            bool connected =
+                link.IsConnected;
 
             string connection = connected
-                ? _serial.IsUsbConnected
+                ? link.IsUsbConnected
                     ? L("Connected · USB", "Đã kết nối · USB")
-                    : _serial.IsBluetoothConnected
+                    : link.IsBluetoothConnected
                         ? L("Connected · Bluetooth", "Đã kết nối · Bluetooth")
                         : L("Connected", "Đã kết nối")
                 : L("Not connected", "Chưa kết nối");
 
             visual.ConnectionText.Text = connection;
             visual.ConnectionText.Foreground =
-                TryFindResource(connected ? "TextPrimary" : "Muted")
-                    as System.Windows.Media.Brush;
-
-            visual.Dot.Fill = new SolidColorBrush(
-                connected
-                    ? MediaColor.FromRgb(48, 209, 88)
-                    : MediaColor.FromRgb(99, 99, 102));
-
-            visual.BatteryText.Text =
-                !visual.Product.SupportsBattery
-                    ? ""
-                    : connected && _activeBatteryPercent.HasValue
-                        ? $"▰ {_activeBatteryPercent.Value}%"
-                        : "▰ --%";
-
-            visual.BatteryText.Foreground =
                 TryFindResource(
-                    connected && _activeBatteryPercent.HasValue
+                    connected
                         ? "TextPrimary"
                         : "Muted")
                     as System.Windows.Media.Brush;
 
+            visual.Dot.Fill =
+                new SolidColorBrush(
+                    connected
+                        ? MediaColor.FromRgb(
+                            48,
+                            209,
+                            88)
+                        : MediaColor.FromRgb(
+                            99,
+                            99,
+                            102));
+
+            int? battery =
+                _batteryByProduct.TryGetValue(
+                    visual.Product.Id,
+                    out int? value)
+                    ? value
+                    : null;
+
+            visual.BatteryText.Text =
+                !visual.Product.SupportsBattery
+                    ? ""
+                    : connected && battery.HasValue
+                        ? $"▰ {battery.Value}%"
+                        : "▰ --%";
+
+            visual.BatteryText.Foreground =
+                TryFindResource(
+                    connected && battery.HasValue
+                        ? "TextPrimary"
+                        : "Muted")
+                    as System.Windows.Media.Brush;
+
+            bool active =
+                IsActiveProduct(
+                    visual.Product);
+
             visual.Card.BorderBrush =
-                TryFindResource(connected ? "Accent" : "Line")
+                TryFindResource(
+                    active
+                        ? "Accent"
+                        : connected
+                            ? "TextPrimary"
+                            : "Line")
                     as System.Windows.Media.Brush;
         }
 
         if (ProductHubStatusText is not null)
         {
-            ProductHubStatusText.Text = _serial.IsConnected
-                ? L(
-                    $"{_activeProduct.Name} is online · {_serial.ConnectionName}",
-                    $"{_activeProduct.Name} đang trực tuyến · {_serial.ConnectionName}")
-                : L(
-                    $"Searching for {_activeProduct.Name}…",
-                    $"Đang tìm {_activeProduct.Name}…");
+            string[] online =
+                ProductCatalog.All
+                    .Select(product =>
+                    {
+                        IDeviceLink link =
+                            LinkFor(product);
+
+                        return link.IsConnected
+                            ? $"{product.Name}: {link.ConnectionName}"
+                            : $"{product.Name}: {L("Not connected", "Chưa kết nối")}";
+                    })
+                    .ToArray();
+
+            ProductHubStatusText.Text =
+                string.Join("  ·  ", online);
         }
 
         if (ProductHubVersionText is not null)
         {
-            var version = System.Reflection.Assembly
-                .GetExecutingAssembly().GetName().Version;
-            ProductHubVersionText.Text = version is null
-                ? "v--"
-                : $"v{version.Major}.{version.Minor}.{version.Build}";
+            var version =
+                System.Reflection.Assembly
+                    .GetExecutingAssembly()
+                    .GetName()
+                    .Version;
+
+            ProductHubVersionText.Text =
+                version is null
+                    ? "v--"
+                    : $"v{version.Major}.{version.Minor}.{version.Build}";
         }
     }
 
     private async Task UpdateProductOverviewAsync()
     {
-        if (!_serial.IsConnected)
+        foreach (ProductDefinition product in ProductCatalog.All)
         {
-            _activeBatteryPercent = null;
-            UpdateProductHubUi();
-            return;
-        }
+            IDeviceLink link =
+                LinkFor(product);
 
-        try
-        {
-            int? battery = await _serial.ReadBatteryPercentAsync();
-            if (battery.HasValue)
-                _activeBatteryPercent = battery.Value;
-        }
-        catch
-        {
+            if (!link.IsConnected ||
+                !product.SupportsBattery)
+            {
+                _batteryByProduct[product.Id] = null;
+                continue;
+            }
+
+            try
+            {
+                _batteryByProduct[product.Id] =
+                    await link.ReadBatteryPercentAsync();
+            }
+            catch
+            {
+            }
         }
 
         UpdateProductHubUi();
@@ -1745,7 +1965,17 @@ public partial class MainWindow : Window
         _reconnectCts.Dispose();
         _nowPlaying.Dispose();
         _pcMonitorService.Dispose();
-        _serial.Dispose();
+
+        foreach (IDeviceLink link in _deviceLinks.Values.Distinct())
+        {
+            try
+            {
+                link.Dispose();
+            }
+            catch
+            {
+            }
+        }
 
         if (_trayIcon is not null)
         {
@@ -1977,7 +2207,23 @@ public partial class MainWindow : Window
             _syncingMediaUi = false;
         }
 
-        _serial.SendNowPlaying(data);
+        foreach (IDeviceLink link in _deviceLinks.Values)
+        {
+            if (!link.IsConnected)
+                continue;
+
+            try
+            {
+                link.SendNowPlaying(data);
+            }
+            catch (Exception ex)
+            {
+                AddLog(
+                    "WARN",
+                    "MEDIA",
+                    $"Now Playing send failed on {link.ConnectionName}: {ex.Message}");
+            }
+        }
     }
 
     private void ClearNowPlaying()
@@ -2019,7 +2265,19 @@ public partial class MainWindow : Window
             _syncingMediaUi = false;
         }
 
-        _serial.ClearNowPlaying();
+        foreach (IDeviceLink link in _deviceLinks.Values)
+        {
+            if (!link.IsConnected)
+                continue;
+
+            try
+            {
+                link.ClearNowPlaying();
+            }
+            catch
+            {
+            }
+        }
     }
 
     private void SetMediaModeButton(
@@ -2486,16 +2744,31 @@ public partial class MainWindow : Window
 
     private async Task UpdateMemoryUsageAsync()
     {
-        void ResetMemoryText()
+        bool pixel = IsPixelProActive;
+
+        void ResetActiveMemoryText()
         {
-            FlashUsageText.Text = "FLASH --";
-            SramUsageText.Text = "SRAM --";
-            PsramUsageText.Text = "PSRAM --";
+            if (pixel)
+            {
+                if (FlashUsageText is not null)
+                    FlashUsageText.Text = "FLASH --";
+                if (SramUsageText is not null)
+                    SramUsageText.Text = "SRAM --";
+                if (PsramUsageText is not null)
+                    PsramUsageText.Text = "PSRAM --";
+            }
+            else
+            {
+                if (RynorFlashUsageText is not null)
+                    RynorFlashUsageText.Text = "FLASH --";
+                if (RynorRamUsageText is not null)
+                    RynorRamUsageText.Text = "RAM --";
+            }
         }
 
         if (!_serial.IsConnected)
         {
-            ResetMemoryText();
+            ResetActiveMemoryText();
             return;
         }
 
@@ -2504,7 +2777,7 @@ public partial class MainWindow : Window
 
         if (usage is null)
         {
-            ResetMemoryText();
+            ResetActiveMemoryText();
             return;
         }
 
@@ -2515,9 +2788,11 @@ public partial class MainWindow : Window
             bool notAvailableWhenZero = false)
         {
             if (total <= 0)
+            {
                 return notAvailableWhenZero
                     ? $"{label} N/A"
                     : $"{label} --";
+            }
 
             double pct =
                 Math.Clamp(
@@ -2528,24 +2803,56 @@ public partial class MainWindow : Window
             return $"{label} {pct:0.0}%";
         }
 
-        FlashUsageText.Text =
-            PercentText(
-                "FLASH",
-                usage.Value.FlashUsed,
-                usage.Value.FlashTotal);
+        if (pixel)
+        {
+            if (FlashUsageText is not null)
+            {
+                FlashUsageText.Text =
+                    PercentText(
+                        "FLASH",
+                        usage.Value.FlashUsed,
+                        usage.Value.FlashTotal);
+            }
 
-        SramUsageText.Text =
-            PercentText(
-                "SRAM",
-                usage.Value.SramUsed,
-                usage.Value.SramTotal);
+            if (SramUsageText is not null)
+            {
+                SramUsageText.Text =
+                    PercentText(
+                        "SRAM",
+                        usage.Value.SramUsed,
+                        usage.Value.SramTotal);
+            }
 
-        PsramUsageText.Text =
-            PercentText(
-                "PSRAM",
-                usage.Value.PsramUsed,
-                usage.Value.PsramTotal,
-                notAvailableWhenZero: true);
+            if (PsramUsageText is not null)
+            {
+                PsramUsageText.Text =
+                    PercentText(
+                        "PSRAM",
+                        usage.Value.PsramUsed,
+                        usage.Value.PsramTotal,
+                        notAvailableWhenZero: true);
+            }
+        }
+        else
+        {
+            if (RynorFlashUsageText is not null)
+            {
+                RynorFlashUsageText.Text =
+                    PercentText(
+                        "FLASH",
+                        usage.Value.FlashUsed,
+                        usage.Value.FlashTotal);
+            }
+
+            if (RynorRamUsageText is not null)
+            {
+                RynorRamUsageText.Text =
+                    PercentText(
+                        "RAM",
+                        usage.Value.SramUsed,
+                        usage.Value.SramTotal);
+            }
+        }
     }
 
     private async Task UpdatePanelInfoAsync()
@@ -2557,31 +2864,49 @@ public partial class MainWindow : Window
                 ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
                 : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
 
+        void SetActivePanelText(string value)
+        {
+            if (pixel)
+            {
+                if (PanelInfoText is not null)
+                    PanelInfoText.Text = value;
+            }
+            else
+            {
+                if (RynorPanelInfoText is not null)
+                    RynorPanelInfoText.Text = value;
+            }
+        }
+
         if (!_serial.IsConnected)
         {
-            PanelInfoText.Text = fallback;
+            SetActivePanelText(fallback);
             return;
         }
 
-        var info = await _serial.ReadPanelInfoAsync();
+        var info =
+            await _serial.ReadPanelInfoAsync();
+
         if (info is null)
         {
-            PanelInfoText.Text = fallback;
+            SetActivePanelText(fallback);
             return;
         }
 
         if (pixel)
         {
-            PanelInfoText.Text =
+            SetActivePanelText(
                 $"{info.Value.Panel} · 480×320 landscape · i8080 8-bit · " +
-                $"refresh cap {info.Value.RefreshHz} Hz · GIF ≤{info.Value.GifMaxFps} FPS";
+                $"refresh cap {info.Value.RefreshHz} Hz · GIF ≤{info.Value.GifMaxFps} FPS");
             return;
         }
 
-        double spiMhz = info.Value.SpiHz / 1_000_000.0;
-        PanelInfoText.Text =
+        double spiMhz =
+            info.Value.SpiHz / 1_000_000.0;
+
+        SetActivePanelText(
             $"{info.Value.Panel} ≈{info.Value.RefreshHz} Hz default · " +
-            $"SPI {spiMhz:0.#} MHz · GIF ≤{info.Value.GifMaxFps} FPS";
+            $"SPI {spiMhz:0.#} MHz · GIF ≤{info.Value.GifMaxFps} FPS");
     }
 
     private async void ConnectUsbButton_Click(object sender, RoutedEventArgs e)
@@ -2689,89 +3014,163 @@ public partial class MainWindow : Window
         UpdateProductHubUi();
     }
 
-    private async Task AutoReconnectLoopAsync(CancellationToken token)
+    private async Task AutoReconnectLoopAsync(
+        CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(3000, token);
+                await Task.Delay(
+                    3000,
+                    token);
 
-                if (!_autoReconnectEnabled)
-                    continue;
-
-                if (_serial.IsConnected)
+                foreach (ProductDefinition product in ProductCatalog.All)
                 {
-                    // In default Auto mode, a plugged USB cable always wins
-                    // over the Bluetooth companion link. Promote without
-                    // clearing media state or re-uploading the screensaver.
-                    if (_connectionPreference == "auto" &&
-                        _serial.IsBluetoothConnected)
+                    if (!_autoReconnectByProduct.TryGetValue(
+                            product.Id,
+                            out bool autoReconnect) ||
+                        !autoReconnect)
                     {
-                        var promoted =
-                            await _serial.PromoteToUsbIfAvailableAsync(token);
+                        continue;
+                    }
 
-                        if (promoted is not null)
+                    IDeviceLink link =
+                        LinkFor(product);
+
+                    string preference =
+                        _connectionPreferences.TryGetValue(
+                            product.Id,
+                            out string? storedPreference)
+                            ? storedPreference
+                            : "auto";
+
+                    if (link.IsConnected)
+                    {
+                        if (preference == "auto" &&
+                            link.IsBluetoothConnected)
                         {
-                            DeviceStatus.Text = promoted;
-                            DeviceDot.Fill =
-                                new SolidColorBrush(
-                                    MediaColor.FromRgb(48, 209, 88));
-                            BottomStatus.Text =
-                                L("USB detected and selected automatically.",
-                                  "Đã phát hiện USB và tự động chuyển sang USB.");
-                            AddLog(
-                                "INFO",
-                                "LINK",
-                                $"Auto-promoted to {promoted}");
-                            SetDeviceControlsEnabled(true);
-                            SendAllRgb();
-                            SendPowerTiming();
-                            await UpdateMemoryUsageAsync();
-                            await UpdatePanelInfoAsync();
-                            UpdateTransportIndicators();
-                            await UpdateProductOverviewAsync();
+                            string? promoted =
+                                await link.PromoteToUsbIfAvailableAsync(
+                                    token);
+
+                            if (promoted is not null)
+                            {
+                                AddLog(
+                                    "INFO",
+                                    product.Name,
+                                    $"Auto-promoted to {promoted}");
+
+                                if (IsActiveProduct(product))
+                                {
+                                    DeviceStatus.Text =
+                                        promoted;
+
+                                    DeviceDot.Fill =
+                                        new SolidColorBrush(
+                                            MediaColor.FromRgb(
+                                                48,
+                                                209,
+                                                88));
+
+                                    BottomStatus.Text =
+                                        L(
+                                            "USB detected and selected automatically.",
+                                            "Đã phát hiện USB và tự động chuyển sang USB.");
+
+                                    SetDeviceControlsEnabled(true);
+                                    SendAllRgb();
+                                    SendPowerTiming();
+                                    await UpdateMemoryUsageAsync();
+                                    await UpdatePanelInfoAsync();
+                                    UpdateTransportIndicators();
+                                }
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    string? connection =
+                        preference switch
+                        {
+                            "usb" =>
+                                await link.ConnectUsbAsync(token),
+                            "bluetooth" =>
+                                await link.ConnectBluetoothAsync(token),
+                            _ =>
+                                await link.AutoDetectAsync(token)
+                        };
+
+                    if (connection is null)
+                        continue;
+
+                    _sleepingByProduct[product.Id] = false;
+
+                    if (product.SupportsBattery)
+                    {
+                        try
+                        {
+                            _batteryByProduct[product.Id] =
+                                await link.ReadBatteryPercentAsync();
+                        }
+                        catch
+                        {
                         }
                     }
 
-                    continue;
+                    AddLog(
+                        "INFO",
+                        product.Name,
+                        $"Reconnected: {connection}");
+
+                    if (IsActiveProduct(product))
+                    {
+                        DeviceStatus.Text = connection;
+                        DeviceDot.Fill =
+                            new SolidColorBrush(
+                                MediaColor.FromRgb(
+                                    48,
+                                    209,
+                                    88));
+
+                        BottomStatus.Text =
+                            connection.StartsWith(
+                                "Bluetooth",
+                                StringComparison.Ordinal)
+                                ? L(
+                                    "Reconnected wirelessly after wake.",
+                                    "Đã kết nối lại Bluetooth sau khi wake.")
+                                : L(
+                                    "Reconnected over USB.",
+                                    "Đã kết nối lại qua USB.");
+
+                        SetDeviceControlsEnabled(true);
+                        _lastAppliedAutoProfile = -1;
+                        PollAutoProfile(force: true);
+                        SendAllRgb();
+                        SendPowerTiming();
+                        await UpdateMemoryUsageAsync();
+                        await UpdatePanelInfoAsync();
+                        await RestoreScreensaverAfterReconnectAsync();
+                        UpdateTransportIndicators();
+                        UpdateSleepButtonUi();
+                        await CheckForUpdatesAsync(silent: true);
+                    }
                 }
 
-                var connection = _connectionPreference switch
-                {
-                    "usb" => await _serial.ConnectUsbAsync(token),
-                    "bluetooth" => await _serial.ConnectBluetoothAsync(token),
-                    _ => await _serial.AutoDetectAsync(token)
-                };
-                if (connection is null)
-                    continue;
-
-                _keyboardSleeping = false;
-                DeviceStatus.Text = connection;
-                DeviceDot.Fill = new SolidColorBrush(MediaColor.FromRgb(48, 209, 88));
-                BottomStatus.Text = connection.StartsWith("Bluetooth", StringComparison.Ordinal)
-                    ? L("Reconnected wirelessly after wake.", "Đã kết nối lại Bluetooth sau khi wake.")
-                    : L("Reconnected over USB.", "Đã kết nối lại qua USB.");
-
-                SetDeviceControlsEnabled(true);
-                _lastAppliedAutoProfile = -1;
-                PollAutoProfile(force: true);
-                SendAllRgb();
-                SendPowerTiming();
-                await UpdateMemoryUsageAsync();
-                await UpdatePanelInfoAsync();
-                await RestoreScreensaverAfterReconnectAsync();
-                UpdateTransportIndicators();
-                UpdateSleepButtonUi();
                 await UpdateProductOverviewAsync();
-                await CheckForUpdatesAsync(silent: true);
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch
+            catch (Exception ex)
             {
+                AddLog(
+                    "WARN",
+                    "APP",
+                    $"Parallel reconnect loop: {ex.Message}");
             }
         }
     }
@@ -5664,95 +6063,124 @@ try {{
     private async Task PollLumiActionAsync()
     {
         if (!_uiReady ||
-            !_serial.IsConnected ||
-            !_serial.SupportsActions ||
             _actionScripts.Count == 0)
         {
             return;
         }
 
-        var actionEvent =
-            await _serial.ReadActionEventAsync(_lastActionEventSeq);
-
-        if (actionEvent is null)
-            return;
-
-        _lastActionEventSeq = actionEvent.Value.Seq;
-
-        ActionScriptDefinition? script =
-            _actionScripts.FirstOrDefault(
-                s => s.ActionId == actionEvent.Value.ActionId);
-
-        if (script is null)
+        foreach (ProductDefinition product in ProductCatalog.All)
         {
-            AddLog(
-                "WARN",
-                "ACTION",
-                $"No script assigned to Lumi Action {actionEvent.Value.ActionId}");
-            return;
-        }
+            IDeviceLink link =
+                LinkFor(product);
 
-        if (!_runningActionIds.Add(script.ActionId))
-        {
-            AddLog(
-                "WARN",
-                "ACTION",
-                $"Lumi Action {script.ActionId} ignored because it is already running");
-            return;
-        }
-
-        try
-        {
-            if (SelectedActionScript?.Id == script.Id &&
-                ActionScriptStatusText is not null)
+            if (!link.IsConnected ||
+                !link.SupportsActions)
             {
-                ActionScriptStatusText.Text =
-                    L("Triggered from keyboard…", "Đã kích hoạt từ bàn phím…");
+                continue;
             }
 
-            AddLog(
-                "INFO",
-                "ACTION",
-                $"Run #{script.ActionId:00} {script.Name} from key position {actionEvent.Value.Position}");
+            uint afterSeq =
+                _actionEventSeqByProduct.TryGetValue(
+                    product.Id,
+                    out uint storedSeq)
+                    ? storedSeq
+                    : 0;
 
-            await ActionScriptEngine.ExecuteAsync(
-                script,
-                step =>
+            var actionEvent =
+                await link.ReadActionEventAsync(
+                    afterSeq);
+
+            if (actionEvent is null)
+                continue;
+
+            _actionEventSeqByProduct[product.Id] =
+                actionEvent.Value.Seq;
+
+            ActionScriptDefinition? script =
+                _actionScripts.FirstOrDefault(
+                    s =>
+                        s.ActionId ==
+                        actionEvent.Value.ActionId);
+
+            if (script is null)
+            {
+                AddLog(
+                    "WARN",
+                    product.Name,
+                    $"No script assigned to Lumi Action {actionEvent.Value.ActionId}");
+                continue;
+            }
+
+            if (!_runningActionIds.Add(script.ActionId))
+            {
+                AddLog(
+                    "WARN",
+                    product.Name,
+                    $"Lumi Action {script.ActionId} ignored because it is already running");
+                continue;
+            }
+
+            try
+            {
+                if (SelectedActionScript?.Id == script.Id &&
+                    ActionScriptStatusText is not null)
                 {
-                    if (SelectedActionScript?.Id != script.Id ||
-                        ActionScriptStatusText is null)
+                    ActionScriptStatusText.Text =
+                        L(
+                            "Triggered from keyboard…",
+                            "Đã kích hoạt từ bàn phím…");
+                }
+
+                AddLog(
+                    "INFO",
+                    product.Name,
+                    $"Run #{script.ActionId:00} {script.Name} from key position {actionEvent.Value.Position}");
+
+                await ActionScriptEngine.ExecuteAsync(
+                    script,
+                    step =>
                     {
-                        return;
-                    }
+                        if (SelectedActionScript?.Id != script.Id ||
+                            ActionScriptStatusText is null)
+                        {
+                            return;
+                        }
 
-                    Dispatcher.Invoke(() =>
-                        ActionScriptStatusText.Text = step);
-                });
+                        Dispatcher.Invoke(() =>
+                            ActionScriptStatusText.Text =
+                                step);
+                    });
 
-            if (SelectedActionScript?.Id == script.Id &&
-                ActionScriptStatusText is not null)
-            {
-                ActionScriptStatusText.Text =
-                    L("Completed", "Hoàn tất");
+                if (SelectedActionScript?.Id == script.Id &&
+                    ActionScriptStatusText is not null)
+                {
+                    ActionScriptStatusText.Text =
+                        L(
+                            "Completed",
+                            "Hoàn tất");
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            AddLog(
-                "ERROR",
-                "ACTION",
-                $"Lumi Action {script.ActionId} failed: {ex.Message}");
-
-            if (SelectedActionScript?.Id == script.Id &&
-                ActionScriptStatusText is not null)
+            catch (Exception ex)
             {
-                ActionScriptStatusText.Text =
-                    L($"Failed: {ex.Message}", $"Lỗi: {ex.Message}");
+                AddLog(
+                    "ERROR",
+                    product.Name,
+                    $"Lumi Action {script.ActionId} failed: {ex.Message}");
+
+                if (SelectedActionScript?.Id == script.Id &&
+                    ActionScriptStatusText is not null)
+                {
+                    ActionScriptStatusText.Text =
+                        L(
+                            $"Failed: {ex.Message}",
+                            $"Lỗi: {ex.Message}");
+                }
             }
-        }
-        finally
-        {
-            _runningActionIds.Remove(script.ActionId);
+            finally
+            {
+                _runningActionIds.Remove(
+                    script.ActionId);
+            }
         }
     }
 
@@ -9206,6 +9634,22 @@ try {{
         if (DeepSleepSettingsPanel is not null)
             DeepSleepSettingsPanel.Visibility =
                 pixel ? Visibility.Collapsed : Visibility.Visible;
+
+        if (RynorHardwareInfoPanel is not null)
+        {
+            RynorHardwareInfoPanel.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+        }
+
+        if (PixelHardwareInfoPanel is not null)
+        {
+            PixelHardwareInfoPanel.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
 
         if (pixel && _connectionPreference == "bluetooth")
             _connectionPreference = "auto";

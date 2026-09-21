@@ -2577,56 +2577,100 @@
                                                    Foreground="{DynamicResource Muted}"/>
                                     </Grid>
 
-                                    <Grid Margin="0,10,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Flash usage"/>
-                                        <TextBlock x:Name="FlashUsageText"
-                                                   Grid.Column="1"
-                                                   Text="FLASH --"
-                                                   Foreground="{DynamicResource Muted}"/>
-                                    </Grid>
+                                    <StackPanel x:Name="RynorHardwareInfoPanel">
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Flash usage"/>
+                                            <TextBlock x:Name="RynorFlashUsageText"
+                                                       Grid.Column="1"
+                                                       Text="FLASH --"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                        </Grid>
 
-                                    <Grid Margin="0,9,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="SRAM usage"/>
-                                        <TextBlock x:Name="SramUsageText"
-                                                   Grid.Column="1"
-                                                   Text="SRAM --"
-                                                   Foreground="{DynamicResource Muted}"/>
-                                    </Grid>
+                                        <Grid Margin="0,9,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="RAM usage"/>
+                                            <TextBlock x:Name="RynorRamUsageText"
+                                                       Grid.Column="1"
+                                                       Text="RAM --"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                        </Grid>
 
-                                    <Grid Margin="0,9,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="PSRAM usage"/>
-                                        <TextBlock x:Name="PsramUsageText"
-                                                   Grid.Column="1"
-                                                   Text="PSRAM --"
-                                                   Foreground="{DynamicResource Muted}"/>
-                                    </Grid>
+                                        <TextBlock Text="Display"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,18,0,6"/>
+                                        <Border Background="{DynamicResource ControlBg}"
+                                                BorderBrush="{DynamicResource Line}"
+                                                BorderThickness="1"
+                                                CornerRadius="10"
+                                                Padding="10">
+                                            <TextBlock x:Name="RynorPanelInfoText"
+                                                       Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       TextWrapping="Wrap"/>
+                                        </Border>
+                                    </StackPanel>
 
-                                    <TextBlock Text="Display"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,18,0,6"/>
-                                    <Border Background="{DynamicResource ControlBg}"
-                                            BorderBrush="{DynamicResource Line}"
-                                            BorderThickness="1"
-                                            CornerRadius="10"
-                                            Padding="10">
-                                        <TextBlock x:Name="PanelInfoText"
-                                                   Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   TextWrapping="Wrap"/>
-                                    </Border>
+                                    <StackPanel x:Name="PixelHardwareInfoPanel"
+                                                Visibility="Collapsed">
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Flash usage"/>
+                                            <TextBlock x:Name="FlashUsageText"
+                                                       Grid.Column="1"
+                                                       Text="FLASH --"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                        </Grid>
+
+                                        <Grid Margin="0,9,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="SRAM usage"/>
+                                            <TextBlock x:Name="SramUsageText"
+                                                       Grid.Column="1"
+                                                       Text="SRAM --"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                        </Grid>
+
+                                        <Grid Margin="0,9,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="PSRAM usage"/>
+                                            <TextBlock x:Name="PsramUsageText"
+                                                       Grid.Column="1"
+                                                       Text="PSRAM --"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Display"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,18,0,6"/>
+                                        <Border Background="{DynamicResource ControlBg}"
+                                                BorderBrush="{DynamicResource Line}"
+                                                BorderThickness="1"
+                                                CornerRadius="10"
+                                                Padding="10">
+                                            <TextBlock x:Name="PanelInfoText"
+                                                       Text="ILI9486 · 480×320 · i8080 8-bit · GIF max 60 FPS"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       TextWrapping="Wrap"/>
+                                        </Border>
+                                    </StackPanel>
 
                                     <TextBlock Text="Diagnostic log"
                                                Foreground="{DynamicResource Muted}"
