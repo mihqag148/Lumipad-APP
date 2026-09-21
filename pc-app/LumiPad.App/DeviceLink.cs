@@ -32,6 +32,14 @@ public interface IDeviceTransport : IDisposable
 /// Product-level commands exposed to the Lumi Macropad UI. Firmware-specific
 /// packet formats stay behind this contract.
 /// </summary>
+public readonly record struct DeviceMemoryUsage(
+    long FlashUsed,
+    long FlashTotal,
+    long SramUsed,
+    long SramTotal,
+    long PsramUsed,
+    long PsramTotal);
+
 public interface IDeviceProtocol
 {
     string FirmwareHello { get; }
@@ -68,8 +76,7 @@ public interface IDeviceProtocol
     Task<int?> ReadBatteryPercentAsync();
     Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
         ReadPanelInfoAsync();
-    Task<(long FlashUsed, long FlashTotal, long RamUsed, long RamTotal)?>
-        ReadMemoryUsageAsync();
+    Task<DeviceMemoryUsage?> ReadMemoryUsageAsync();
     Task<(uint Seq, int ActionId, int Position)?>
         ReadActionEventAsync(uint afterSeq);
 

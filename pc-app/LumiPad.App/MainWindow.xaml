@@ -2288,25 +2288,27 @@
                                         </Grid>
                                     </Border>
 
-                                    <TextBlock Text="Deep sleep after"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,18,0,6"/>
-                                    <ComboBox x:Name="DeepSleepDelayCombo"
-                                              SelectedValuePath="Tag"
-                                              SelectionChanged="DeepSleepDelayCombo_SelectionChanged">
-                                        <ComboBoxItem Content="Never" Tag="0"/>
-                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
-                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
-                                        <ComboBoxItem Content="15 minutes" Tag="900"/>
-                                        <ComboBoxItem Content="30 minutes" Tag="1800"/>
-                                        <ComboBoxItem Content="1 hour" Tag="3600"/>
-                                        <ComboBoxItem Content="2 hours" Tag="7200"/>
-                                    </ComboBox>
-                                    <TextBlock Text="Deep sleep disconnects Bluetooth and uses very little power. Press a key to reboot and reconnect."
-                                               Foreground="{DynamicResource Muted}"
-                                               FontSize="11"
-                                               TextWrapping="Wrap"
-                                               Margin="0,6,0,0"/>
+                                    <StackPanel x:Name="DeepSleepSettingsPanel">
+                                        <TextBlock Text="Deep sleep after"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,18,0,6"/>
+                                        <ComboBox x:Name="DeepSleepDelayCombo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="DeepSleepDelayCombo_SelectionChanged">
+                                            <ComboBoxItem Content="Never" Tag="0"/>
+                                            <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                            <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                            <ComboBoxItem Content="15 minutes" Tag="900"/>
+                                            <ComboBoxItem Content="30 minutes" Tag="1800"/>
+                                            <ComboBoxItem Content="1 hour" Tag="3600"/>
+                                            <ComboBoxItem Content="2 hours" Tag="7200"/>
+                                        </ComboBox>
+                                        <TextBlock Text="Deep sleep disconnects Bluetooth and uses very little power. Press a key to reboot and reconnect."
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,6,0,0"/>
+                                    </StackPanel>
 
                                     <Border Height="1"
                                             Background="{DynamicResource Line}"
@@ -2510,10 +2512,22 @@
                                             <ColumnDefinition/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="RAM usage"/>
-                                        <TextBlock x:Name="RamUsageText"
+                                        <TextBlock Text="SRAM usage"/>
+                                        <TextBlock x:Name="SramUsageText"
                                                    Grid.Column="1"
-                                                   Text="RAM --"
+                                                   Text="SRAM --"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Grid>
+
+                                    <Grid Margin="0,9,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="PSRAM usage"/>
+                                        <TextBlock x:Name="PsramUsageText"
+                                                   Grid.Column="1"
+                                                   Text="PSRAM --"
                                                    Foreground="{DynamicResource Muted}"/>
                                     </Grid>
 

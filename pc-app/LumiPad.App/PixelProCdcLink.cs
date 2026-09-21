@@ -39,7 +39,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     public int ProtocolVersion { get; private set; }
 
     public bool SupportsDiagnostics => true;
-    public bool SupportsMemoryInfo => false;
+    public bool SupportsMemoryInfo => true;
     public bool SupportsPanelInfo => false;
     public bool SupportsSaverState => false;
     public bool SupportsProfileSwitch => true;
@@ -814,9 +814,43 @@ public sealed class PixelProCdcLink : IDeviceLink
         ReadPanelInfoAsync() =>
         Task.FromResult<(string, int, int, int)?>(null);
 
-    public Task<(long FlashUsed, long FlashTotal, long RamUsed, long RamTotal)?>
-        ReadMemoryUsageAsync() =>
-        Task.FromResult<(long, long, long, long)?>(null);
+    public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
+    {
+        if (!IsConnected)
+            return null;
+
+        string? line = await RequestLineAsync(
+            "MEM",
+            "MEM|");
+
+        if (line is null ||
+            !line.StartsWith("MEM|", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string[] parts = line.Split('|');
+        if (parts.Length != 7 ||
+            !long.TryParse(parts[1], out long flashUsed) ||
+            !long.TryParse(parts[2], out long flashTotal) ||
+            !long.TryParse(parts[3], out long sramUsed) ||
+            !long.TryParse(parts[4], out long sramTotal) ||
+            !long.TryParse(parts[5], out long psramUsed) ||
+            !long.TryParse(parts[6], out long psramTotal) ||
+            flashTotal <= 0 ||
+            sramTotal <= 0)
+        {
+            return null;
+        }
+
+        return new DeviceMemoryUsage(
+            flashUsed,
+            flashTotal,
+            sramUsed,
+            sramTotal,
+            Math.Max(0, psramUsed),
+            Math.Max(0, psramTotal));
+    }
 
     public Task<(uint Seq, int ActionId, int Position)?>
         ReadActionEventAsync(uint afterSeq) =>
