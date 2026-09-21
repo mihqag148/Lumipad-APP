@@ -850,41 +850,44 @@
 
 
             <TabItem x:Name="PixelMacroTab" Header="Macro" Visibility="Collapsed">
-                <Grid Margin="0,14,0,0">
+                <Grid Margin="0,12,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="210"/>
-                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="190"/>
+                        <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="14"/>
-                        <ColumnDefinition Width="320"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="285"/>
                     </Grid.ColumnDefinitions>
 
                     <Border Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1"
-                            CornerRadius="20"
-                            Padding="12">
+                            CornerRadius="16"
+                            Padding="10">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="8"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
-                            <TextBlock Text="MACRO SLOTS"
+
+                            <TextBlock Text="MACROS"
                                        FontSize="11"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource Muted}"/>
+
                             <ListBox x:Name="PixelMacroList"
                                      Grid.Row="2"
                                      SelectionChanged="PixelMacroList_SelectionChanged"
                                      BorderThickness="0"
-                                     Background="Transparent">
+                                     Background="Transparent"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Name}"
                                                    FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis"
-                                                   Padding="4,3"/>
+                                                   Padding="4,2"/>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
@@ -895,14 +898,14 @@
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1"
-                            CornerRadius="20"
-                            Padding="16">
+                            CornerRadius="16"
+                            Padding="12">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="8"/>
                                 <RowDefinition Height="*"/>
-                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="8"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
@@ -911,29 +914,36 @@
                                     <ColumnDefinition/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
+
                                 <StackPanel>
                                     <TextBox x:Name="PixelMacroNameTextBox"
                                              Text="Macro 1"
-                                             FontSize="24"
+                                             FontSize="21"
                                              FontWeight="SemiBold"
                                              BorderThickness="0"
                                              Background="Transparent"
                                              Padding="0"
-                                             Width="300"
+                                             Width="260"
                                              HorizontalAlignment="Left"
                                              LostFocus="PixelMacroNameTextBox_LostFocus"/>
                                     <TextBlock x:Name="PixelMacroTitleText"
                                                Text="M1"
-                                               FontSize="11"
+                                               FontSize="10"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Muted}"
-                                               Margin="0,3,0,0"/>
+                                               Margin="0,2,0,0"/>
                                 </StackPanel>
+
                                 <StackPanel Grid.Column="1"
                                             Orientation="Horizontal"
-                                            VerticalAlignment="Bottom">
+                                            VerticalAlignment="Center">
+                                    <Button Content="Clear all"
+                                            ToolTip="Remove every step from this macro"
+                                            Click="PixelMacroClearAll_Click"
+                                            Margin="0,0,6,0"/>
                                     <Button Content="Test"
-                                            Click="PixelMacroTest_Click"/>
+                                            Click="PixelMacroTest_Click"
+                                            Margin="0,0,6,0"/>
                                     <Button Content="Save"
                                             Click="PixelMacroSave_Click"
                                             Margin="0"/>
@@ -942,83 +952,105 @@
 
                             <ListBox x:Name="PixelMacroStepsList"
                                      Grid.Row="2"
+                                     AllowDrop="True"
+                                     PreviewMouseLeftButtonDown="PixelMacroStepsList_PreviewMouseLeftButtonDown"
+                                     PreviewMouseMove="PixelMacroStepsList_PreviewMouseMove"
+                                     DragOver="PixelMacroStepsList_DragOver"
+                                     Drop="PixelMacroStepsList_Drop"
                                      BorderBrush="{DynamicResource Line}"
                                      BorderThickness="1"
-                                     Background="{DynamicResource Card2}">
+                                     Background="{DynamicResource Card2}"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="6,3">
-                                            <Grid x:Name="GenericStepRow">
+                                        <Border Background="{DynamicResource Card}"
+                                                BorderBrush="{DynamicResource Line}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="6,4">
+                                            <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="88"/>
+                                                    <ColumnDefinition Width="24"/>
+                                                    <ColumnDefinition Width="82"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Type}"
+
+                                                <TextBlock Text="⋮⋮"
                                                            VerticalAlignment="Center"
+                                                           HorizontalAlignment="Center"
+                                                           Foreground="{DynamicResource Muted}"
+                                                           FontSize="14"
+                                                           ToolTip="Drag to reorder"/>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Type}"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="11"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource Muted}"/>
-                                                <TextBox Grid.Column="1"
-                                                         Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
-                                                         LostFocus="PixelMacroStepValue_LostFocus"
-                                                         Margin="6,0,0,0"/>
+                                                           Foreground="{DynamicResource Muted}"
+                                                           TextTrimming="CharacterEllipsis"/>
+
+                                                <Grid Grid.Column="2">
+                                                    <TextBox x:Name="GenericStepValue"
+                                                             Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                             LostFocus="PixelMacroStepValue_LostFocus"
+                                                             Padding="6,3"/>
+
+                                                    <TextBlock x:Name="KeyDownGlyph"
+                                                               Text="↓"
+                                                               Visibility="Collapsed"
+                                                               HorizontalAlignment="Left"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="20"
+                                                               FontWeight="Bold"/>
+
+                                                    <StackPanel x:Name="DelayEditor"
+                                                                Visibility="Collapsed"
+                                                                Orientation="Horizontal"
+                                                                VerticalAlignment="Center">
+                                                        <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                 LostFocus="PixelMacroStepValue_LostFocus"
+                                                                 Width="68"
+                                                                 Padding="5,2"
+                                                                 TextAlignment="Center"/>
+                                                        <TextBlock Text="ms"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="5,0,0,0"
+                                                                   Foreground="{DynamicResource Muted}"/>
+                                                    </StackPanel>
+
+                                                    <TextBlock x:Name="KeyLabelText"
+                                                               Text="{Binding Value}"
+                                                               Visibility="Collapsed"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="15"
+                                                               FontWeight="SemiBold"/>
+
+                                                    <TextBlock x:Name="KeyUpGlyph"
+                                                               Text="↑"
+                                                               Visibility="Collapsed"
+                                                               HorizontalAlignment="Left"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="20"
+                                                               FontWeight="Bold"/>
+                                                </Grid>
                                             </Grid>
-
-                                            <TextBlock x:Name="KeyDownGlyph"
-                                                       Text="↓"
-                                                       Visibility="Collapsed"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="24"
-                                                       FontWeight="Bold"/>
-
-                                            <StackPanel x:Name="DelayEditor"
-                                                        Visibility="Collapsed"
-                                                        Orientation="Horizontal"
-                                                        HorizontalAlignment="Center"
-                                                        VerticalAlignment="Center">
-                                                <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
-                                                         LostFocus="PixelMacroStepValue_LostFocus"
-                                                         Width="72"
-                                                         TextAlignment="Center"
-                                                         VerticalContentAlignment="Center"/>
-                                                <TextBlock Text="ms"
-                                                           VerticalAlignment="Center"
-                                                           Margin="6,0,0,0"
-                                                           Foreground="{DynamicResource Muted}"/>
-                                            </StackPanel>
-
-                                            <TextBlock x:Name="KeyLabelText"
-                                                       Text="{Binding Value}"
-                                                       Visibility="Collapsed"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="18"
-                                                       FontWeight="SemiBold"/>
-
-                                            <TextBlock x:Name="KeyUpGlyph"
-                                                       Text="↑"
-                                                       Visibility="Collapsed"
-                                                       HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="24"
-                                                       FontWeight="Bold"/>
-                                        </Grid>
+                                        </Border>
 
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding Type}" Value="KeyDown">
-                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="GenericStepValue" Property="Visibility" Value="Collapsed"/>
                                                 <Setter TargetName="KeyDownGlyph" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Type}" Value="Delay">
-                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="GenericStepValue" Property="Visibility" Value="Collapsed"/>
                                                 <Setter TargetName="DelayEditor" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Type}" Value="KeyLabel">
-                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="GenericStepValue" Property="Visibility" Value="Collapsed"/>
                                                 <Setter TargetName="KeyLabelText" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Type}" Value="KeyUp">
-                                                <Setter TargetName="GenericStepRow" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="GenericStepValue" Property="Visibility" Value="Collapsed"/>
                                                 <Setter TargetName="KeyUpGlyph" Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
@@ -1026,19 +1058,32 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
 
-                            <StackPanel Grid.Row="4"
-                                        Orientation="Horizontal"
-                                        HorizontalAlignment="Right">
-                                <Button Content="↑"
-                                        Width="38"
-                                        Click="PixelMacroStepUp_Click"/>
-                                <Button Content="↓"
-                                        Width="38"
-                                        Click="PixelMacroStepDown_Click"/>
-                                <Button Content="Delete"
-                                        Click="PixelMacroStepDelete_Click"
-                                        Margin="0"/>
-                            </StackPanel>
+                            <Grid Grid.Row="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Drag ⋮⋮ to reorder any step"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="10"/>
+
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal">
+                                    <Button Content="↑"
+                                            Width="34"
+                                            Click="PixelMacroStepUp_Click"
+                                            Margin="0,0,4,0"/>
+                                    <Button Content="↓"
+                                            Width="34"
+                                            Click="PixelMacroStepDown_Click"
+                                            Margin="0,0,4,0"/>
+                                    <Button Content="Delete"
+                                            Click="PixelMacroStepDelete_Click"
+                                            Margin="0"/>
+                                </StackPanel>
+                            </Grid>
                         </Grid>
                     </Border>
 
@@ -1046,8 +1091,8 @@
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1"
-                            CornerRadius="20"
-                            Padding="16">
+                            CornerRadius="16"
+                            Padding="12">
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
@@ -1055,71 +1100,110 @@
                                            FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource Muted}"/>
+
                                 <ComboBox x:Name="PixelMacroStepTypeCombo"
                                           SelectionChanged="PixelMacroStepTypeCombo_SelectionChanged"
-                                          Margin="0,10,0,8">
+                                          Margin="0,8,0,6">
                                     <ComboBoxItem Content="Action" Tag="Action"/>
                                     <ComboBoxItem Content="Key" Tag="Key"/>
+                                    <ComboBoxItem Content="Combo Keys" Tag="Keys"/>
+                                    <ComboBoxItem Content="Text" Tag="Text"/>
+                                    <ComboBoxItem Content="Run App / File / URL" Tag="Run"/>
                                     <ComboBoxItem Content="Delay" Tag="Delay"/>
+                                    <ComboBoxItem Content="Media" Tag="Media"/>
+                                    <ComboBoxItem Content="Mouse Left Click" Tag="MouseClick:LEFT"/>
+                                    <ComboBoxItem Content="Mouse Right Click" Tag="MouseClick:RIGHT"/>
+                                    <ComboBoxItem Content="Mouse Middle Click" Tag="MouseClick:MIDDLE"/>
+                                    <ComboBoxItem Content="Mouse Wheel" Tag="MouseWheel"/>
+                                    <ComboBoxItem Content="Mouse Move" Tag="MouseMove"/>
                                 </ComboBox>
 
                                 <TextBlock x:Name="PixelMacroStepHintText"
-                                           Text="Choose Action, Key or Delay."
+                                           Text="Choose a step type."
                                            Foreground="{DynamicResource Muted}"
-                                           FontSize="11"
+                                           FontSize="10"
                                            TextWrapping="Wrap"
-                                           Margin="0,0,0,8"/>
+                                           Margin="0,0,0,6"/>
 
                                 <ComboBox x:Name="PixelMacroActionCombo"
                                           Visibility="Collapsed"
-                                          Margin="0,0,0,10"/>
+                                          Margin="0,0,0,6"/>
 
                                 <TextBox x:Name="PixelMacroStepValueTextBox"
                                          Visibility="Collapsed"
-                                         Margin="0,0,0,10"/>
+                                         Margin="0,0,0,6"/>
 
                                 <Grid x:Name="PixelMacroKeyInputPanel"
                                       Visibility="Collapsed"
-                                      Margin="0,0,0,10">
+                                      Margin="0,0,0,6">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="8"/>
+                                        <RowDefinition Height="6"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
+
                                     <TextBox x:Name="PixelMacroKeyCaptureBox"
                                              Text="Click here, then press a key…"
                                              IsReadOnly="True"
                                              PreviewKeyDown="PixelMacroKeyCaptureBox_PreviewKeyDown"
                                              VerticalContentAlignment="Center"/>
+
                                     <StackPanel Grid.Row="2"
                                                 Orientation="Horizontal">
-                                        <TextBlock Text="Default delay"
+                                        <TextBlock Text="Delay"
                                                    VerticalAlignment="Center"
-                                                   Margin="0,0,6,0"/>
+                                                   Margin="0,0,5,0"/>
                                         <TextBox x:Name="PixelMacroDefaultDelayTextBox"
                                                  Text="100"
-                                                 Width="64"
+                                                 Width="58"
                                                  MaxLength="6"
                                                  TextAlignment="Center"
-                                                 VerticalContentAlignment="Center"
-                                                 ToolTip="Default delay in milliseconds"/>
+                                                 VerticalContentAlignment="Center"/>
                                         <TextBlock Text="ms"
                                                    VerticalAlignment="Center"
-                                                   Margin="5,0,0,0"/>
+                                                   Margin="4,0,0,0"/>
                                     </StackPanel>
                                 </Grid>
 
                                 <Button x:Name="PixelMacroAddStepButton"
-                                        Content="Add Step"
+                                        Content="Add"
                                         Click="PixelMacroAddStep_Click"
-                                        Margin="0,0,0,14"/>
+                                        Margin="0,0,0,10"/>
+
+                                <TextBlock Text="QUICK"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+
+                                <WrapPanel Margin="0,6,0,0">
+                                    <Button Content="Ctrl+C"
+                                            Tag="Keys|Ctrl+C"
+                                            Click="PixelMacroQuickStep_Click"
+                                            Margin="0,0,5,5"/>
+                                    <Button Content="Ctrl+V"
+                                            Tag="Keys|Ctrl+V"
+                                            Click="PixelMacroQuickStep_Click"
+                                            Margin="0,0,5,5"/>
+                                    <Button Content="Ctrl+Z"
+                                            Tag="Keys|Ctrl+Z"
+                                            Click="PixelMacroQuickStep_Click"
+                                            Margin="0,0,5,5"/>
+                                    <Button Content="100 ms"
+                                            Tag="Delay|100"
+                                            Click="PixelMacroQuickStep_Click"
+                                            Margin="0,0,5,5"/>
+                                    <Button Content="Left Click"
+                                            Tag="MouseClick|LEFT"
+                                            Click="PixelMacroQuickStep_Click"
+                                            Margin="0,0,5,5"/>
+                                </WrapPanel>
 
                                 <TextBlock x:Name="PixelMacroStatusText"
                                            Text="Macros run through LumiPad on Windows."
                                            Foreground="{DynamicResource Muted}"
-                                           FontSize="11"
+                                           FontSize="10"
                                            TextWrapping="Wrap"
-                                           Margin="0,14,0,0"/>
+                                           Margin="0,10,0,0"/>
                             </StackPanel>
                         </ScrollViewer>
                     </Border>
