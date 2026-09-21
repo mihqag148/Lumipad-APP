@@ -1103,12 +1103,21 @@ public partial class MainWindow : Window
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
         }
 
-        if (PanelInfoText is not null)
+        if (IsPixelProActive)
         {
-            PanelInfoText.Text =
-                IsPixelProActive
-                    ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
-                    : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+            if (PanelInfoText is not null)
+            {
+                PanelInfoText.Text =
+                    "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS";
+            }
+        }
+        else
+        {
+            if (RynorPanelInfoText is not null)
+            {
+                RynorPanelInfoText.Text =
+                    "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+            }
         }
 
         if (LumiActionDescriptionText is not null)
@@ -2707,16 +2716,31 @@ public partial class MainWindow : Window
 
     private async Task UpdateMemoryUsageAsync()
     {
-        void ResetMemoryText()
+        bool pixel = IsPixelProActive;
+
+        void ResetActiveMemoryText()
         {
-            FlashUsageText.Text = "FLASH --";
-            SramUsageText.Text = "SRAM --";
-            PsramUsageText.Text = "PSRAM --";
+            if (pixel)
+            {
+                if (FlashUsageText is not null)
+                    FlashUsageText.Text = "FLASH --";
+                if (SramUsageText is not null)
+                    SramUsageText.Text = "SRAM --";
+                if (PsramUsageText is not null)
+                    PsramUsageText.Text = "PSRAM --";
+            }
+            else
+            {
+                if (RynorFlashUsageText is not null)
+                    RynorFlashUsageText.Text = "FLASH --";
+                if (RynorRamUsageText is not null)
+                    RynorRamUsageText.Text = "RAM --";
+            }
         }
 
         if (!_serial.IsConnected)
         {
-            ResetMemoryText();
+            ResetActiveMemoryText();
             return;
         }
 
@@ -2725,7 +2749,7 @@ public partial class MainWindow : Window
 
         if (usage is null)
         {
-            ResetMemoryText();
+            ResetActiveMemoryText();
             return;
         }
 
@@ -2736,9 +2760,11 @@ public partial class MainWindow : Window
             bool notAvailableWhenZero = false)
         {
             if (total <= 0)
+            {
                 return notAvailableWhenZero
                     ? $"{label} N/A"
                     : $"{label} --";
+            }
 
             double pct =
                 Math.Clamp(
@@ -2749,24 +2775,56 @@ public partial class MainWindow : Window
             return $"{label} {pct:0.0}%";
         }
 
-        FlashUsageText.Text =
-            PercentText(
-                "FLASH",
-                usage.Value.FlashUsed,
-                usage.Value.FlashTotal);
+        if (pixel)
+        {
+            if (FlashUsageText is not null)
+            {
+                FlashUsageText.Text =
+                    PercentText(
+                        "FLASH",
+                        usage.Value.FlashUsed,
+                        usage.Value.FlashTotal);
+            }
 
-        SramUsageText.Text =
-            PercentText(
-                "SRAM",
-                usage.Value.SramUsed,
-                usage.Value.SramTotal);
+            if (SramUsageText is not null)
+            {
+                SramUsageText.Text =
+                    PercentText(
+                        "SRAM",
+                        usage.Value.SramUsed,
+                        usage.Value.SramTotal);
+            }
 
-        PsramUsageText.Text =
-            PercentText(
-                "PSRAM",
-                usage.Value.PsramUsed,
-                usage.Value.PsramTotal,
-                notAvailableWhenZero: true);
+            if (PsramUsageText is not null)
+            {
+                PsramUsageText.Text =
+                    PercentText(
+                        "PSRAM",
+                        usage.Value.PsramUsed,
+                        usage.Value.PsramTotal,
+                        notAvailableWhenZero: true);
+            }
+        }
+        else
+        {
+            if (RynorFlashUsageText is not null)
+            {
+                RynorFlashUsageText.Text =
+                    PercentText(
+                        "FLASH",
+                        usage.Value.FlashUsed,
+                        usage.Value.FlashTotal);
+            }
+
+            if (RynorRamUsageText is not null)
+            {
+                RynorRamUsageText.Text =
+                    PercentText(
+                        "RAM",
+                        usage.Value.SramUsed,
+                        usage.Value.SramTotal);
+            }
+        }
     }
 
     private async Task UpdatePanelInfoAsync()
@@ -2778,31 +2836,49 @@ public partial class MainWindow : Window
                 ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
                 : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
 
+        void SetActivePanelText(string value)
+        {
+            if (pixel)
+            {
+                if (PanelInfoText is not null)
+                    PanelInfoText.Text = value;
+            }
+            else
+            {
+                if (RynorPanelInfoText is not null)
+                    RynorPanelInfoText.Text = value;
+            }
+        }
+
         if (!_serial.IsConnected)
         {
-            PanelInfoText.Text = fallback;
+            SetActivePanelText(fallback);
             return;
         }
 
-        var info = await _serial.ReadPanelInfoAsync();
+        var info =
+            await _serial.ReadPanelInfoAsync();
+
         if (info is null)
         {
-            PanelInfoText.Text = fallback;
+            SetActivePanelText(fallback);
             return;
         }
 
         if (pixel)
         {
-            PanelInfoText.Text =
+            SetActivePanelText(
                 $"{info.Value.Panel} · 480×320 landscape · i8080 8-bit · " +
-                $"refresh cap {info.Value.RefreshHz} Hz · GIF ≤{info.Value.GifMaxFps} FPS";
+                $"refresh cap {info.Value.RefreshHz} Hz · GIF ≤{info.Value.GifMaxFps} FPS");
             return;
         }
 
-        double spiMhz = info.Value.SpiHz / 1_000_000.0;
-        PanelInfoText.Text =
+        double spiMhz =
+            info.Value.SpiHz / 1_000_000.0;
+
+        SetActivePanelText(
             $"{info.Value.Panel} ≈{info.Value.RefreshHz} Hz default · " +
-            $"SPI {spiMhz:0.#} MHz · GIF ≤{info.Value.GifMaxFps} FPS";
+            $"SPI {spiMhz:0.#} MHz · GIF ≤{info.Value.GifMaxFps} FPS");
     }
 
     private async void ConnectUsbButton_Click(object sender, RoutedEventArgs e)
@@ -9501,6 +9577,22 @@ try {{
         if (DeepSleepSettingsPanel is not null)
             DeepSleepSettingsPanel.Visibility =
                 pixel ? Visibility.Collapsed : Visibility.Visible;
+
+        if (RynorHardwareInfoPanel is not null)
+        {
+            RynorHardwareInfoPanel.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+        }
+
+        if (PixelHardwareInfoPanel is not null)
+        {
+            PixelHardwareInfoPanel.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
 
         if (pixel && _connectionPreference == "bluetooth")
             _connectionPreference = "auto";
