@@ -1655,37 +1655,39 @@
                                            FontWeight="SemiBold"
                                            Margin="0,0,0,14"/>
 
-                                <WrapPanel x:Name="RgbStaticPresets">
-                                    <Button Content="Solid Color" Tag="3"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
-                                    <Button Content="Auto by Layer" Tag="AUTO"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
-                                </WrapPanel>
+                                <StackPanel x:Name="RynorRgbPresetsPanel">
+                                    <WrapPanel x:Name="RgbStaticPresets">
+                                        <Button Content="Solid Color" Tag="3"
+                                                Click="RgbPreset_Click"
+                                                Width="120" Height="48"/>
+                                        <Button Content="Auto by Layer" Tag="AUTO"
+                                                Click="RgbPreset_Click"
+                                                Width="120" Height="48"/>
+                                    </WrapPanel>
 
-                                <WrapPanel x:Name="RgbDynamicPresets"
-                                           Visibility="Collapsed">
-                                    <Button Content="Rainbow" Tag="0"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
-                                    <Button Content="Purple Ping-Pong" Tag="1"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
-                                    <Button Content="Orange Blink" Tag="2"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
-                                    <Button Content="Auto by Layer" Tag="AUTO"
-                                            Click="RgbPreset_Click"
-                                            Width="120" Height="48"/>
-                                </WrapPanel>
+                                    <WrapPanel x:Name="RgbDynamicPresets"
+                                               Visibility="Collapsed">
+                                        <Button Content="Rainbow" Tag="0"
+                                                Click="RgbPreset_Click"
+                                                Width="120" Height="48"/>
+                                        <Button Content="Purple Ping-Pong" Tag="1"
+                                                Click="RgbPreset_Click"
+                                                Width="120" Height="48"/>
+                                        <Button Content="Orange Blink" Tag="2"
+                                                Click="RgbPreset_Click"
+                                                Width="120" Height="48"/>
+                                        <Button Content="Auto by Layer" Tag="AUTO"
+                                                Click="RgbPreset_Click"
+                                                Width="120" Height="48"/>
+                                    </WrapPanel>
 
-                                <WrapPanel x:Name="RgbReactivePresets"
-                                           Visibility="Collapsed">
-                                    <Button Content="Reactive Splash" Tag="4"
-                                            Click="RgbPreset_Click"
-                                            Width="130" Height="48"/>
-                                </WrapPanel>
+                                    <WrapPanel x:Name="RgbReactivePresets"
+                                               Visibility="Collapsed">
+                                        <Button Content="Reactive Splash" Tag="4"
+                                                Click="RgbPreset_Click"
+                                                Width="130" Height="48"/>
+                                    </WrapPanel>
+                                </StackPanel>
                             </StackPanel>
 
                             <Border Grid.Column="3" Width="1"
