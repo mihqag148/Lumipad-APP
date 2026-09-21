@@ -119,36 +119,55 @@ public static class PixelProScreensaverMediaService
         int sourceLoopMs =
             Math.Max(1, sourceDelaysMs.Sum());
 
-        PixelProGifOptimizationResult optimized =
-            PixelProGifOptimizer.Optimize(
-                path,
-                sourceDelaysMs);
+        bool needsCanvasReduction =
+            image.Width > PanelWidth ||
+            image.Height > PanelHeight;
+
+        bool needsFrameRateReduction =
+            sourceDelaysMs.Any(
+                delay => delay < 40);
+
+        PixelProGifOptimizationResult? optimized =
+            null;
+
+        // A normal in-range GIF is already LZW-compressed. Re-encoding every
+        // selected GIF was expensive and could make large animations look as
+        // if the app had hung. Only preprocess when it produces a real device
+        // benefit: panel-size reduction or a >25 FPS source.
+        if (needsCanvasReduction ||
+            needsFrameRateReduction)
+        {
+            optimized =
+                PixelProGifOptimizer.Optimize(
+                    path,
+                    sourceDelaysMs);
+        }
 
         bool useOptimized =
-            optimized.Width != image.Width ||
-            optimized.Height != image.Height ||
-            optimized.FrameCount != total ||
-            optimized.Bytes.LongLength * 100L <
-                sourceEncoded.LongLength * 85L;
+            optimized is not null &&
+            (needsCanvasReduction ||
+             needsFrameRateReduction ||
+             optimized.Bytes.LongLength * 100L <
+                 sourceEncoded.LongLength * 85L);
 
         byte[] encoded =
             useOptimized
-                ? optimized.Bytes
+                ? optimized!.Bytes
                 : sourceEncoded;
 
         int storedWidth =
             useOptimized
-                ? optimized.Width
+                ? optimized!.Width
                 : image.Width;
 
         int storedHeight =
             useOptimized
-                ? optimized.Height
+                ? optimized!.Height
                 : image.Height;
 
         int storedFrames =
             useOptimized
-                ? optimized.FrameCount
+                ? optimized!.FrameCount
                 : total;
 
         int previewCount =
