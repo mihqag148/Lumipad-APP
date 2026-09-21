@@ -6592,8 +6592,13 @@ try {{
                     L("Stored on keyboard", "Đã lưu trên bàn phím"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    L("Screensaver is already stored in keyboard flash.",
-                      "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
+                    IsPixelProActive
+                        ? L(
+                            "Screensaver is already loaded in PIXEL PRO PSRAM.",
+                            "Bảo vệ màn hình đã có sẵn trong PSRAM của PIXEL PRO.")
+                        : L(
+                            "Screensaver is already stored in keyboard flash.",
+                            "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
                 AddLog(
                     "INFO",
                     "SAVER",
@@ -6641,8 +6646,13 @@ try {{
                     L("Uploaded & verified", "Đã tải lên và xác nhận"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    L("Custom screensaver restored because keyboard flash was empty.",
-                      "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
+                    IsPixelProActive
+                        ? L(
+                            "PIXEL PRO screensaver restored to PSRAM after reconnect.",
+                            "Đã khôi phục bảo vệ màn hình PIXEL PRO vào PSRAM sau khi kết nối lại.")
+                        : L(
+                            "Custom screensaver restored because keyboard flash was empty.",
+                            "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
             }
         }
         catch (Exception ex)
