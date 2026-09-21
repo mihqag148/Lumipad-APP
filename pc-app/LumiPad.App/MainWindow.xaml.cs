@@ -822,6 +822,15 @@ public partial class MainWindow : Window
                             key,
                             profile,
                             layer)));
+
+            pixel.ActionTriggered += (actionId, key, profile, layer) =>
+                Dispatcher.BeginInvoke(
+                    new Action(async () =>
+                        await ExecutePixelActionAsync(
+                            actionId,
+                            key,
+                            profile,
+                            layer)));
         }
     }
 
@@ -5586,6 +5595,17 @@ try {{
         }
 
         RefreshPixelMacroActionCombo();
+
+        if (string.Equals(
+                _pixelCurrentCategory,
+                "Action",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RebuildPixelPalette();
+        }
+
+        UpdatePixelKeyVisuals();
+        UpdatePixelSelectedEditor();
     }
 
     private void LoadSelectedActionScriptUi(ActionScriptDefinition? script)
@@ -8213,6 +8233,96 @@ try {{
         object sender,
         RoutedEventArgs e) =>
         await ExecutePixelMacroAsync(_pixelSelectedMacroSlot);
+
+    private async Task ExecutePixelActionAsync(
+        int actionId,
+        int sourceKey = 0,
+        int profile = 0,
+        int layer = 0)
+    {
+        if (actionId is < 1 or > 32)
+            return;
+
+        ActionScriptDefinition? script =
+            _actionScripts.FirstOrDefault(
+                x => x.ActionId == actionId);
+
+        if (script is null)
+        {
+            AddLog(
+                "WARN",
+                "ACTION",
+                $"PIXEL PRO Action {actionId} has no script");
+            return;
+        }
+
+        if (!_runningActionIds.Add(actionId))
+        {
+            AddLog(
+                "WARN",
+                "ACTION",
+                $"PIXEL PRO Action {actionId} ignored because it is already running");
+            return;
+        }
+
+        try
+        {
+            AddLog(
+                "INFO",
+                "ACTION",
+                $"Run PIXEL PRO Action {actionId:00} from key {sourceKey}, profile {profile + 1}, layer {layer}");
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L(
+                        $"Triggered by PIXEL PRO K{sourceKey}…",
+                        $"Được kích hoạt bởi PIXEL PRO K{sourceKey}…");
+            }
+
+            await ActionScriptEngine.ExecuteAsync(
+                script,
+                step =>
+                {
+                    if (SelectedActionScript?.Id != script.Id ||
+                        ActionScriptStatusText is null)
+                    {
+                        return;
+                    }
+
+                    Dispatcher.Invoke(() =>
+                        ActionScriptStatusText.Text = step);
+                });
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L("Completed", "Hoàn tất");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "ERROR",
+                "ACTION",
+                $"PIXEL PRO Action {actionId} failed: {ex.Message}");
+
+            if (SelectedActionScript?.Id == script.Id &&
+                ActionScriptStatusText is not null)
+            {
+                ActionScriptStatusText.Text =
+                    L(
+                        $"Failed: {ex.Message}",
+                        $"Lỗi: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _runningActionIds.Remove(actionId);
+        }
+    }
 
     private async Task ExecutePixelMacroAsync(
         int slot,
