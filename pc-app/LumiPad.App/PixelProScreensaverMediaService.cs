@@ -7,11 +7,8 @@ using System.Runtime.CompilerServices;
 namespace LumiPad.App;
 
 /// <summary>
-/// PIXEL PRO-only media preparation for the 3.5" ILI9486 panel.
-/// GIF files stay compressed but may be re-encoded for PIXEL PRO storage:
-/// oversized canvases are reduced to the panel envelope, very fast animation
-/// is capped at 25 FPS, and unchanged regions use delta frames. RYNOR ONE
-/// continues to use ScreensaverMediaService.
+/// PIXEL PRO-only media pipeline.
+/// RYNOR ONE continues to use ScreensaverMediaService unchanged.
 /// </summary>
 public static class PixelProScreensaverMediaService
 {
@@ -23,43 +20,76 @@ public static class PixelProScreensaverMediaService
         public int StoredWidth { get; init; }
         public int StoredHeight { get; init; }
         public int StoredFrames { get; init; }
+        public int StoredFps { get; init; }
+        public int DurationMs { get; init; }
         public bool Optimized { get; init; }
+    }
+
+    private sealed class EncodedJpegHolder
+    {
+        public required byte[] Bytes { get; init; }
+        public int Width { get; init; }
+        public int Height { get; init; }
+        public int Quality { get; init; }
+        public long SourceBytes { get; init; }
     }
 
     private static readonly ConditionalWeakTable<
         ScreensaverAnimation,
         EncodedGifHolder> EncodedGifs = new();
 
+    private static readonly ConditionalWeakTable<
+        ScreensaverAnimation,
+        EncodedJpegHolder> EncodedJpegs = new();
+
     public const int PanelWidth = 480;
     public const int PanelHeight = 320;
     public const int NativePanelWidth = 320;
     public const int NativePanelHeight = 480;
-
-    // Device playback is capped at 60 FPS. The GIF itself is not converted
-    // to RGB frame blobs; firmware decodes the original LZW-compressed file.
     public const int MaxPlaybackFps = 60;
     public const int MinFrameIntervalMs = 17;
-
-    // Preview frames only exist on the PC. They are never uploaded.
     public const int MaxPreviewFrames = 24;
+    public const int TargetGifBytes = 1024 * 1024;
+    public const int DefaultGifDurationSeconds = 15;
+    public const int DefaultGifMaxFps = 60;
+    public const int DefaultImageJpegQuality = 100;
 
-    // Compatibility aliases used by the existing PIXEL PRO transport for
-    // static/legacy frame payloads. New GIF uploads use EncodedGif instead.
+    // Compatibility aliases used only for PC preview / legacy transport.
     public const int Width = PanelWidth;
     public const int Height = PanelHeight;
     public const int MaxFrames = MaxPreviewFrames;
 
     public static async Task<ScreensaverAnimation> LoadAsync(
         string path,
-        ScreensaverScaleMode scaleMode)
+        ScreensaverScaleMode scaleMode,
+        int gifMaxFps = DefaultGifMaxFps,
+        int gifMaxDurationSeconds = DefaultGifDurationSeconds,
+        int imageJpegQuality = DefaultImageJpegQuality)
     {
-        string ext = Path.GetExtension(path).ToLowerInvariant();
+        string ext =
+            Path.GetExtension(path)
+                .ToLowerInvariant();
+
+        // PIXEL PRO deliberately uses independent image/GIF rules and never
+        // inherits RYNOR's Fill/Fit preference. Center means no upscale.
+        ScreensaverScaleMode pixelScale =
+            ScreensaverScaleMode.Center;
 
         return ext switch
         {
-            ".gif" => await Task.Run(() => LoadGif(path, scaleMode)),
+            ".gif" =>
+                await Task.Run(
+                    () => LoadGif(
+                        path,
+                        pixelScale,
+                        gifMaxFps,
+                        gifMaxDurationSeconds)),
             ".png" or ".jpg" or ".jpeg" or ".bmp" =>
-                await Task.Run(() => LoadStaticImage(path, scaleMode)),
+                await Task.Run(
+                    () => LoadStaticImage(
+                        path,
+                        pixelScale,
+                        imageJpegQuality)),
             _ => throw new NotSupportedException(
                 "Choose a GIF or static PNG/JPG/BMP image.")
         };
@@ -67,25 +97,82 @@ public static class PixelProScreensaverMediaService
 
     private static ScreensaverAnimation LoadStaticImage(
         string path,
-        ScreensaverScaleMode scaleMode)
+        ScreensaverScaleMode scaleMode,
+        int jpegQuality)
     {
-        using var bitmap = new Drawing.Bitmap(path);
+        jpegQuality =
+            Math.Clamp(
+                jpegQuality,
+                90,
+                100);
 
-        return new ScreensaverAnimation(
-            Path.GetFileName(path),
-            PanelWidth,
-            PanelHeight,
-            ScreensaverPixelFormat.Rgb565,
-            1000,
-            new[] { 1000 },
-            new[] { ToRgb565(bitmap, scaleMode) });
+        using var source =
+            new Drawing.Bitmap(path);
+
+        using Drawing.Bitmap prepared =
+            PrepareStaticImage(source);
+
+        byte[] jpeg =
+            EncodeJpeg(
+                prepared,
+                jpegQuality);
+
+        using Drawing.Bitmap preview =
+            Resize(
+                prepared,
+                PanelWidth,
+                PanelHeight,
+                ScreensaverScaleMode.Center);
+
+        var animation =
+            new ScreensaverAnimation(
+                Path.GetFileName(path),
+                PanelWidth,
+                PanelHeight,
+                ScreensaverPixelFormat.Rgb565,
+                1000,
+                new[] { 1000 },
+                new[] { ToRgb565Full(preview) });
+
+        EncodedJpegs.Add(
+            animation,
+            new EncodedJpegHolder
+            {
+                Bytes = jpeg,
+                Width = prepared.Width,
+                Height = prepared.Height,
+                Quality = jpegQuality,
+                SourceBytes =
+                    new FileInfo(path).Length
+            });
+
+        return animation;
     }
 
     private static ScreensaverAnimation LoadGif(
         string path,
-        ScreensaverScaleMode scaleMode)
+        ScreensaverScaleMode scaleMode,
+        int requestedMaxFps,
+        int maxDurationSeconds)
     {
-        byte[] sourceEncoded = File.ReadAllBytes(path);
+        requestedMaxFps =
+            Math.Clamp(
+                requestedMaxFps,
+                20,
+                60);
+
+        maxDurationSeconds =
+            Math.Clamp(
+                maxDurationSeconds,
+                5,
+                30);
+
+        int maxDurationMs =
+            maxDurationSeconds *
+            1000;
+
+        byte[] sourceEncoded =
+            File.ReadAllBytes(path);
 
         if (sourceEncoded.Length < 10 ||
             sourceEncoded[0] != (byte)'G' ||
@@ -96,7 +183,8 @@ public static class PixelProScreensaverMediaService
                 "The selected file is not a valid GIF.");
         }
 
-        using var image = Drawing.Image.FromFile(path);
+        using var image =
+            Drawing.Image.FromFile(path);
 
         if (image.Width <= 0 ||
             image.Height <= 0 ||
@@ -108,47 +196,62 @@ public static class PixelProScreensaverMediaService
         }
 
         var dimension =
-            new FrameDimension(image.FrameDimensionsList[0]);
+            new FrameDimension(
+                image.FrameDimensionsList[0]);
 
         int total =
-            Math.Max(1, image.GetFrameCount(dimension));
+            Math.Max(
+                1,
+                image.GetFrameCount(dimension));
 
         int[] sourceDelaysMs =
-            ReadGifFrameDelaysMs(image, total);
+            ReadGifFrameDelaysMs(
+                image,
+                total);
 
         int sourceLoopMs =
-            Math.Max(1, sourceDelaysMs.Sum());
+            Math.Max(
+                1,
+                sourceDelaysMs.Sum());
 
-        bool needsCanvasReduction =
-            image.Width > PanelWidth ||
-            image.Height > PanelHeight;
+        int requestedMinDelay =
+            Math.Max(
+                17,
+                (int)Math.Ceiling(
+                    1000.0 /
+                    requestedMaxFps));
 
-        bool needsFrameRateReduction =
+        bool needsOptimization =
+            sourceEncoded.Length > TargetGifBytes ||
+            sourceLoopMs > maxDurationMs ||
             sourceDelaysMs.Any(
-                delay => delay < 40);
+                delay =>
+                    delay <
+                    requestedMinDelay);
 
         PixelProGifOptimizationResult? optimized =
             null;
 
-        // A normal in-range GIF is already LZW-compressed. Re-encoding every
-        // selected GIF was expensive and could make large animations look as
-        // if the app had hung. Only preprocess when it produces a real device
-        // benefit: panel-size reduction or a >25 FPS source.
-        if (needsCanvasReduction ||
-            needsFrameRateReduction)
+        if (needsOptimization)
         {
             optimized =
                 PixelProGifOptimizer.Optimize(
                     path,
-                    sourceDelaysMs);
+                    sourceDelaysMs,
+                    requestedMaxFps,
+                    maxDurationMs,
+                    TargetGifBytes);
+
+            if (optimized.Bytes.Length >
+                TargetGifBytes)
+            {
+                throw new InvalidOperationException(
+                    "GIF still exceeds 1 MiB at 20 FPS. PIXEL PRO will not reduce resolution; shorten the GIF or simplify the animation.");
+            }
         }
 
         bool useOptimized =
-            optimized is not null &&
-            (needsCanvasReduction ||
-             needsFrameRateReduction ||
-             optimized.Bytes.LongLength * 100L <
-                 sourceEncoded.LongLength * 85L);
+            optimized is not null;
 
         byte[] encoded =
             useOptimized
@@ -170,40 +273,77 @@ public static class PixelProScreensaverMediaService
                 ? optimized!.FrameCount
                 : total;
 
+        int storedDurationMs =
+            useOptimized
+                ? optimized!.DurationMs
+                : Math.Min(
+                    sourceLoopMs,
+                    maxDurationMs);
+
+        int storedFps =
+            useOptimized
+                ? optimized!.StoredFps
+                : Math.Clamp(
+                    (int)Math.Round(
+                        total * 1000.0 /
+                        Math.Max(
+                            1,
+                            sourceLoopMs)),
+                    1,
+                    60);
+
         int previewCount =
             Math.Clamp(
-                Math.Min(total, MaxPreviewFrames),
+                Math.Min(
+                    total,
+                    MaxPreviewFrames),
                 1,
                 MaxPreviewFrames);
+
+        int previewLoopMs =
+            Math.Max(
+                1,
+                Math.Min(
+                    sourceLoopMs,
+                    maxDurationMs));
 
         var sourceIndices =
             BuildPreviewIndices(
                 sourceDelaysMs,
                 previewCount,
-                sourceLoopMs);
+                previewLoopMs);
 
         var previewDurations =
             BuildPreviewDurations(
-                sourceLoopMs,
+                previewLoopMs,
                 previewCount);
 
         var previewFrames =
-            new List<byte[]>(previewCount);
+            new List<byte[]>(
+                previewCount);
 
         foreach (int sourceIndex in sourceIndices)
         {
-            image.SelectActiveFrame(dimension, sourceIndex);
+            image.SelectActiveFrame(
+                dimension,
+                sourceIndex);
 
-            using var bitmap = new Drawing.Bitmap(
-                image.Width,
-                image.Height,
-                PixelFormat.Format32bppArgb);
+            using var bitmap =
+                new Drawing.Bitmap(
+                    image.Width,
+                    image.Height,
+                    PixelFormat.Format32bppArgb);
 
             using (var graphics =
                    Drawing.Graphics.FromImage(bitmap))
             {
-                graphics.Clear(Drawing.Color.Black);
-                graphics.DrawImageUnscaled(image, 0, 0);
+                graphics.Clear(
+                    Drawing.Color.Black);
+
+                graphics.DrawImageUnscaled(
+                    image,
+                    0,
+                    0);
             }
 
             using Drawing.Bitmap prepared =
@@ -238,12 +378,22 @@ public static class PixelProScreensaverMediaService
             new EncodedGifHolder
             {
                 Bytes = encoded,
-                ScaleMode = scaleMode,
-                SourceBytes = sourceEncoded.LongLength,
-                StoredWidth = storedWidth,
-                StoredHeight = storedHeight,
-                StoredFrames = storedFrames,
-                Optimized = useOptimized
+                ScaleMode =
+                    ScreensaverScaleMode.Center,
+                SourceBytes =
+                    sourceEncoded.LongLength,
+                StoredWidth =
+                    storedWidth,
+                StoredHeight =
+                    storedHeight,
+                StoredFrames =
+                    storedFrames,
+                StoredFps =
+                    storedFps,
+                DurationMs =
+                    storedDurationMs,
+                Optimized =
+                    useOptimized
             });
 
         return animation;
@@ -264,17 +414,32 @@ public static class PixelProScreensaverMediaService
         }
 
         bytes = Array.Empty<byte>();
-        scaleMode = ScreensaverScaleMode.Fill;
+        scaleMode =
+            ScreensaverScaleMode.Center;
         return false;
     }
 
-    public static long GetEncodedGifSize(
-        ScreensaverAnimation animation) =>
-        EncodedGifs.TryGetValue(
-            animation,
-            out EncodedGifHolder? holder)
-            ? holder.Bytes.LongLength
-            : 0;
+    public static bool TryGetEncodedJpeg(
+        ScreensaverAnimation animation,
+        out byte[] bytes,
+        out int width,
+        out int height)
+    {
+        if (EncodedJpegs.TryGetValue(
+                animation,
+                out EncodedJpegHolder? holder))
+        {
+            bytes = holder.Bytes;
+            width = holder.Width;
+            height = holder.Height;
+            return true;
+        }
+
+        bytes = Array.Empty<byte>();
+        width = 0;
+        height = 0;
+        return false;
+    }
 
     public static (
         long StoredBytes,
@@ -282,6 +447,8 @@ public static class PixelProScreensaverMediaService
         int Width,
         int Height,
         int Frames,
+        int Fps,
+        int DurationMs,
         bool Optimized)
         GetEncodedGifInfo(
             ScreensaverAnimation animation)
@@ -296,6 +463,8 @@ public static class PixelProScreensaverMediaService
                 holder.StoredWidth,
                 holder.StoredHeight,
                 holder.StoredFrames,
+                holder.StoredFps,
+                holder.DurationMs,
                 holder.Optimized);
         }
 
@@ -305,7 +474,129 @@ public static class PixelProScreensaverMediaService
             0,
             0,
             0,
+            0,
+            0,
             false);
+    }
+
+    public static (
+        long StoredBytes,
+        long SourceBytes,
+        int Width,
+        int Height,
+        int Quality)
+        GetEncodedJpegInfo(
+            ScreensaverAnimation animation)
+    {
+        if (EncodedJpegs.TryGetValue(
+                animation,
+                out EncodedJpegHolder? holder))
+        {
+            return (
+                holder.Bytes.LongLength,
+                holder.SourceBytes,
+                holder.Width,
+                holder.Height,
+                holder.Quality);
+        }
+
+        return (
+            0,
+            0,
+            0,
+            0,
+            0);
+    }
+
+    private static Drawing.Bitmap PrepareStaticImage(
+        Drawing.Bitmap source)
+    {
+        double scale =
+            Math.Min(
+                1.0,
+                Math.Min(
+                    PanelWidth /
+                    (double)source.Width,
+                    PanelHeight /
+                    (double)source.Height));
+
+        int width =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    source.Width *
+                    scale));
+
+        int height =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    source.Height *
+                    scale));
+
+        var prepared =
+            new Drawing.Bitmap(
+                width,
+                height,
+                PixelFormat.Format24bppRgb);
+
+        using Drawing.Graphics g =
+            Drawing.Graphics.FromImage(prepared);
+
+        g.Clear(
+            Drawing.Color.Black);
+        g.InterpolationMode =
+            Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode =
+            Drawing2D.PixelOffsetMode.HighQuality;
+        g.CompositingQuality =
+            Drawing2D.CompositingQuality.HighQuality;
+        g.SmoothingMode =
+            Drawing2D.SmoothingMode.HighQuality;
+
+        g.DrawImage(
+            source,
+            0,
+            0,
+            width,
+            height);
+
+        return prepared;
+    }
+
+    private static byte[] EncodeJpeg(
+        Drawing.Bitmap bitmap,
+        int quality)
+    {
+        ImageCodecInfo? codec =
+            ImageCodecInfo
+                .GetImageEncoders()
+                .FirstOrDefault(
+                    x =>
+                        x.FormatID ==
+                        ImageFormat.Jpeg.Guid);
+
+        if (codec is null)
+            throw new InvalidOperationException(
+                "Windows JPEG encoder is unavailable.");
+
+        using var output =
+            new MemoryStream();
+
+        using var parameters =
+            new EncoderParameters(1);
+
+        parameters.Param[0] =
+            new EncoderParameter(
+                System.Drawing.Imaging.Encoder.Quality,
+                (long)quality);
+
+        bitmap.Save(
+            output,
+            codec,
+            parameters);
+
+        return output.ToArray();
     }
 
     private static IReadOnlyList<int> BuildPreviewIndices(
@@ -313,32 +604,43 @@ public static class PixelProScreensaverMediaService
         int count,
         int sourceLoopMs)
     {
-        int total = sourceDelaysMs.Count;
-        var cumulative = new int[total];
+        int total =
+            sourceDelaysMs.Count;
+
+        var cumulative =
+            new int[total];
+
         int running = 0;
 
         for (int i = 0; i < total; i++)
         {
-            running += sourceDelaysMs[i];
+            running +=
+                sourceDelaysMs[i];
             cumulative[i] = running;
         }
 
-        var indices = new List<int>(count);
+        var indices =
+            new List<int>(
+                count);
 
         for (int i = 0; i < count; i++)
         {
             double sourceTime =
-                i * (sourceLoopMs / (double)count);
+                i *
+                (sourceLoopMs /
+                 (double)count);
 
             int sourceIndex = 0;
 
             while (sourceIndex < total - 1 &&
-                   sourceTime >= cumulative[sourceIndex])
+                   sourceTime >=
+                   cumulative[sourceIndex])
             {
                 sourceIndex++;
             }
 
-            indices.Add(sourceIndex);
+            indices.Add(
+                sourceIndex);
         }
 
         return indices;
@@ -351,19 +653,30 @@ public static class PixelProScreensaverMediaService
         int outputLoopMs =
             Math.Max(
                 sourceLoopMs,
-                count * MinFrameIntervalMs);
+                count *
+                MinFrameIntervalMs);
 
-        int baseDelay = outputLoopMs / count;
-        int remainder = outputLoopMs % count;
+        int baseDelay =
+            outputLoopMs /
+            count;
 
-        var durations = new List<int>(count);
+        int remainder =
+            outputLoopMs %
+            count;
+
+        var durations =
+            new List<int>(
+                count);
 
         for (int i = 0; i < count; i++)
         {
             durations.Add(
                 Math.Max(
                     MinFrameIntervalMs,
-                    baseDelay + (i < remainder ? 1 : 0)));
+                    baseDelay +
+                    (i < remainder
+                        ? 1
+                        : 0)));
         }
 
         return durations;
@@ -373,26 +686,36 @@ public static class PixelProScreensaverMediaService
         Drawing.Image image,
         int frameCount)
     {
-        const int PropertyTagFrameDelay = 0x5100;
+        const int PropertyTagFrameDelay =
+            0x5100;
 
         var delays =
             Enumerable
-                .Repeat(100, Math.Max(1, frameCount))
+                .Repeat(
+                    100,
+                    Math.Max(
+                        1,
+                        frameCount))
                 .ToArray();
 
         try
         {
             var item =
-                image.GetPropertyItem(PropertyTagFrameDelay);
+                image.GetPropertyItem(
+                    PropertyTagFrameDelay);
 
-            if (item?.Value is { Length: >= 4 })
+            if (item?.Value is
+                { Length: >= 4 })
             {
                 int entries =
                     Math.Min(
                         frameCount,
-                        item.Value.Length / 4);
+                        item.Value.Length /
+                        4);
 
-                for (int i = 0; i < entries; i++)
+                for (int i = 0;
+                     i < entries;
+                     i++)
                 {
                     int delayCs =
                         BitConverter.ToInt32(
@@ -401,7 +724,9 @@ public static class PixelProScreensaverMediaService
 
                     delays[i] =
                         Math.Clamp(
-                            Math.Max(1, delayCs) * 10,
+                            Math.Max(
+                                1,
+                                delayCs) * 10,
                             10,
                             5000);
                 }
@@ -414,39 +739,56 @@ public static class PixelProScreensaverMediaService
         return delays;
     }
 
-    private static byte[] ToRgb565(
-        Drawing.Bitmap source,
-        ScreensaverScaleMode scaleMode)
+    private static byte[] ToRgb565Full(
+        Drawing.Bitmap source)
     {
-        using var resized =
-            Resize(
-                source,
-                PanelWidth,
-                PanelHeight,
-                scaleMode);
+        if (source.Width != PanelWidth ||
+            source.Height != PanelHeight)
+        {
+            throw new InvalidOperationException(
+                "PIXEL PRO image preview is not 480×320.");
+        }
 
         var output =
-            new byte[PanelWidth * PanelHeight * 2];
+            new byte[
+                PanelWidth *
+                PanelHeight *
+                2];
 
-        for (int y = 0; y < PanelHeight; y++)
+        for (int y = 0;
+             y < PanelHeight;
+             y++)
         {
-            for (int x = 0; x < PanelWidth; x++)
+            for (int x = 0;
+                 x < PanelWidth;
+                 x++)
             {
-                Drawing.Color p = resized.GetPixel(x, y);
+                Drawing.Color p =
+                    source.GetPixel(
+                        x,
+                        y);
 
-                ushort rgb565 = (ushort)(
-                    ((p.R & 0xF8) << 8) |
-                    ((p.G & 0xFC) << 3) |
-                    (p.B >> 3));
+                ushort rgb565 =
+                    (ushort)(
+                        ((p.R & 0xF8) << 8) |
+                        ((p.G & 0xFC) << 3) |
+                        (p.B >> 3));
 
                 int offset =
-                    (y * PanelWidth + x) * 2;
+                    (y *
+                     PanelWidth +
+                     x) *
+                    2;
 
                 output[offset] =
-                    (byte)(rgb565 & 0xFF);
+                    (byte)(
+                        rgb565 &
+                        0xFF);
 
                 output[offset + 1] =
-                    (byte)(rgb565 >> 8);
+                    (byte)(
+                        rgb565 >>
+                        8);
             }
         }
 
@@ -464,18 +806,31 @@ public static class PixelProScreensaverMediaService
         }
 
         var output =
-            new byte[PanelWidth * PanelHeight];
+            new byte[
+                PanelWidth *
+                PanelHeight];
 
-        for (int y = 0; y < PanelHeight; y++)
+        for (int y = 0;
+             y < PanelHeight;
+             y++)
         {
-            for (int x = 0; x < PanelWidth; x++)
+            for (int x = 0;
+                 x < PanelWidth;
+                 x++)
             {
-                Drawing.Color p = source.GetPixel(x, y);
+                Drawing.Color p =
+                    source.GetPixel(
+                        x,
+                        y);
 
-                output[y * PanelWidth + x] =
-                    (byte)(((p.R >> 5) << 5) |
-                           ((p.G >> 5) << 2) |
-                           (p.B >> 6));
+                output[
+                    y *
+                    PanelWidth +
+                    x] =
+                    (byte)(
+                        ((p.R >> 5) << 5) |
+                        ((p.G >> 5) << 2) |
+                        (p.B >> 6));
             }
         }
 
@@ -494,9 +849,12 @@ public static class PixelProScreensaverMediaService
                 height,
                 PixelFormat.Format24bppRgb);
 
-        using var g = Drawing.Graphics.FromImage(resized);
+        using var g =
+            Drawing.Graphics.FromImage(
+                resized);
 
-        g.Clear(Drawing.Color.Black);
+        g.Clear(
+            Drawing.Color.Black);
         g.InterpolationMode =
             Drawing2D.InterpolationMode.HighQualityBicubic;
         g.PixelOffsetMode =
@@ -506,165 +864,37 @@ public static class PixelProScreensaverMediaService
         g.SmoothingMode =
             Drawing2D.SmoothingMode.HighQuality;
 
-        switch (scaleMode)
-        {
-            case ScreensaverScaleMode.Stretch:
-                g.DrawImage(source, 0, 0, width, height);
-                break;
+        // PIXEL PRO media never auto-upscales. Large media is reduced only
+        // for display; GIF file resolution itself is preserved by the encoder.
+        double scale =
+            Math.Min(
+                1.0,
+                Math.Min(
+                    width /
+                    (double)source.Width,
+                    height /
+                    (double)source.Height));
 
-            case ScreensaverScaleMode.Fit:
-            {
-                double scale =
-                    Math.Min(
-                        width / (double)source.Width,
-                        height / (double)source.Height);
+        int drawW =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    source.Width *
+                    scale));
 
-                int drawW =
-                    Math.Max(
-                        1,
-                        (int)Math.Round(
-                            source.Width * scale));
+        int drawH =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    source.Height *
+                    scale));
 
-                int drawH =
-                    Math.Max(
-                        1,
-                        (int)Math.Round(
-                            source.Height * scale));
-
-                g.DrawImage(
-                    source,
-                    (width - drawW) / 2,
-                    (height - drawH) / 2,
-                    drawW,
-                    drawH);
-                break;
-            }
-
-            case ScreensaverScaleMode.Center:
-            {
-                // PIXEL PRO "Center" means original size when possible:
-                // never upscale small media; only shrink if it is larger
-                // than the 480x320 panel, while preserving aspect ratio.
-                double scale =
-                    Math.Min(
-                        1.0,
-                        Math.Min(
-                            width / (double)source.Width,
-                            height / (double)source.Height));
-
-                int drawW =
-                    Math.Max(
-                        1,
-                        (int)Math.Round(
-                            source.Width * scale));
-
-                int drawH =
-                    Math.Max(
-                        1,
-                        (int)Math.Round(
-                            source.Height * scale));
-
-                g.DrawImage(
-                    source,
-                    (width - drawW) / 2,
-                    (height - drawH) / 2,
-                    drawW,
-                    drawH);
-                break;
-            }
-
-            case ScreensaverScaleMode.Tile:
-            {
-                double scale =
-                    Math.Min(
-                        0.5,
-                        Math.Min(
-                            width /
-                            (double)source.Width,
-                            height /
-                            (double)source.Height));
-
-                int tileW =
-                    Math.Max(
-                        8,
-                        (int)Math.Round(
-                            source.Width * scale));
-
-                int tileH =
-                    Math.Max(
-                        8,
-                        (int)Math.Round(
-                            source.Height * scale));
-
-                using var tile =
-                    new Drawing.Bitmap(
-                        tileW,
-                        tileH);
-
-                using (var tg =
-                       Drawing.Graphics.FromImage(tile))
-                {
-                    tg.InterpolationMode =
-                        Drawing2D.InterpolationMode.HighQualityBilinear;
-
-                    tg.DrawImage(
-                        source,
-                        0,
-                        0,
-                        tileW,
-                        tileH);
-                }
-
-                using var brush =
-                    new Drawing.TextureBrush(
-                        tile,
-                        Drawing2D.WrapMode.Tile);
-
-                g.FillRectangle(
-                    brush,
-                    0,
-                    0,
-                    width,
-                    height);
-                break;
-            }
-
-            case ScreensaverScaleMode.Span:
-            case ScreensaverScaleMode.Fill:
-            default:
-            {
-                double scale =
-                    Math.Max(
-                        width / (double)source.Width,
-                        height / (double)source.Height);
-
-                if (scaleMode ==
-                    ScreensaverScaleMode.Span)
-                {
-                    scale *= 1.08;
-                }
-
-                int drawW =
-                    Math.Max(
-                        1,
-                        (int)Math.Ceiling(
-                            source.Width * scale));
-
-                int drawH =
-                    Math.Max(
-                        1,
-                        (int)Math.Ceiling(
-                            source.Height * scale));
-
-                g.DrawImage(
-                    source,
-                    (width - drawW) / 2,
-                    (height - drawH) / 2,
-                    drawW,
-                    drawH);
-                break;
-            }
-        }
+        g.DrawImage(
+            source,
+            (width - drawW) / 2,
+            (height - drawH) / 2,
+            drawW,
+            drawH);
 
         return resized;
     }
