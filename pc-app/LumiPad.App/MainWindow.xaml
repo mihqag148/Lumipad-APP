@@ -645,29 +645,37 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    VerticalAlignment="Center"
                                                    Margin="0,0,10,0"/>
-                                        <Button Content="−"
-                                                Width="32"
-                                                Height="32"
-                                                Padding="0"
-                                                ToolTip="Remove last profile"
-                                                Click="PixelRemoveProfile_Click"/>
                                         <ComboBox x:Name="PixelProfileCombo"
                                                   Width="200"
                                                   IsEditable="True"
                                                   IsTextSearchEnabled="False"
                                                   StaysOpenOnEdit="True"
                                                   MaxDropDownHeight="360"
-                                                  ToolTip="Select or rename profile"
+                                                  ToolTip="Select profile"
                                                   SelectionChanged="PixelProfileCombo_SelectionChanged"
                                                   KeyDown="PixelProfileCombo_KeyDown"
                                                   LostKeyboardFocus="PixelProfileCombo_LostKeyboardFocus"
                                                   Margin="0,0,6,0"/>
+                                        <Button Content="✎"
+                                                Width="32"
+                                                Height="32"
+                                                Padding="0"
+                                                ToolTip="Rename current profile"
+                                                Click="PixelRenameProfile_Click"
+                                                Margin="0,0,4,0"/>
                                         <Button Content="+"
                                                 Width="32"
                                                 Height="32"
                                                 Padding="0"
                                                 ToolTip="Add profile"
                                                 Click="PixelAddProfile_Click"
+                                                Margin="0,0,4,0"/>
+                                        <Button Content="−"
+                                                Width="32"
+                                                Height="32"
+                                                Padding="0"
+                                                ToolTip="Remove last profile"
+                                                Click="PixelRemoveProfile_Click"
                                                 Margin="0,0,18,0"/>
                                         <TextBlock Text="LAYER"
                                                    FontSize="11"
@@ -788,32 +796,58 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    Margin="0,2,0,14"/>
 
-                                        <TextBlock Text="MODIFIERS"
-                                                   FontSize="11"
+                                        <TextBlock Text="MODIFIERS · drag to move"
+                                                   FontSize="10"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Muted}"/>
-                                        <WrapPanel Margin="0,8,0,14">
-                                            <CheckBox x:Name="PixelSelectedCtrl"
-                                                      Content="Ctrl"
-                                                      Margin="0,0,12,8"
-                                                      Checked="PixelSelectedModifier_Changed"
-                                                      Unchecked="PixelSelectedModifier_Changed"/>
-                                            <CheckBox x:Name="PixelSelectedShift"
-                                                      Content="Shift"
-                                                      Margin="0,0,12,8"
-                                                      Checked="PixelSelectedModifier_Changed"
-                                                      Unchecked="PixelSelectedModifier_Changed"/>
-                                            <CheckBox x:Name="PixelSelectedAlt"
-                                                      Content="Alt"
-                                                      Margin="0,0,12,8"
-                                                      Checked="PixelSelectedModifier_Changed"
-                                                      Unchecked="PixelSelectedModifier_Changed"/>
-                                            <CheckBox x:Name="PixelSelectedWin"
-                                                      Content="Win"
-                                                      Margin="0,0,0,8"
-                                                      Checked="PixelSelectedModifier_Changed"
-                                                      Unchecked="PixelSelectedModifier_Changed"/>
-                                        </WrapPanel>
+
+                                        <Canvas x:Name="PixelModifierCanvas"
+                                                Height="150"
+                                                Margin="0,6,0,10"
+                                                Background="Transparent">
+                                            <Border x:Name="PixelModifiersPanel"
+                                                    Canvas.Left="0"
+                                                    Canvas.Top="0"
+                                                    Width="190"
+                                                    Background="{DynamicResource Card2}"
+                                                    BorderBrush="{DynamicResource Line}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Padding="9"
+                                                    Cursor="SizeAll"
+                                                    PreviewMouseLeftButtonDown="PixelModifiersPanel_PreviewMouseLeftButtonDown"
+                                                    PreviewMouseMove="PixelModifiersPanel_PreviewMouseMove"
+                                                    PreviewMouseLeftButtonUp="PixelModifiersPanel_PreviewMouseLeftButtonUp">
+                                                <StackPanel>
+                                                    <TextBlock Text="Modifiers"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource Muted}"
+                                                               Margin="0,0,0,6"/>
+                                                    <WrapPanel>
+                                                        <CheckBox x:Name="PixelSelectedCtrl"
+                                                                  Content="Ctrl"
+                                                                  Margin="0,0,10,6"
+                                                                  Checked="PixelSelectedModifier_Changed"
+                                                                  Unchecked="PixelSelectedModifier_Changed"/>
+                                                        <CheckBox x:Name="PixelSelectedShift"
+                                                                  Content="Shift"
+                                                                  Margin="0,0,10,6"
+                                                                  Checked="PixelSelectedModifier_Changed"
+                                                                  Unchecked="PixelSelectedModifier_Changed"/>
+                                                        <CheckBox x:Name="PixelSelectedAlt"
+                                                                  Content="Alt"
+                                                                  Margin="0,0,10,6"
+                                                                  Checked="PixelSelectedModifier_Changed"
+                                                                  Unchecked="PixelSelectedModifier_Changed"/>
+                                                        <CheckBox x:Name="PixelSelectedWin"
+                                                                  Content="Win"
+                                                                  Margin="0,0,0,6"
+                                                                  Checked="PixelSelectedModifier_Changed"
+                                                                  Unchecked="PixelSelectedModifier_Changed"/>
+                                                    </WrapPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </Canvas>
 
                                         <Border Height="1"
                                                 Background="{DynamicResource Line}"
@@ -937,10 +971,6 @@
                                 <StackPanel Grid.Column="1"
                                             Orientation="Horizontal"
                                             VerticalAlignment="Center">
-                                    <Button Content="Clear all"
-                                            ToolTip="Remove every step from this macro"
-                                            Click="PixelMacroClearAll_Click"
-                                            Margin="0,0,6,0"/>
                                     <Button Content="Test"
                                             Click="PixelMacroTest_Click"
                                             Margin="0,0,6,0"/>
@@ -1071,16 +1101,12 @@
 
                                 <StackPanel Grid.Column="1"
                                             Orientation="Horizontal">
-                                    <Button Content="↑"
-                                            Width="34"
-                                            Click="PixelMacroStepUp_Click"
-                                            Margin="0,0,4,0"/>
-                                    <Button Content="↓"
-                                            Width="34"
-                                            Click="PixelMacroStepDown_Click"
-                                            Margin="0,0,4,0"/>
                                     <Button Content="Delete"
                                             Click="PixelMacroStepDelete_Click"
+                                            Margin="0,0,6,0"/>
+                                    <Button Content="Clear all"
+                                            ToolTip="Remove every step from this macro"
+                                            Click="PixelMacroClearAll_Click"
                                             Margin="0"/>
                                 </StackPanel>
                             </Grid>
