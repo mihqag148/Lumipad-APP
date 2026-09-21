@@ -8,8 +8,10 @@ namespace LumiPad.App;
 
 /// <summary>
 /// PIXEL PRO-only media preparation for the 3.5" ILI9486 panel.
-/// GIF files stay compressed and are sent to PIXEL PRO as the original
-/// full-resolution GIF. RYNOR ONE continues to use ScreensaverMediaService.
+/// GIF files stay compressed but may be re-encoded for PIXEL PRO storage:
+/// oversized canvases are reduced to the panel envelope, very fast animation
+/// is capped at 25 FPS, and unchanged regions use delta frames. RYNOR ONE
+/// continues to use ScreensaverMediaService.
 /// </summary>
 public static class PixelProScreensaverMediaService
 {
@@ -123,11 +125,11 @@ public static class PixelProScreensaverMediaService
                 sourceDelaysMs);
 
         bool useOptimized =
-            optimized.Bytes.LongLength <
-                sourceEncoded.LongLength ||
             optimized.Width != image.Width ||
             optimized.Height != image.Height ||
-            optimized.FrameCount != total;
+            optimized.FrameCount != total ||
+            optimized.Bytes.LongLength * 100L <
+                sourceEncoded.LongLength * 85L;
 
         byte[] encoded =
             useOptimized
