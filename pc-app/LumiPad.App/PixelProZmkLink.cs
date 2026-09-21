@@ -1,4 +1,5 @@
 using HidSharp;
+using System.IO;
 using System.Text;
 
 namespace LumiPad.App;
