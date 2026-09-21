@@ -17,6 +17,11 @@ public static class PixelProScreensaverMediaService
     {
         public required byte[] Bytes { get; init; }
         public ScreensaverScaleMode ScaleMode { get; init; }
+        public long SourceBytes { get; init; }
+        public int StoredWidth { get; init; }
+        public int StoredHeight { get; init; }
+        public int StoredFrames { get; init; }
+        public bool Optimized { get; init; }
     }
 
     private static readonly ConditionalWeakTable<
@@ -78,12 +83,12 @@ public static class PixelProScreensaverMediaService
         string path,
         ScreensaverScaleMode scaleMode)
     {
-        byte[] encoded = File.ReadAllBytes(path);
+        byte[] sourceEncoded = File.ReadAllBytes(path);
 
-        if (encoded.Length < 10 ||
-            encoded[0] != (byte)'G' ||
-            encoded[1] != (byte)'I' ||
-            encoded[2] != (byte)'F')
+        if (sourceEncoded.Length < 10 ||
+            sourceEncoded[0] != (byte)'G' ||
+            sourceEncoded[1] != (byte)'I' ||
+            sourceEncoded[2] != (byte)'F')
         {
             throw new InvalidDataException(
                 "The selected file is not a valid GIF.");
@@ -111,6 +116,38 @@ public static class PixelProScreensaverMediaService
 
         int sourceLoopMs =
             Math.Max(1, sourceDelaysMs.Sum());
+
+        PixelProGifOptimizationResult optimized =
+            PixelProGifOptimizer.Optimize(
+                path,
+                sourceDelaysMs);
+
+        bool useOptimized =
+            optimized.Bytes.LongLength <
+                sourceEncoded.LongLength ||
+            optimized.Width != image.Width ||
+            optimized.Height != image.Height ||
+            optimized.FrameCount != total;
+
+        byte[] encoded =
+            useOptimized
+                ? optimized.Bytes
+                : sourceEncoded;
+
+        int storedWidth =
+            useOptimized
+                ? optimized.Width
+                : image.Width;
+
+        int storedHeight =
+            useOptimized
+                ? optimized.Height
+                : image.Height;
+
+        int storedFrames =
+            useOptimized
+                ? optimized.FrameCount
+                : total;
 
         int previewCount =
             Math.Clamp(
@@ -180,7 +217,12 @@ public static class PixelProScreensaverMediaService
             new EncodedGifHolder
             {
                 Bytes = encoded,
-                ScaleMode = scaleMode
+                ScaleMode = scaleMode,
+                SourceBytes = sourceEncoded.LongLength,
+                StoredWidth = storedWidth,
+                StoredHeight = storedHeight,
+                StoredFrames = storedFrames,
+                Optimized = useOptimized
             });
 
         return animation;
@@ -212,6 +254,38 @@ public static class PixelProScreensaverMediaService
             out EncodedGifHolder? holder)
             ? holder.Bytes.LongLength
             : 0;
+
+    public static (
+        long StoredBytes,
+        long SourceBytes,
+        int Width,
+        int Height,
+        int Frames,
+        bool Optimized)
+        GetEncodedGifInfo(
+            ScreensaverAnimation animation)
+    {
+        if (EncodedGifs.TryGetValue(
+                animation,
+                out EncodedGifHolder? holder))
+        {
+            return (
+                holder.Bytes.LongLength,
+                holder.SourceBytes,
+                holder.StoredWidth,
+                holder.StoredHeight,
+                holder.StoredFrames,
+                holder.Optimized);
+        }
+
+        return (
+            0,
+            0,
+            0,
+            0,
+            0,
+            false);
+    }
 
     private static IReadOnlyList<int> BuildPreviewIndices(
         IReadOnlyList<int> sourceDelaysMs,
