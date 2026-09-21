@@ -985,44 +985,117 @@
 
             <TabItem x:Name="ConfiguratorTab" Header="Device Config">
                 <Grid Margin="0,14,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="10"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+                    <Grid x:Name="RynorConfiguratorPanel">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
 
-                    <Border Background="{DynamicResource Card2}"
-                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="18" Padding="12">
+                        <Border Background="{DynamicResource Card2}"
+                                BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                                CornerRadius="18" Padding="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="DeviceConfiguratorTitle"
+                                               Text="Device Config"
+                                               FontWeight="SemiBold" FontSize="16"/>
+                                    <TextBlock x:Name="ConfiguratorStatus"
+                                               Text="Embedded device configurator"
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button Content="Reload" Click="ReloadConfigurator_Click"/>
+                                    <Button Content="Open in Edge"
+                                            Click="OpenConfiguratorExternal_Click" Margin="0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Background="White"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1" CornerRadius="18"
+                                ClipToBounds="True">
+                            <wv2:WebView2 x:Name="ConfiguratorWebView"/>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PixelProKeymapPanel"
+                          Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="16"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="16"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock x:Name="DeviceConfiguratorTitle"
-                                           Text="Device Config"
-                                           FontWeight="SemiBold" FontSize="16"/>
-                                <TextBlock x:Name="ConfiguratorStatus"
-                                           Text="Embedded device configurator"
+                                <TextBlock Text="PIXEL PRO KEYMAP"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <TextBlock Text="8-key hardware map"
+                                           FontSize="25"
+                                           FontWeight="SemiBold"
+                                           Margin="0,5,0,0"/>
+                                <TextBlock Text="Changes are stored inside PIXEL PRO flash and survive power-off."
                                            Foreground="{DynamicResource Muted}"
-                                           FontSize="12"/>
+                                           Margin="0,5,0,0"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <Button Content="Reload" Click="ReloadConfigurator_Click"/>
-                                <Button Content="Open in Edge"
-                                        Click="OpenConfiguratorExternal_Click" Margin="0"/>
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Bottom">
+                                <Button Content="Reload"
+                                        Click="PixelKeymapReload_Click"/>
+                                <Button Content="Reset A–H"
+                                        Click="PixelKeymapReset_Click"
+                                        Margin="0"/>
                             </StackPanel>
                         </Grid>
-                    </Border>
 
-                    <Border Grid.Row="2"
-                            Background="White"
-                            BorderBrush="{DynamicResource Line}"
-                            BorderThickness="1" CornerRadius="18"
-                            ClipToBounds="True">
-                        <wv2:WebView2 x:Name="ConfiguratorWebView"/>
-                    </Border>
+                        <Border Grid.Row="2"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="24"
+                                Padding="20">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <UniformGrid x:Name="PixelKeymapGrid"
+                                             Columns="4"
+                                             Rows="2"/>
+                            </ScrollViewer>
+                        </Border>
+
+                        <Grid Grid.Row="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="PixelKeymapStatusText"
+                                       Text="Connect PIXEL PRO to load the keymap."
+                                       Foreground="{DynamicResource Muted}"
+                                       VerticalAlignment="Center"/>
+                            <Button x:Name="PixelKeymapSaveButton"
+                                    Grid.Column="1"
+                                    Content="Save to PIXEL PRO"
+                                    Click="PixelKeymapSave_Click"
+                                    IsEnabled="False"
+                                    Margin="0"/>
+                        </Grid>
+                    </Grid>
                 </Grid>
             </TabItem>
 
