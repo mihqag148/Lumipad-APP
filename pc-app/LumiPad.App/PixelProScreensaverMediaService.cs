@@ -25,6 +25,12 @@ public static class PixelProScreensaverMediaService
     // Preview frames only exist on the PC. They are never uploaded.
     public const int MaxPreviewFrames = 24;
 
+    // Compatibility aliases used by the existing PIXEL PRO transport for
+    // static/legacy frame payloads. New GIF uploads use EncodedGif instead.
+    public const int Width = PanelWidth;
+    public const int Height = PanelHeight;
+    public const int MaxFrames = MaxPreviewFrames;
+
     public static async Task<ScreensaverAnimation> LoadAsync(
         string path,
         ScreensaverScaleMode scaleMode)
