@@ -1,0 +1,39 @@
+name: Cleanup legacy branches and releases
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cleanup-legacy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete legacy branches and releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name' |
+          while IFS= read -r branch; do
+            [ "$branch" = "main" ] && continue
+            [ "$branch" = "archive/screensaver-tearing-vdb" ] && continue
+            encoded="${branch//\//%2F}"
+            echo "Delete branch: $branch"
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$encoded" || true
+          done
+
+          gh api --paginate "repos/$REPO/releases?per_page=100" --jq '.[] | [.id,.tag_name] | @tsv' |
+          while IFS=$'\t' read -r id tag; do
+            [ "$tag" = "v1.17.0" ] && continue
+            echo "Delete release: $tag ($id)"
+            gh api -X DELETE "repos/$REPO/releases/$id" || true
+            encoded="${tag//\//%2F}"
+            gh api -X DELETE "repos/$REPO/git/refs/tags/$encoded" || true
+          done
