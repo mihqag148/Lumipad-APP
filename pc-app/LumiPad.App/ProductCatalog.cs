@@ -36,7 +36,7 @@ public static class ProductCatalog
         CreateQmkProduct(
             "pixel-pro",
             "PIXEL PRO",
-            "USB macro control pad",
+            "USB QMK/VIA macro control pad",
             "PP-01",
             0x303A,
             0x4009,

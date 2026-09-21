@@ -4,7 +4,7 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- Lumi Macropad v1.14.9 · disconnected PIXEL PRO recovery update -->
+  <!-- LumiPad v1.15.0 · PIXEL PRO real QMK first-party workflow -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -19,9 +19,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.14.9</Version>
-    <AssemblyVersion>1.14.9.0</AssemblyVersion>
-    <FileVersion>1.14.9.0</FileVersion>
+    <Version>1.15.0</Version>
+    <AssemblyVersion>1.15.0.0</AssemblyVersion>
+    <FileVersion>1.15.0.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Content Include="Definitions\PIXEL-PRO-VIA.json">
