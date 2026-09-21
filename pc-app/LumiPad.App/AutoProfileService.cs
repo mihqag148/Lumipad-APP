@@ -12,6 +12,8 @@ public sealed class AutoProfileMapping
     public string Name { get; set; } = "";
     public string ExecutablePath { get; set; } = "";
     public int ProfileIndex { get; set; }
+    public int PixelProfileIndex { get; set; }
+    public int LayerIndex { get; set; }
 }
 
 // Kept only so settings written by the short-lived preset UI can be migrated.
@@ -26,6 +28,8 @@ public sealed class AutoProfileSettings
 {
     public bool Enabled { get; set; }
     public int DefaultProfile { get; set; }
+    public int DefaultPixelProfile { get; set; }
+    public int DefaultLayer { get; set; }
     public List<AutoProfileMapping> Mappings { get; set; } = [];
 
     [JsonPropertyName("ActivePresetIndex")]
@@ -65,6 +69,8 @@ public sealed class AutoProfileSettings
         }
 
         DefaultProfile = Math.Clamp(DefaultProfile, 0, 4);
+        DefaultPixelProfile = Math.Clamp(DefaultPixelProfile, 0, 19);
+        DefaultLayer = Math.Clamp(DefaultLayer, 0, 3);
 
         var deduped = new List<AutoProfileMapping>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -88,6 +94,10 @@ public sealed class AutoProfileSettings
             mapping.ExecutablePath = key;
             mapping.ProfileIndex =
                 Math.Clamp(mapping.ProfileIndex, 0, 4);
+            mapping.PixelProfileIndex =
+                Math.Clamp(mapping.PixelProfileIndex, 0, 19);
+            mapping.LayerIndex =
+                Math.Clamp(mapping.LayerIndex, 0, 3);
 
             deduped.Add(mapping);
             if (deduped.Count >= 10)
@@ -103,7 +113,9 @@ public sealed class AutoProfileSettings
         {
             Name = mapping.Name,
             ExecutablePath = mapping.ExecutablePath,
-            ProfileIndex = mapping.ProfileIndex
+            ProfileIndex = mapping.ProfileIndex,
+            PixelProfileIndex = mapping.PixelProfileIndex,
+            LayerIndex = mapping.LayerIndex
         };
 }
 

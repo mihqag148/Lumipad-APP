@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- v1.20 profile macro PR sync -->
   <!-- unified version quote fix sync -->
   <!-- v1.13 firmware-version include path sync -->
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- LumiPad v1.19.0 · VIA-style PIXEL PRO keymap -->
+  <!-- LumiPad v1.20.0 · PIXEL PRO profiles + macros -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -19,9 +20,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.19.0</Version>
-    <AssemblyVersion>1.19.0.0</AssemblyVersion>
-    <FileVersion>1.19.0.0</FileVersion>
+    <Version>1.20.0</Version>
+    <AssemblyVersion>1.20.0.0</AssemblyVersion>
+    <FileVersion>1.20.0.0</FileVersion>
 </PropertyGroup><ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />

@@ -33,6 +33,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     public event Action<string>? LinkError;
     public event Action<string, string>? Diagnostic;
     public event Action<int, bool, int>? KeyStateChanged;
+    public event Action<int, int, int, int>? MacroTriggered;
 
     public string FirmwareHello { get; private set; } = "";
     public int ProtocolVersion { get; private set; }
@@ -41,7 +42,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     public bool SupportsMemoryInfo => false;
     public bool SupportsPanelInfo => false;
     public bool SupportsSaverState => false;
-    public bool SupportsProfileSwitch => false;
+    public bool SupportsProfileSwitch => true;
     public bool SupportsActions => false;
     public bool SupportsVariableArtwork => false;
     public bool SupportsBatteryInfo => false;
@@ -334,14 +335,40 @@ public sealed class PixelProCdcLink : IDeviceLink
                             StringComparison.OrdinalIgnoreCase);
                         int layer = 0;
 
-                        if (parts.Length >= 4 &&
-                            parts[3].StartsWith("L=", StringComparison.Ordinal) &&
-                            int.TryParse(parts[3][2..], out int parsedLayer))
+                        foreach (string part in parts.Skip(3))
                         {
-                            layer = parsedLayer;
+                            if (part.StartsWith("L=", StringComparison.Ordinal) &&
+                                int.TryParse(part[2..], out int parsedLayer))
+                            {
+                                layer = parsedLayer;
+                            }
                         }
 
                         KeyStateChanged?.Invoke(keyIndex - 1, down, layer);
+                    }
+                }
+                else if (line.StartsWith("MACRO|", StringComparison.Ordinal))
+                {
+                    string[] parts = line.Split('|');
+
+                    if (parts.Length >= 2 &&
+                        int.TryParse(parts[1], out int slot))
+                    {
+                        int key = 0;
+                        int profile = 0;
+                        int layer = 0;
+
+                        foreach (string part in parts.Skip(2))
+                        {
+                            if (part.StartsWith("KEY=", StringComparison.Ordinal))
+                                _ = int.TryParse(part[4..], out key);
+                            else if (part.StartsWith("P=", StringComparison.Ordinal))
+                                _ = int.TryParse(part[2..], out profile);
+                            else if (part.StartsWith("L=", StringComparison.Ordinal))
+                                _ = int.TryParse(part[2..], out layer);
+                        }
+
+                        MacroTriggered?.Invoke(slot, key, profile, layer);
                     }
                 }
 
@@ -509,18 +536,19 @@ public sealed class PixelProCdcLink : IDeviceLink
     }
 
     public async Task<IReadOnlyList<PixelProKeyBinding>?> GetKeymapAsync(
-        int layer = 0,
+        int profile,
+        int layer,
         CancellationToken cancellationToken = default)
     {
-        if (layer < 0 || layer > 3)
+        if (profile < 0 || profile > 19 || layer < 0 || layer > 3)
             return null;
 
         string? line = await RequestLineAsync(
-            $"GET_KEYMAP|{layer}",
-            $"KEYMAP|{layer}|",
+            $"GET_KEYMAP|{profile}|{layer}",
+            $"KEYMAP|{profile}|{layer}|",
             cancellationToken);
 
-        string prefix = $"KEYMAP|{layer}|";
+        string prefix = $"KEYMAP|{profile}|{layer}|";
         if (line is null || !line.StartsWith(prefix, StringComparison.Ordinal))
             return null;
 
@@ -551,7 +579,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                     PixelProKeyBinding.Layer(
                         (byte)code,
                         (PixelProLayerAction)modifiers),
-                "M" when code <= 7 =>
+                "M" when code <= 19 =>
                     PixelProKeyBinding.Macro((byte)code),
                 "T" when code == 0 && modifiers == 0 =>
                     PixelProKeyBinding.Transparent(),
@@ -569,13 +597,23 @@ public sealed class PixelProCdcLink : IDeviceLink
         return result;
     }
 
+    public Task<IReadOnlyList<PixelProKeyBinding>?> GetKeymapAsync(
+        int layer = 0,
+        CancellationToken cancellationToken = default) =>
+        GetKeymapAsync(0, layer, cancellationToken);
+
     public async Task<bool> SetKeymapAsync(
+        int profile,
         int layer,
         IReadOnlyList<PixelProKeyBinding> bindings,
         CancellationToken cancellationToken = default)
     {
-        if (layer < 0 || layer > 3 || bindings.Count != 8)
+        if (profile < 0 || profile > 19 ||
+            layer < 0 || layer > 3 ||
+            bindings.Count != 8)
+        {
             return false;
+        }
 
         static string Serialize(PixelProKeyBinding binding) =>
             binding.Type switch
@@ -594,30 +632,43 @@ public sealed class PixelProCdcLink : IDeviceLink
             };
 
         string command =
-            $"SET_KEYMAP|{layer}|" +
+            $"SET_KEYMAP|{profile}|{layer}|" +
             string.Join(",", bindings.Select(Serialize));
 
         string? response = await RequestLineAsync(
             command,
-            $"OK|KEYMAP|{layer}",
+            $"OK|KEYMAP|{profile}|{layer}",
             cancellationToken);
 
         return string.Equals(
             response,
-            $"OK|KEYMAP|{layer}",
+            $"OK|KEYMAP|{profile}|{layer}",
             StringComparison.Ordinal);
     }
 
     public Task<bool> SetKeymapAsync(
+        int layer,
         IReadOnlyList<PixelProKeyBinding> bindings,
         CancellationToken cancellationToken = default) =>
-        SetKeymapAsync(0, bindings, cancellationToken);
+        SetKeymapAsync(0, layer, bindings, cancellationToken);
+
+    public Task<bool> SetKeymapAsync(
+        IReadOnlyList<PixelProKeyBinding> bindings,
+        CancellationToken cancellationToken = default) =>
+        SetKeymapAsync(0, 0, bindings, cancellationToken);
+
+    public void SetProfileLayer(int profile, int layer)
+    {
+        profile = Math.Clamp(profile, 0, 19);
+        layer = Math.Clamp(layer, 0, 3);
+        SendCommand($"SET_PROFILE|{profile}|{layer}");
+    }
 
     public async Task<string?> GetMacroAsync(
         int index,
         CancellationToken cancellationToken = default)
     {
-        if (index < 0 || index > 7)
+        if (index < 0 || index > 19)
             return null;
 
         string prefix = $"MACRO|{index}|";
@@ -647,7 +698,7 @@ public sealed class PixelProCdcLink : IDeviceLink
         string text,
         CancellationToken cancellationToken = default)
     {
-        if (index < 0 || index > 7)
+        if (index < 0 || index > 19)
             return false;
 
         string ascii = new(
@@ -771,7 +822,7 @@ public sealed class PixelProCdcLink : IDeviceLink
         ReadActionEventAsync(uint afterSeq) =>
         Task.FromResult<(uint, int, int)?>(null);
 
-    public void SetActiveProfile(int profile) { }
+    public void SetActiveProfile(int profile) => SetProfileLayer(profile, 0);
     public void SetRgbProfile(int index, int effect, byte r, byte g, byte b) { }
     public void SetEnabled(bool enabled) { }
     public void SetBrightness(int percent) { }

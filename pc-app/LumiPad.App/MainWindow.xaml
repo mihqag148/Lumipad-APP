@@ -636,12 +636,27 @@
 
                                 <Grid>
                                     <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="PROFILE"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,10,0"/>
+                                        <ComboBox x:Name="PixelProfileCombo"
+                                                  Width="150"
+                                                  SelectionChanged="PixelProfileCombo_SelectionChanged"
+                                                  Margin="0,0,8,0"/>
+                                        <Button Content="+ Profile"
+                                                Height="32"
+                                                Padding="10,0"
+                                                Click="PixelAddProfile_Click"
+                                                Margin="0,0,18,0"/>
                                         <TextBlock Text="LAYER"
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Muted}"
                                                    VerticalAlignment="Center"
-                                                   Margin="0,0,12,0"/>
+                                                   Margin="0,0,10,0"/>
                                         <Button x:Name="PixelLayer0Button" Content="0" Tag="0"
                                                 Width="38" Height="32" Padding="0"
                                                 Click="PixelLayerButton_Click"/>
@@ -785,31 +800,10 @@
                                                 Background="{DynamicResource Line}"
                                                 Margin="0,0,0,14"/>
 
-                                        <StackPanel x:Name="PixelMacroEditorPanel">
-                                            <TextBlock Text="MACROS"
-                                                       FontSize="11"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource Muted}"/>
-                                            <ComboBox x:Name="PixelMacroSlotCombo"
-                                                      SelectionChanged="PixelMacroSlotCombo_SelectionChanged"
-                                                      Margin="0,8,0,8">
-                                                <ComboBoxItem Content="M0" Tag="0"/>
-                                                <ComboBoxItem Content="M1" Tag="1"/>
-                                                <ComboBoxItem Content="M2" Tag="2"/>
-                                                <ComboBoxItem Content="M3" Tag="3"/>
-                                                <ComboBoxItem Content="M4" Tag="4"/>
-                                                <ComboBoxItem Content="M5" Tag="5"/>
-                                                <ComboBoxItem Content="M6" Tag="6"/>
-                                                <ComboBoxItem Content="M7" Tag="7"/>
-                                            </ComboBox>
-                                            <TextBox x:Name="PixelMacroTextBox"
-                                                     AcceptsReturn="False"
-                                                     MaxLength="80"
-                                                     Margin="0,0,0,8"/>
-                                            <Button Content="Save Macro"
-                                                    Click="PixelMacroSave_Click"
-                                                    Margin="0"/>
-                                        </StackPanel>
+                                        <TextBlock Text="Assign M1–M20 here, then edit the macro body in the Macro tab."
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
@@ -832,6 +826,188 @@
                                     Margin="0"/>
                         </Grid>
                     </Grid>
+                </Grid>
+            </TabItem>
+
+
+            <TabItem x:Name="PixelMacroTab" Header="Macro" Visibility="Collapsed">
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="210"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="320"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="MACRO SLOTS"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <TextBlock Text="M1 – M20"
+                                           FontSize="22"
+                                           FontWeight="SemiBold"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <ListBox x:Name="PixelMacroList"
+                                     Grid.Row="2"
+                                     SelectionChanged="PixelMacroList_SelectionChanged"
+                                     BorderThickness="0"
+                                     Background="Transparent"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="16">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="PixelMacroTitleText"
+                                               Text="M1"
+                                               FontSize="24"
+                                               FontWeight="SemiBold"/>
+                                    <TextBox x:Name="PixelMacroNameTextBox"
+                                             Width="260"
+                                             HorizontalAlignment="Left"
+                                             Margin="0,6,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Bottom">
+                                    <Button Content="Test"
+                                            Click="PixelMacroTest_Click"/>
+                                    <Button Content="Save"
+                                            Click="PixelMacroSave_Click"
+                                            Margin="0"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <ListBox x:Name="PixelMacroStepsList"
+                                     Grid.Row="2"
+                                     BorderBrush="{DynamicResource Line}"
+                                     BorderThickness="1"
+                                     Background="{DynamicResource Card2}"/>
+
+                            <StackPanel Grid.Row="4"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right">
+                                <Button Content="↑"
+                                        Width="38"
+                                        Click="PixelMacroStepUp_Click"/>
+                                <Button Content="↓"
+                                        Width="38"
+                                        Click="PixelMacroStepDown_Click"/>
+                                <Button Content="Delete"
+                                        Click="PixelMacroStepDelete_Click"
+                                        Margin="0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="4"
+                            Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="16">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <TextBlock Text="ADD STEP"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <ComboBox x:Name="PixelMacroStepTypeCombo"
+                                          SelectionChanged="PixelMacroStepTypeCombo_SelectionChanged"
+                                          Margin="0,10,0,8">
+                                    <ComboBoxItem Content="Action" Tag="Action"/>
+                                    <ComboBoxItem Content="Combo Keys" Tag="Keys"/>
+                                    <ComboBoxItem Content="Text" Tag="Text"/>
+                                    <ComboBoxItem Content="Run App / File" Tag="Run"/>
+                                    <ComboBoxItem Content="Delay" Tag="Delay"/>
+                                    <ComboBoxItem Content="Media" Tag="Media"/>
+                                    <ComboBoxItem Content="Mouse Left Click" Tag="MouseClick:LEFT"/>
+                                    <ComboBoxItem Content="Mouse Right Click" Tag="MouseClick:RIGHT"/>
+                                    <ComboBoxItem Content="Mouse Middle Click" Tag="MouseClick:MIDDLE"/>
+                                    <ComboBoxItem Content="Mouse Wheel" Tag="MouseWheel"/>
+                                    <ComboBoxItem Content="Mouse Move" Tag="MouseMove"/>
+                                </ComboBox>
+
+                                <TextBlock x:Name="PixelMacroStepHintText"
+                                           Text="Choose a step type."
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,6"/>
+                                <TextBox x:Name="PixelMacroStepValueTextBox"
+                                         Margin="0,0,0,10"/>
+
+                                <Button Content="Add Step"
+                                        Click="PixelMacroAddStep_Click"
+                                        Margin="0,0,0,14"/>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,0,0,14"/>
+
+                                <TextBlock Text="QUICK"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button Content="Ctrl+C" Tag="Keys|Ctrl+C"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                    <Button Content="Ctrl+V" Tag="Keys|Ctrl+V"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                    <Button Content="Left Click" Tag="MouseClick|LEFT"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                    <Button Content="Right Click" Tag="MouseClick|RIGHT"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                    <Button Content="Wheel +" Tag="MouseWheel|1"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                    <Button Content="Wheel -" Tag="MouseWheel|-1"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                    <Button Content="100 ms" Tag="Delay|100"
+                                            Click="PixelMacroQuickStep_Click"/>
+                                </WrapPanel>
+
+                                <TextBlock x:Name="PixelMacroStatusText"
+                                           Text="Macros run through LumiPad on Windows."
+                                           Foreground="{DynamicResource Muted}"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,14,0,0"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
                 </Grid>
             </TabItem>
 
@@ -1762,7 +1938,8 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="48"/>
                                         <ColumnDefinition/>
-                                        <ColumnDefinition Width="190"/>
+                                        <ColumnDefinition Width="170"/>
+                                        <ColumnDefinition Width="92"/>
                                     </Grid.ColumnDefinitions>
 
                                     <Border Width="40"
@@ -1795,12 +1972,24 @@
                                               Grid.Column="2"
                                               SelectedValuePath="Tag"
                                               VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
                                               SelectionChanged="AutoProfileDefaultCombo_SelectionChanged">
                                         <ComboBoxItem Content="OFFICE" Tag="0" IsSelected="True"/>
                                         <ComboBoxItem Content="MEDIA" Tag="1"/>
                                         <ComboBoxItem Content="FUSION 360" Tag="2"/>
                                         <ComboBoxItem Content="CUSTOM 4" Tag="3"/>
                                         <ComboBoxItem Content="CUSTOM 5" Tag="4"/>
+                                    </ComboBox>
+                                    <ComboBox x:Name="AutoProfileDefaultLayerCombo"
+                                              Grid.Column="3"
+                                              SelectedValuePath="Tag"
+                                              VerticalAlignment="Center"
+                                              Visibility="Collapsed"
+                                              SelectionChanged="AutoProfileDefaultLayerCombo_SelectionChanged">
+                                        <ComboBoxItem Content="L0" Tag="0" IsSelected="True"/>
+                                        <ComboBoxItem Content="L1" Tag="1"/>
+                                        <ComboBoxItem Content="L2" Tag="2"/>
+                                        <ComboBoxItem Content="L3" Tag="3"/>
                                     </ComboBox>
                                 </Grid>
                             </Border>
