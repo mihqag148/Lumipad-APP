@@ -146,7 +146,11 @@ public sealed class QmkRawHidLink : IDeviceLink
                 stream.WriteTimeout = 900;
 
                 string? hello =
-                    await QueryLineAsync("HELLO", 900, cancellationToken);
+                    await QueryLineAsync(
+                        "HELLO",
+                        1200,
+                        cancellationToken,
+                        disconnectOnIoFailure: false);
 
                 if (hello is null)
                 {
@@ -418,7 +422,8 @@ public sealed class QmkRawHidLink : IDeviceLink
     private async Task<string?> QueryLineAsync(
         string line,
         int timeoutMs = 800,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool disconnectOnIoFailure = true)
     {
         await _ioGate.WaitAsync(cancellationToken);
         try
@@ -437,7 +442,16 @@ public sealed class QmkRawHidLink : IDeviceLink
         }
         catch (Exception ex)
         {
-            HandleIoFailure("QMK query", ex);
+            if (disconnectOnIoFailure)
+            {
+                HandleIoFailure("QMK query", ex);
+            }
+            else
+            {
+                Log(
+                    "WARN",
+                    $"QMK probe I/O failed but the HID handle is being preserved for VIA fallback: {ex.Message}");
+            }
             return null;
         }
         finally
