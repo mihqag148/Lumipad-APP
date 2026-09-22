@@ -141,7 +141,7 @@ public partial class MainWindow : Window
         PixelProMainMenuStore.Load();
     private int _pixelMenuPageIndex;
     private bool _syncingPixelMenuUi;
-    private readonly List<ComboBox> _pixelMenuActionCombos = [];
+    private readonly List<System.Windows.Controls.ComboBox> _pixelMenuActionCombos = [];
     private readonly List<System.Windows.Controls.Image> _pixelMenuEditorIcons = [];
     private readonly List<System.Windows.Controls.Image> _pixelMenuPreviewIcons = [];
     private readonly List<TextBlock> _pixelMenuPreviewLabels = [];
