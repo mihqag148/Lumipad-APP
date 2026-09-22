@@ -240,31 +240,13 @@ public partial class MainWindow
                     Margin = new Thickness(2, 0, 2, 0)
                 };
 
+            // Keep the icon centered at one consistent scale. The action name
+            // is a fallback only when the slot has no custom icon.
             var previewGrid =
                 new Grid
                 {
                     Margin = new Thickness(2, 1, 2, 1)
                 };
-
-            previewGrid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = new GridLength(1, GridUnitType.Star)
-                });
-
-            previewGrid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = new GridLength(18)
-                });
-
-            Grid.SetRow(
-                previewIcon,
-                0);
-
-            Grid.SetRow(
-                previewLabel,
-                1);
 
             previewGrid.Children.Add(previewIcon);
             previewGrid.Children.Add(previewLabel);
@@ -478,6 +460,7 @@ public partial class MainWindow
                         : Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Visibility =
+                    !hasIcon &&
                     actionId > 0
                         ? Visibility.Visible
                         : Visibility.Collapsed;
@@ -501,58 +484,39 @@ public partial class MainWindow
 
     private void RefreshPixelMenuStatusPreview()
     {
-        if (PixelMenuPreviewProfileStatus is null ||
-            PixelMenuPreviewTimeStatus is null ||
-            PixelMenuPreviewCpuStatus is null ||
-            PixelMenuPreviewGpuStatus is null)
+        if (PixelMenuHostOsBadge is null ||
+            PixelMenuDockGlyph1 is null ||
+            PixelMenuDockGlyph2 is null ||
+            PixelMenuDockGlyph3 is null ||
+            PixelMenuDockGlyph4 is null)
         {
             return;
         }
 
-        int profileIndex =
-            PixelMenuProfileIndex;
-
-        PixelMenuPreviewProfileStatus.Text =
-            $"Profile {profileIndex + 1:00}/{PixelProMainMenuStore.ProfileCount:00}";
-
-        DateTime now =
-            DateTime.Now;
-
-        PixelMenuPreviewTimeStatus.Text =
-            $"{now:MM-dd  HH:mm}";
-
-        PcMonitorSnapshot? snapshot =
-            _lastPcMonitorSnapshot;
-
-        if (snapshot is null)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            PixelMenuPreviewCpuStatus.Text =
-                "CPU --%  --C";
-            PixelMenuPreviewGpuStatus.Text =
-                "GPU --%  --C";
-            return;
+            PixelMenuHostOsBadge.Text = "MAC";
+            PixelMenuDockGlyph1.Text = "◇";
+            PixelMenuDockGlyph2.Text = "◉";
+            PixelMenuDockGlyph3.Text = ">_";
+            PixelMenuDockGlyph4.Text = "⚙";
         }
-
-        string cpuTemp =
-            snapshot.CpuTemperature.HasValue
-                ? $"{Math.Round(snapshot.CpuTemperature.Value):0}C"
-                : "--C";
-
-        string gpuLoad =
-            snapshot.GpuLoad.HasValue
-                ? $"{Math.Round(snapshot.GpuLoad.Value):0}%"
-                : "--%";
-
-        string gpuTemp =
-            snapshot.GpuTemperature.HasValue
-                ? $"{Math.Round(snapshot.GpuTemperature.Value):0}C"
-                : "--C";
-
-        PixelMenuPreviewCpuStatus.Text =
-            $"CPU {Math.Round(snapshot.CpuLoad):0}%  {cpuTemp}";
-
-        PixelMenuPreviewGpuStatus.Text =
-            $"GPU {gpuLoad}  {gpuTemp}";
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            PixelMenuHostOsBadge.Text = "LNX";
+            PixelMenuDockGlyph1.Text = "▰";
+            PixelMenuDockGlyph2.Text = "◉";
+            PixelMenuDockGlyph3.Text = ">_";
+            PixelMenuDockGlyph4.Text = "⚙";
+        }
+        else
+        {
+            PixelMenuHostOsBadge.Text = "WIN";
+            PixelMenuDockGlyph1.Text = "▰";
+            PixelMenuDockGlyph2.Text = "◉";
+            PixelMenuDockGlyph3.Text = ">_";
+            PixelMenuDockGlyph4.Text = "⚙";
+        }
     }
 
     private static ImageSource? LoadImageSource(
@@ -603,25 +567,8 @@ public partial class MainWindow
     }
 
     private static ImageSource? LoadPixelMenuIconPreview(
-        string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) ||
-            !IO.File.Exists(path))
-        {
-            return null;
-        }
-
-        try
-        {
-            return LoadImageSource(
-                PixelProMainMenuMediaService
-                    .CreateIconJpeg(path));
-        }
-        catch
-        {
-            return LoadLocalImageSource(path);
-        }
-    }
+        string? path) =>
+        LoadLocalImageSource(path);
 
     private static ImageSource? LoadPixelMenuBackgroundPreview(
         PixelProMainMenuProfile profile)
@@ -1417,7 +1364,7 @@ public partial class MainWindow
                             await Task.Run(
                                 () =>
                                     PixelProMainMenuMediaService
-                                        .CreateIconJpeg(
+                                        .CreateIconAsset(
                                             iconPath));
 
                         iconCache[iconPath] =

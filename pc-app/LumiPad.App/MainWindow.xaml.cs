@@ -763,6 +763,24 @@ public partial class MainWindow : Window
     private static ImageSource LoadProductHubImage(
         string resourcePath)
     {
+        Uri resourceUri =
+            new(
+                resourcePath,
+                UriKind.Relative);
+
+        var streamInfo =
+            System.Windows.Application.GetResourceStream(
+                resourceUri);
+
+        if (streamInfo is null)
+        {
+            throw new InvalidOperationException(
+                $"Embedded product image was not found: {resourcePath}");
+        }
+
+        using IO.Stream resourceStream =
+            streamInfo.Stream;
+
         var bitmap =
             new BitmapImage();
 
@@ -771,10 +789,8 @@ public partial class MainWindow : Window
             BitmapCacheOption.OnLoad;
         bitmap.CreateOptions =
             BitmapCreateOptions.PreservePixelFormat;
-        bitmap.UriSource =
-            new Uri(
-                $"pack://application:,,,/{resourcePath}",
-                UriKind.Absolute);
+        bitmap.StreamSource =
+            resourceStream;
         bitmap.EndInit();
         bitmap.Freeze();
 

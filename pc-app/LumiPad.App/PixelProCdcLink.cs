@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Ports;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace LumiPad.App;
@@ -33,6 +34,13 @@ public sealed class PixelProCdcLink : IDeviceLink
     public bool IsConnected => _port?.IsOpen == true;
     public bool IsUsbConnected => IsConnected;
     public bool IsBluetoothConnected => false;
+
+    private static string HostOsToken =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+            ? "MAC"
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? "LINUX"
+                : "WIN";
     public string ConnectionName => _connectionName;
 
     public event Action<string>? LinkError;
@@ -213,6 +221,12 @@ public sealed class PixelProCdcLink : IDeviceLink
                         $"hello=\"{FirmwareHello}\"; pnp=\"{info?.PnpDeviceId ?? "unknown"}\"");
 
                     StartReader();
+
+                    // Tell PIXEL PRO which host family is connected so the
+                    // bottom app dock can match Windows, macOS, or Linux.
+                    SendCommand(
+                        $"HOSTOS|{HostOsToken}");
+
                     return _connectionName;
                 }
                 catch (OperationCanceledException)
