@@ -156,14 +156,14 @@ internal static class PixelProPackedAnimationEncoder
                             candidate,
                             scaleMode,
                             new FileInfo(path).Length,
-                            fps < 15);
+                            false);
                     }
                 }
             }
         }
 
         throw new InvalidOperationException(
-            "PIXEL PRO could not keep this GIF within 2 MiB while preserving at least 360×240 and RGB565. Shorten or simplify the GIF.");
+            "PIXEL PRO could not keep this GIF within 2 MiB while preserving at least RGB565, 15 FPS, and 360×240. Shorten or simplify the GIF.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -205,7 +205,7 @@ internal static class PixelProPackedAnimationEncoder
 
         // FPS outranks resolution: for each FPS level, try native 480×320
         // first and then 360×240. Never go below 360×240.
-        foreach (int fps in new[] { 60, 50, 40, 30, 25, 20, 15, 12, 10, 8, 6, 5 })
+        foreach (int fps in new[] { 60, 50, 40, 30, 25, 20, 15 })
         {
             Add(480, 320, fps);
             Add(360, 240, fps);
