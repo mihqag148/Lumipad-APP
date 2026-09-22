@@ -1211,6 +1211,90 @@ public partial class MainWindow : Window
     {
         bool pixel = IsPixelProActive;
 
+        if (PixelMainMenuTab is not null)
+            PixelMainMenuTab.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        // PIXEL PRO Home uses a compact media card beside a dedicated
+        // 480×320 display preview. Screensaver controls move to the full-width
+        // row below. RYNOR ONE keeps the original two-column Home layout.
+        if (HomeDashboardGrid is not null &&
+            HomeDashboardGrid.RowDefinitions.Count >= 3)
+        {
+            HomeDashboardGrid.RowDefinitions[0].Height =
+                pixel
+                    ? new GridLength(300)
+                    : new GridLength(1, GridUnitType.Star);
+
+            HomeDashboardGrid.RowDefinitions[2].Height =
+                pixel
+                    ? new GridLength(1, GridUnitType.Star)
+                    : GridLength.Auto;
+        }
+
+        if (HomeMediaCard is not null)
+        {
+            HomeMediaCard.Padding =
+                pixel
+                    ? new Thickness(16)
+                    : new Thickness(24);
+
+            HomeMediaCard.Height =
+                pixel
+                    ? 300
+                    : double.NaN;
+        }
+
+        if (AlbumArtBorder is not null)
+        {
+            AlbumArtBorder.Width =
+                pixel ? 96 : 138;
+            AlbumArtBorder.Height =
+                pixel ? 96 : 138;
+        }
+
+        if (TitleText is not null)
+            TitleText.FontSize =
+                pixel ? 18 : 23;
+
+        if (ArtistText is not null)
+        {
+            ArtistText.FontSize =
+                pixel ? 12 : 14;
+            ArtistText.Margin =
+                pixel
+                    ? new Thickness(0, 3, 0, 8)
+                    : new Thickness(0, 5, 0, 17);
+        }
+
+        if (PixelHomePreviewCard is not null)
+            PixelHomePreviewCard.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (HomeScreensaverCard is not null)
+        {
+            Grid.SetRow(
+                HomeScreensaverCard,
+                pixel ? 2 : 0);
+
+            Grid.SetColumn(
+                HomeScreensaverCard,
+                pixel ? 0 : 2);
+
+            Grid.SetColumnSpan(
+                HomeScreensaverCard,
+                pixel ? 3 : 1);
+
+            HomeScreensaverCard.Padding =
+                pixel
+                    ? new Thickness(18)
+                    : new Thickness(22);
+        }
+
         if (ScreensaverPreviewBorder is not null)
         {
             ScreensaverPreviewBorder.Width =
@@ -1218,6 +1302,11 @@ public partial class MainWindow : Window
 
             ScreensaverPreviewBorder.Height =
                 pixel ? 320 : 193.5;
+
+            ScreensaverPreviewBorder.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
         }
 
         if (ScreensaverPreviewSurface is not null)
