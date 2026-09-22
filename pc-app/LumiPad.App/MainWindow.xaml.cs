@@ -133,6 +133,8 @@ public partial class MainWindow : Window
     private string? _screensaverMediaPath;
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
     private readonly Stopwatch _screensaverPreviewClock = new();
+    private readonly DispatcherTimer _pixelRgbPreviewTimer = new();
+    private readonly Stopwatch _pixelRgbPreviewClock = new();
     private readonly DispatcherTimer _memoryUsageTimer = new();
     private readonly DispatcherTimer _diagnosticTimer = new();
     private readonly DispatcherTimer _autoProfileTimer = new();
@@ -400,6 +402,15 @@ public partial class MainWindow : Window
                     _screensaverAnimation.Height);
         };
 
+        // PIXEL RGB preview is purely local UI animation. It samples the
+        // same effect math as firmware at ~30 FPS and never sends CDC traffic
+        // on preview ticks.
+        _pixelRgbPreviewTimer.Interval =
+            TimeSpan.FromMilliseconds(33);
+
+        _pixelRgbPreviewTimer.Tick += (_, _) =>
+            RenderPixelRgbPreview();
+
         _memoryUsageTimer.Interval = TimeSpan.FromSeconds(5);
         _memoryUsageTimer.Tick += async (_, _) =>
             await UpdateMemoryUsageAsync();
@@ -461,6 +472,8 @@ public partial class MainWindow : Window
             BuildProductCards();
             UpdateDeviceConfiguratorUi();
             _uiReady = true;
+            _pixelRgbPreviewClock.Restart();
+            _pixelRgbPreviewTimer.Start();
             UpdateSettingsInfo();
             UpdateProductHubUi();
             AddLog("INFO", "APP", "Lumi Macropad started");
@@ -2183,6 +2196,8 @@ public partial class MainWindow : Window
 
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Stop();
+        _pixelRgbPreviewTimer.Stop();
+        _pixelRgbPreviewClock.Stop();
         _autoProfileTimer.Stop();
         _runningAppsTimer.Stop();
         _actionEventTimer.Stop();
