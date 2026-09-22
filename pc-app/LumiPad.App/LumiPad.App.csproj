@@ -5,7 +5,7 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- LumiPad v1.22.0 · PIXEL profile Main Menu + app icons -->
+  <!-- LumiPad v1.23.0 · PIXEL 8-key HQ Main Menu -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -20,9 +20,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.22.0</Version>
-    <AssemblyVersion>1.22.0.0</AssemblyVersion>
-    <FileVersion>1.22.0.0</FileVersion>
+    <Version>1.23.0</Version>
+    <AssemblyVersion>1.23.0.0</AssemblyVersion>
+    <FileVersion>1.23.0.0</FileVersion>
 </PropertyGroup><ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
