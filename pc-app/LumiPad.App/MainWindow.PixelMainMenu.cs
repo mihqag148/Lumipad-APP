@@ -171,7 +171,7 @@ public partial class MainWindow
                     BorderThickness = new Thickness(1),
                     Background =
                         new SolidColorBrush(
-                            MediaSystem.Windows.Media.Color.FromArgb(
+                            System.Windows.Media.Color.FromArgb(
                                 35,
                                 0,
                                 0,
