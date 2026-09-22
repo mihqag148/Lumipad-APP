@@ -55,10 +55,13 @@ internal static class PixelProPackedAnimationEncoder
     private static readonly int[] SmartDeltaLevels =
     [
         0,
-        1,
         2,
         3,
     ];
+
+    private sealed record PaletteEncoding(
+        Drawing.Color[] Colors,
+        byte[] Lookup);
 
     private readonly record struct PlannedFrame(
         int SourceIndex,
@@ -116,48 +119,75 @@ internal static class PixelProPackedAnimationEncoder
             maxDurationSeconds *
             1000;
 
-        PixelProPackedColorMode[] colorModes =
-        [
-            PixelProPackedColorMode.Rgb888,
-            PixelProPackedColorMode.Rgb565,
-            PixelProPackedColorMode.Palette256,
-        ];
+        var paletteCache =
+            new Dictionary<
+                (int Width, int Height, int Colors),
+                PaletteEncoding>();
+
+        // One fast high-color probe preserves RGB565 for very simple GIFs.
+        // If it does not fit, Palette256 is the most efficient format that
+        // still meets the requested quality floor, so do not waste CPU trying
+        // larger RGB888/RGB565 payloads at every ladder step.
+        Candidate highColor =
+            EncodeCandidate(
+                image,
+                dimension,
+                sourceDelays,
+                sourceFrameCount,
+                480,
+                320,
+                60,
+                maxDurationMs,
+                PixelProPackedColorMode.Rgb565,
+                scaleMode,
+                0,
+                paletteCache,
+                HardTargetBytes);
+
+        if (!highColor.ExceededLimit &&
+            highColor.Bytes is not null &&
+            highColor.Bytes.Length <= HardTargetBytes)
+        {
+            return ToResult(
+                highColor,
+                scaleMode,
+                new FileInfo(path).Length,
+                false);
+        }
 
         foreach ((int width, int height, int fps) in BuildQualityLadder())
         {
-            // Try exact delta first, then progressively suppress only tiny
-            // temporal changes. This keeps resolution/FPS/color quality high
-            // before the ladder has to fall back to a lower motion rate.
+            // Try exact delta first, then two perceptual levels. Palette and
+            // its expensive 32K lookup table are cached per resolution and
+            // reused across FPS/Smart Delta attempts.
             foreach (int smartDeltaLevel in SmartDeltaLevels)
             {
-                foreach (PixelProPackedColorMode mode in colorModes)
-                {
-                    Candidate candidate =
-                        EncodeCandidate(
-                            image,
-                            dimension,
-                            sourceDelays,
-                            sourceFrameCount,
-                            width,
-                            height,
-                            fps,
-                            maxDurationMs,
-                            mode,
-                            scaleMode,
-                            smartDeltaLevel,
-                            HardTargetBytes);
+                Candidate candidate =
+                    EncodeCandidate(
+                        image,
+                        dimension,
+                        sourceDelays,
+                        sourceFrameCount,
+                        width,
+                        height,
+                        fps,
+                        maxDurationMs,
+                        PixelProPackedColorMode.Palette256,
+                        scaleMode,
+                        smartDeltaLevel,
+                        paletteCache,
+                        HardTargetBytes);
 
-                    if (!candidate.ExceededLimit &&
-                        candidate.Bytes is not null &&
-                        candidate.Bytes.Length <=
-                            HardTargetBytes)
-                    {
-                        return ToResult(
-                            candidate,
-                            scaleMode,
-                            new FileInfo(path).Length,
-                            fps < 15);
-                    }
+                if (!candidate.ExceededLimit &&
+                    candidate.Bytes is not null &&
+                    candidate.Bytes.Length <=
+                        HardTargetBytes)
+                {
+                    return ToResult(
+                        candidate,
+                        scaleMode,
+                        new FileInfo(path).Length,
+                        fps < 15);
                 }
             }
         }
@@ -240,6 +270,9 @@ internal static class PixelProPackedAnimationEncoder
         PixelProPackedColorMode colorMode,
         ScreensaverScaleMode scaleMode,
         int smartDeltaLevel,
+        IDictionary<
+            (int Width, int Height, int Colors),
+            PaletteEncoding> paletteCache,
         int abortAfterBytes)
     {
         List<PlannedFrame> plan =
@@ -255,22 +288,52 @@ internal static class PixelProPackedAnimationEncoder
                     frame.DelayMs);
 
         Drawing.Color[] palette =
-            IsPaletteMode(colorMode)
-                ? BuildAdaptivePalette(
-                    image,
-                    dimension,
-                    plan,
-                    storageWidth,
-                    storageHeight,
-                    scaleMode,
-                    PaletteCount(colorMode))
-                : Array.Empty<Drawing.Color>();
+            Array.Empty<Drawing.Color>();
 
         byte[]? lookup =
-            IsPaletteMode(colorMode)
-                ? BuildPaletteLookup(
-                    palette)
-                : null;
+            null;
+
+        if (IsPaletteMode(colorMode))
+        {
+            int paletteCount =
+                PaletteCount(colorMode);
+
+            var cacheKey =
+                (
+                    Width: storageWidth,
+                    Height: storageHeight,
+                    Colors: paletteCount);
+
+            if (!paletteCache.TryGetValue(
+                    cacheKey,
+                    out PaletteEncoding? cached))
+            {
+                Drawing.Color[] colors =
+                    BuildAdaptivePalette(
+                        image,
+                        dimension,
+                        plan,
+                        storageWidth,
+                        storageHeight,
+                        scaleMode,
+                        paletteCount);
+
+                cached =
+                    new PaletteEncoding(
+                        colors,
+                        BuildPaletteLookup(
+                            colors));
+
+                paletteCache[cacheKey] =
+                    cached;
+            }
+
+            palette =
+                cached.Colors;
+
+            lookup =
+                cached.Lookup;
+        }
 
         using var output =
             new MemoryStream(
@@ -331,13 +394,22 @@ internal static class PixelProPackedAnimationEncoder
             output.WriteByte(color.B);
         }
 
+        int pixelCount =
+            storageWidth *
+            storageHeight;
+
         uint[] previous =
             Enumerable
                 .Repeat(
                     uint.MaxValue,
-                    storageWidth *
-                    storageHeight)
+                    pixelCount)
                 .ToArray();
+
+        var current =
+            new uint[pixelCount];
+
+        using var frameData =
+            new MemoryStream();
 
         foreach (PlannedFrame planned in plan)
         {
@@ -354,11 +426,11 @@ internal static class PixelProPackedAnimationEncoder
                     storageWidth,
                     storageHeight);
 
-            uint[] current =
-                ToCodes(
-                    stored,
-                    colorMode,
-                    lookup);
+            FillCodes(
+                stored,
+                colorMode,
+                lookup,
+                current);
 
             ApplySmartDeltaFilter(
                 current,
@@ -369,8 +441,8 @@ internal static class PixelProPackedAnimationEncoder
                 palette,
                 smartDeltaLevel);
 
-            using var frameData =
-                new MemoryStream();
+            frameData.SetLength(0);
+            frameData.Position = 0;
 
             int spanCount =
                 EncodeDeltaSpans(
@@ -395,8 +467,8 @@ internal static class PixelProPackedAnimationEncoder
             frameData.Position = 0;
             frameData.CopyTo(output);
 
-            previous =
-                current;
+            (previous, current) =
+                (current, previous);
 
             if (output.Length >
                 abortAfterBytes)
@@ -976,10 +1048,11 @@ internal static class PixelProPackedAnimationEncoder
         }
     }
 
-    private static uint[] ToCodes(
+    private static void FillCodes(
         Drawing.Bitmap bitmap,
         PixelProPackedColorMode mode,
-        byte[]? paletteLookup)
+        byte[]? paletteLookup,
+        uint[] result)
     {
         int width =
             bitmap.Width;
@@ -987,10 +1060,13 @@ internal static class PixelProPackedAnimationEncoder
         int height =
             bitmap.Height;
 
-        var result =
-            new uint[
-                width *
-                height];
+        if (result.Length <
+            width * height)
+        {
+            throw new ArgumentException(
+                "PIXEL code buffer is too small.",
+                nameof(result));
+        }
 
         Drawing.Rectangle rect =
             new(
@@ -1084,8 +1160,6 @@ internal static class PixelProPackedAnimationEncoder
             bitmap.UnlockBits(
                 data);
         }
-
-        return result;
     }
 
     private static Drawing.Color[] BuildAdaptivePalette(
@@ -1361,26 +1435,77 @@ internal static class PixelProPackedAnimationEncoder
                     Math.Max(1, sampleFrames) /
                     180000.0));
 
-        for (int y = 0;
-             y < height;
-             y += step)
+        Drawing.Rectangle rect =
+            new(
+                0,
+                0,
+                width,
+                height);
+
+        BitmapData data =
+            bitmap.LockBits(
+                rect,
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb);
+
+        try
         {
-            for (int x = 0;
-                 x < width;
-                 x += step)
+            int stride =
+                data.Stride;
+
+            int rowBytes =
+                Math.Abs(
+                    stride);
+
+            var row =
+                new byte[rowBytes];
+
+            for (int y = 0;
+                 y < height;
+                 y += step)
             {
-                Drawing.Color color =
-                    bitmap.GetPixel(
-                        x,
-                        y);
+                IntPtr rowPtr =
+                    IntPtr.Add(
+                        data.Scan0,
+                        y *
+                        stride);
 
-                int bin =
-                    ((color.R >> 3) << 10) |
-                    ((color.G >> 3) << 5) |
-                    (color.B >> 3);
+                Marshal.Copy(
+                    rowPtr,
+                    row,
+                    0,
+                    rowBytes);
 
-                histogram[bin]++;
+                for (int x = 0;
+                     x < width;
+                     x += step)
+                {
+                    int p =
+                        x *
+                        3;
+
+                    byte b =
+                        row[p];
+
+                    byte g =
+                        row[p + 1];
+
+                    byte r =
+                        row[p + 2];
+
+                    int bin =
+                        ((r >> 3) << 10) |
+                        ((g >> 3) << 5) |
+                        (b >> 3);
+
+                    histogram[bin]++;
+                }
             }
+        }
+        finally
+        {
+            bitmap.UnlockBits(
+                data);
         }
     }
 
