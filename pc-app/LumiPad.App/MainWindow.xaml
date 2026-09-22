@@ -395,9 +395,6 @@
                                               Visibility="Collapsed">
                                             <Image x:Name="PixelMenuBackgroundPreview"
                                                    Stretch="UniformToFill"/>
-                                            <Border x:Name="PixelMenuBrightnessOverlay"
-                                                    Background="Black"
-                                                    Opacity="0.30"/>
                                             <UniformGrid x:Name="PixelMenuPreviewSlots"
                                                          Rows="3"
                                                          Columns="4"
@@ -676,83 +673,72 @@
                                                Foreground="{DynamicResource Muted}"/>
                                 </Grid>
 
-                                <Grid Margin="0,0,0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="10"/>
-                                        <ColumnDefinition/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="Menu"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   Margin="0,0,0,4"/>
-                                        <ComboBox x:Name="PixelMenuPageCombo"
-                                                  SelectedValuePath="Tag"
-                                                  SelectionChanged="PixelMenuPageCombo_SelectionChanged">
-                                            <ComboBoxItem Content="Menu 1" Tag="0" IsSelected="True"/>
-                                            <ComboBoxItem Content="Menu 2" Tag="1"/>
-                                            <ComboBoxItem Content="Menu 3" Tag="2"/>
-                                            <ComboBoxItem Content="Menu 4" Tag="3"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Layer"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   Margin="0,0,0,4"/>
-                                        <ComboBox x:Name="PixelMenuLayerCombo"
-                                                  SelectedValuePath="Tag"
-                                                  SelectionChanged="PixelMenuLayerCombo_SelectionChanged">
-                                            <ComboBoxItem Content="Layer 0" Tag="0" IsSelected="True"/>
-                                            <ComboBoxItem Content="Layer 1" Tag="1"/>
-                                            <ComboBoxItem Content="Layer 2" Tag="2"/>
-                                            <ComboBoxItem Content="Layer 3" Tag="3"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                </Grid>
+                                <StackPanel Margin="0,0,0,9">
+                                    <TextBlock Text="Keymap profile"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,4"/>
+                                    <ComboBox x:Name="PixelMenuProfileCombo"
+                                              SelectedValuePath="Tag"
+                                              SelectionChanged="PixelMenuProfileCombo_SelectionChanged"/>
+                                </StackPanel>
 
-                                <StackPanel Orientation="Horizontal"
-                                            Margin="0,0,0,8">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="96"/>
+                                    </Grid.ColumnDefinitions>
                                     <Button Content="Background"
                                             Click="PixelMenuChooseBackground_Click"/>
-                                    <Button Content="Clear"
+                                    <Button Grid.Column="1"
+                                            Content="Clear"
                                             Click="PixelMenuClearBackground_Click"/>
                                     <TextBlock x:Name="PixelMenuBackgroundName"
+                                               Grid.Column="2"
                                                Text="No background"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
-                                               MaxWidth="200"
                                                Foreground="{DynamicResource Muted}"
-                                               Margin="7,0,0,0"/>
-                                </StackPanel>
+                                               Margin="7,0,7,0"/>
+                                    <ComboBox x:Name="PixelMenuScaleCombo"
+                                              Grid.Column="3"
+                                              SelectedValuePath="Tag"
+                                              SelectionChanged="PixelMenuScaleCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
+                                        <ComboBoxItem Content="Fit" Tag="Fit"/>
+                                        <ComboBoxItem Content="Stretch" Tag="Stretch"/>
+                                    </ComboBox>
+                                </Grid>
 
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="78"/>
+                                        <ColumnDefinition Width="58"/>
                                         <ColumnDefinition/>
-                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition Width="44"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Brightness"
+                                    <TextBlock Text="Blur"
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource Muted}"/>
-                                    <Slider x:Name="PixelMenuBrightnessSlider"
+                                    <Slider x:Name="PixelMenuBlurSlider"
                                             Grid.Column="1"
-                                            Minimum="20"
+                                            Minimum="0"
                                             Maximum="100"
-                                            Value="70"
+                                            Value="0"
                                             IsMoveToPointEnabled="True"
-                                            ValueChanged="PixelMenuBrightnessSlider_ValueChanged"/>
-                                    <TextBlock x:Name="PixelMenuBrightnessText"
+                                            ValueChanged="PixelMenuBlurSlider_ValueChanged"/>
+                                    <TextBlock x:Name="PixelMenuBlurText"
                                                Grid.Column="2"
-                                               Text="70%"
+                                               Text="0%"
                                                TextAlignment="Right"
                                                VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <Grid Margin="0,0,0,10">
+                                <Grid Margin="0,0,0,9">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="78"/>
+                                        <ColumnDefinition Width="58"/>
                                         <ColumnDefinition/>
-                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition Width="44"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Opacity"
                                                VerticalAlignment="Center"
