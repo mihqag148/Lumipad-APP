@@ -669,7 +669,7 @@
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock x:Name="PixelMenuPreviewLayerText"
+                                    <TextBlock x:Name="PixelMenuEditorLayerText"
                                                Text="Menu 1 · Layer 0"
                                                HorizontalAlignment="Right"
                                                FontSize="11"
