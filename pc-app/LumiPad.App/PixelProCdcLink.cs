@@ -1117,7 +1117,7 @@ public sealed class PixelProCdcLink : IDeviceLink
             PixelProPackedAnimationEncoder.HardTargetBytes)
         {
             LastScreensaverError =
-                "PIXEL packed animation must stay at or below 1100 KiB.";
+                "PIXEL packed animation must stay at or below 2 MiB.";
 
             return false;
         }
