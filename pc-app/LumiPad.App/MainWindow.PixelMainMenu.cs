@@ -37,10 +37,6 @@ public partial class MainWindow
         uint nIcons,
         uint flags);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
-
     private void SetPixelHomePreviewMode(bool mainMenu)
     {
         if (!IsPixelProActive)
