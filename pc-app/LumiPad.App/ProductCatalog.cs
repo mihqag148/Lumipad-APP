@@ -22,12 +22,12 @@ public sealed record ProductDefinition(
 
 public static class ProductCatalog
 {
-    public static ProductDefinition DialDesk { get; } =
+    public static ProductDefinition RynorOne { get; } =
         new(
-            "dial-desk",
+            "rynor-one",
             "RYNOR ONE",
-            "Wireless macro control desk",
-            "DD-01",
+            "12-key wireless macro controller",
+            "RY-01",
             true,
             DeviceDriverKind.RynorSerial);
 
@@ -48,7 +48,7 @@ public static class ProductCatalog
 
     public static IReadOnlyList<ProductDefinition> All { get; } =
     [
-        DialDesk,
+        RynorOne,
         PixelPro
     ];
 }
