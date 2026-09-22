@@ -443,12 +443,12 @@
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Accent}"/>
-                                        <TextBlock Text="Quality budget 800–1100 KiB · Delta frames + RLE · high-quality floor preserved"
+                                        <TextBlock Text="Quality cap 2 MiB · priority: color depth → FPS → resolution · Delta + RLE"
                                                    FontSize="10"
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,3,0,7"/>
-                                        <TextBlock Text="480×320 → 360×240 minimum · FPS 60 → 30 → 20 → 15 (lower only if needed) · RGB888 → RGB565 minimum"
+                                        <TextBlock Text="RGB888 → RGB565 minimum · FPS 60 → 50 → 40 → 30 → 25 → 20 → 15… · 480×320 → 360×240 minimum"
                                                    FontSize="10"
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"
