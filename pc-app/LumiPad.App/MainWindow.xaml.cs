@@ -4456,7 +4456,7 @@ public partial class MainWindow : Window
                         "PIXEL PRO CDC changed to ROM BOOT while the old COM " +
                         $"operation was being canceled; continuing. {ex.Message}");
                 }
-                catch (IOException ex)
+                catch (IO.IOException ex)
                 {
                     automaticBootStarted = true;
 
