@@ -52,7 +52,7 @@ public static class PixelProScreensaverMediaService
     public const int MaxPreviewFrames = 24;
     public const int TargetGifBytes =
         PixelProPackedAnimationEncoder.HardTargetBytes;
-    public const int DefaultGifDurationSeconds = 15;
+    public const int DefaultGifDurationSeconds = 10;
     public const int DefaultGifMaxFps = 60;
     public const int DefaultImageJpegQuality = 100;
 
@@ -100,10 +100,16 @@ public static class PixelProScreensaverMediaService
 
     public static ScreensaverScaleMode NormalizePixelScale(
         ScreensaverScaleMode scaleMode) =>
-        scaleMode ==
-            ScreensaverScaleMode.Fill
-            ? ScreensaverScaleMode.Fill
-            : ScreensaverScaleMode.Center;
+        scaleMode switch
+        {
+            ScreensaverScaleMode.Fill => ScreensaverScaleMode.Fill,
+            ScreensaverScaleMode.Fit => ScreensaverScaleMode.Fit,
+            ScreensaverScaleMode.Stretch => ScreensaverScaleMode.Stretch,
+            ScreensaverScaleMode.Tile => ScreensaverScaleMode.Tile,
+            ScreensaverScaleMode.Center => ScreensaverScaleMode.Center,
+            ScreensaverScaleMode.Span => ScreensaverScaleMode.Span,
+            _ => ScreensaverScaleMode.Fill,
+        };
 
     private static ScreensaverAnimation LoadStaticImage(
         string path,
