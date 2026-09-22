@@ -13,12 +13,16 @@ public static class PixelProMainMenuMediaService
     public const int BackgroundHeight = 320;
     public const int BackgroundMaxBytes = 96 * 1024;
 
-    // eezBotFun-style 8-key layout uses substantially larger icons than the
-    // previous 40x40 raw tiles. JPEG keeps flash use reasonable while letting
-    // PIXEL PRO draw a native 96x96 icon without firmware upscaling blur.
     public const int IconWidth = 96;
     public const int IconHeight = 96;
-    public const int IconMaxBytes = 24 * 1024;
+    public const int IconHeaderBytes = 8;
+    public const int IconPixelBytes = IconWidth * IconHeight * 2;
+    public const int IconMaskBytes = (IconWidth * IconHeight + 7) / 8;
+    public const int IconBytes =
+        IconHeaderBytes +
+        IconPixelBytes +
+        IconMaskBytes;
+    public const int IconMaxBytes = IconBytes;
 
     public static byte[] CreateBackgroundJpeg(
         string path,
@@ -152,39 +156,116 @@ public static class PixelProMainMenuMediaService
             "Main-menu background cannot be reduced below 96 KiB.");
     }
 
-    public static byte[] CreateIconJpeg(string path)
+    public static byte[] CreateIconBinary(string path)
+    {
+        using Bitmap output =
+            CreateNormalizedIconBitmap(path);
+
+        byte[] result =
+            new byte[IconBytes];
+
+        result[0] = (byte)'P';
+        result[1] = (byte)'I';
+        result[2] = (byte)'C';
+        result[3] = (byte)'1';
+        result[4] = IconWidth;
+        result[5] = IconHeight;
+        result[6] = 1;
+        result[7] = 0;
+
+        int pixelOffset =
+            IconHeaderBytes;
+
+        int maskOffset =
+            IconHeaderBytes +
+            IconPixelBytes;
+
+        for (int y = 0; y < IconHeight; y++)
+        {
+            for (int x = 0; x < IconWidth; x++)
+            {
+                int index =
+                    y * IconWidth + x;
+
+                Color pixel =
+                    output.GetPixel(x, y);
+
+                ushort rgb565 =
+                    (ushort)(
+                        ((pixel.R & 0xF8) << 8) |
+                        ((pixel.G & 0xFC) << 3) |
+                        (pixel.B >> 3));
+
+                int outIndex =
+                    pixelOffset +
+                    index * 2;
+
+                result[outIndex] =
+                    (byte)(rgb565 & 0xFF);
+
+                result[outIndex + 1] =
+                    (byte)(rgb565 >> 8);
+
+                if (pixel.A >= 24)
+                {
+                    result[
+                        maskOffset +
+                        index / 8] |=
+                            (byte)(
+                                0x80 >>
+                                (index & 7));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public static byte[] CreateIconPreviewPng(string path)
+    {
+        using Bitmap output =
+            CreateNormalizedIconBitmap(path);
+
+        using var stream =
+            new MemoryStream();
+
+        output.Save(
+            stream,
+            ImageFormat.Png);
+
+        return stream.ToArray();
+    }
+
+    private static Bitmap CreateNormalizedIconBitmap(
+        string path)
     {
         ValidateStaticImage(path);
 
         using var source =
             new Bitmap(path);
 
-        using var output =
+        var output =
             new Bitmap(
                 IconWidth,
                 IconHeight,
-                PixelFormat.Format24bppRgb);
+                PixelFormat.Format32bppArgb);
 
         using (Graphics g = Graphics.FromImage(output))
         {
-            g.Clear(Color.Black);
+            g.Clear(Color.Transparent);
             ConfigureHighQuality(g);
 
             Rectangle visible =
                 FindVisibleBounds(source);
 
             const int padding = 2;
-            int targetWidth =
-                IconWidth - padding * 2;
-            int targetHeight =
-                IconHeight - padding * 2;
 
             Rectangle fit =
                 FitRect(
                     visible.Width,
                     visible.Height,
-                    targetWidth,
-                    targetHeight);
+                    IconWidth - padding * 2,
+                    IconHeight - padding * 2);
 
             fit.Offset(
                 padding,
@@ -197,11 +278,7 @@ public static class PixelProMainMenuMediaService
                 GraphicsUnit.Pixel);
         }
 
-        return EncodeJpegWithinLimit(
-            output,
-            IconMaxBytes,
-            [96, 94, 92, 90, 88, 85],
-            "Main-menu icon cannot be reduced below the 24 KiB icon budget.");
+        return output;
     }
 
     private static byte[] EncodeJpegWithinLimit(
@@ -321,6 +398,8 @@ public static class PixelProMainMenuMediaService
     private static void ConfigureHighQuality(
         Graphics graphics)
     {
+        graphics.CompositingMode =
+            CompositingMode.SourceOver;
         graphics.CompositingQuality =
             CompositingQuality.HighQuality;
         graphics.InterpolationMode =
@@ -366,7 +445,8 @@ public static class PixelProMainMenuMediaService
             }
         }
 
-        if (right < left || bottom < top)
+        if (right < left ||
+            bottom < top)
         {
             return new Rectangle(
                 0,
