@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Ports;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace LumiPad.App;
@@ -2503,10 +2504,19 @@ public sealed class PixelProCdcLink : IDeviceLink
         DateTime now =
             DateTime.Now;
 
+        string hostOs =
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? "WIN"
+                : RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    ? "MAC"
+                    : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                        ? "LINUX"
+                        : "OTHER";
+
         string line =
             $"PCMON|{I(data.CpuLoad)}|{N(data.CpuTemperature)}|" +
             $"{N(data.GpuLoad)}|{N(data.GpuTemperature)}|" +
-            $"{now.Month}|{now.Day}|{now.Hour}|{now.Minute}";
+            $"{now.Month}|{now.Day}|{now.Hour}|{now.Minute}|{hostOs}";
 
         return SendPixelRealtimeLineAsync(
             line);
