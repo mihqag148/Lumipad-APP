@@ -763,22 +763,38 @@ public partial class MainWindow : Window
     private static ImageSource LoadProductHubImage(
         string resourcePath)
     {
-        var bitmap =
-            new BitmapImage();
+        Uri resourceUri =
+            new(
+                resourcePath,
+                UriKind.Relative);
 
-        bitmap.BeginInit();
-        bitmap.CacheOption =
-            BitmapCacheOption.OnLoad;
-        bitmap.CreateOptions =
-            BitmapCreateOptions.PreservePixelFormat;
-        bitmap.UriSource =
-            new Uri(
-                $"pack://application:,,,/{resourcePath}",
-                UriKind.Absolute);
-        bitmap.EndInit();
-        bitmap.Freeze();
+        var streamInfo =
+            Application.GetResourceStream(
+                resourceUri);
 
-        return bitmap;
+        if (streamInfo is null)
+        {
+            throw new InvalidOperationException(
+                $"Embedded product image was not found: {resourcePath}");
+        }
+
+        using (streamInfo.Stream)
+        {
+            var bitmap =
+                new BitmapImage();
+
+            bitmap.BeginInit();
+            bitmap.CacheOption =
+                BitmapCacheOption.OnLoad;
+            bitmap.CreateOptions =
+                BitmapCreateOptions.PreservePixelFormat;
+            bitmap.StreamSource =
+                streamInfo.Stream;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            return bitmap;
+        }
     }
 
     private static System.Windows.Controls.Image CreateProductHubImage(
