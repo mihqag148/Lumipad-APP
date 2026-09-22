@@ -3192,11 +3192,21 @@ public partial class MainWindow : Window
         {
             if (FlashUsageText is not null)
             {
+                double flashPct =
+                    usage.Value.FlashTotal > 0
+                        ? Math.Clamp(
+                            usage.Value.FlashUsed * 100.0 /
+                            usage.Value.FlashTotal,
+                            0.0,
+                            100.0)
+                        : 0.0;
+
                 FlashUsageText.Text =
-                    PercentText(
-                        "FLASH",
-                        usage.Value.FlashUsed,
-                        usage.Value.FlashTotal);
+                    usage.Value.FlashTotal > 0
+                        ? $"FLASH {flashPct:0.0}% · " +
+                          $"{usage.Value.FlashUsed / 1048576.0:0.00}/" +
+                          $"{usage.Value.FlashTotal / 1048576.0:0.00} MB"
+                        : "FLASH --";
             }
 
             if (SramUsageText is not null)
@@ -8594,6 +8604,12 @@ try {{
             ScreensaverPreviewImage.Visibility = Visibility.Visible;
             ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
 
+            if (PixelHomePreviewHint is not null)
+                PixelHomePreviewHint.Visibility =
+                    pixel
+                        ? Visibility.Collapsed
+                        : Visibility.Visible;
+
             _screensaverPreviewIndex = 0;
             _screensaverPreviewTimer.Stop();
             _screensaverPreviewClock.Reset();
@@ -8693,6 +8709,9 @@ try {{
                 ScreensaverSendStatus.Text =
                     L("LumiPad confirmed the custom screensaver is ready.",
                       "LumiPad đã xác nhận bảo vệ màn hình tùy chỉnh sẵn sàng.");
+
+                if (IsPixelProActive)
+                    await UpdateMemoryUsageAsync();
                 SaveAppSettings();
             }
             else
@@ -8775,6 +8794,16 @@ try {{
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Reset();
         _serial.ClearScreensaverAnimation();
+
+        if (IsPixelProActive)
+        {
+            Dispatcher.BeginInvoke(
+                new Action(async () =>
+                {
+                    await Task.Delay(300);
+                    await UpdateMemoryUsageAsync();
+                }));
+        }
 
         ScreensaverPreviewImage.Source = null;
         ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
