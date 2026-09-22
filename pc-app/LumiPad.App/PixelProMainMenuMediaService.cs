@@ -18,12 +18,16 @@ public static class PixelProMainMenuMediaService
 
     public static byte[] CreateBackgroundJpeg(
         string path,
-        int brightnessPercent)
+        int brightnessPercent,
+        int opacityPercent)
     {
         ValidateStaticImage(path);
 
         brightnessPercent =
             Math.Clamp(brightnessPercent, 20, 100);
+
+        opacityPercent =
+            Math.Clamp(opacityPercent, 0, 100);
 
         using var source =
             new Bitmap(path);
@@ -52,6 +56,9 @@ public static class PixelProMainMenuMediaService
             float multiplier =
                 brightnessPercent / 100f;
 
+            float alpha =
+                opacityPercent / 100f;
+
             using var attributes =
                 new ImageAttributes();
 
@@ -62,7 +69,7 @@ public static class PixelProMainMenuMediaService
                     new[] { multiplier, 0f, 0f, 0f, 0f },
                     new[] { 0f, multiplier, 0f, 0f, 0f },
                     new[] { 0f, 0f, multiplier, 0f, 0f },
-                    new[] { 0f, 0f, 0f, 1f, 0f },
+                    new[] { 0f, 0f, 0f, alpha, 0f },
                     new[] { 0f, 0f, 0f, 0f, 1f }
                 });
 
