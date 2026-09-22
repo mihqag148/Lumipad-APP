@@ -781,13 +781,9 @@ public partial class MainWindow : Window
         return bitmap;
     }
 
-    private UIElement CreateProductPreview(ProductDefinition product)
+    private static System.Windows.Controls.Image CreateProductHubImage(
+        string resourcePath)
     {
-        string resourcePath =
-            product.Driver == DeviceDriverKind.PixelProCdc
-                ? "Assets/Products/pixel-pro.png"
-                : "Assets/Products/rynor-one.png";
-
         var image =
             new System.Windows.Controls.Image
             {
@@ -810,6 +806,23 @@ public partial class MainWindow : Window
             BitmapScalingMode.HighQuality);
 
         return image;
+    }
+
+    private UIElement CreateProductPreview(ProductDefinition product)
+    {
+        if (product.Driver != DeviceDriverKind.PixelProCdc)
+            return CreateRynorOnePreview();
+
+        return CreateProductHubImage(
+            "Assets/Products/pixel-pro.png");
+    }
+
+    private UIElement CreateRynorOnePreview()
+    {
+        // Keep the existing RYNOR-only preview path; only the artwork source
+        // is upgraded to the requested high-resolution PNG resource.
+        return CreateProductHubImage(
+            "Assets/Products/rynor-one.png");
     }
 
     private async void ProductCard_Click(
