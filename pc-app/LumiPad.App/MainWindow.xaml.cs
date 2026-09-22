@@ -1015,11 +1015,41 @@ public partial class MainWindow : Window
             _activeProduct = product;
             _serial = LinkFor(product);
 
+            _screensaverMediaPath =
+                string.Equals(
+                    product.Id,
+                    ProductCatalog.PixelPro.Id,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? _pixelScreensaverMediaPath
+                    : _rynorScreensaverMediaPath;
+
+            _screensaverAnimation = null;
+            _screensaverPreviewTimer.Stop();
+            _screensaverPreviewClock.Reset();
+
             _configuratorInitialized = false;
             _loadedConfiguratorUrl = "";
 
             UpdateDeviceConfiguratorUi();
             UpdateProductSpecificText();
+
+            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+                System.IO.File.Exists(_screensaverMediaPath))
+            {
+                await PrepareScreensaverMediaAsync();
+            }
+            else
+            {
+                ScreensaverPreviewImage.Source = null;
+                ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
+                ScreensaverPreviewHint.Visibility = Visibility.Visible;
+
+                if (PixelHomePreviewHint is not null)
+                    PixelHomePreviewHint.Visibility =
+                        IsPixelProActive
+                            ? Visibility.Visible
+                            : Visibility.Collapsed;
+            }
 
             SetDeviceControlsEnabled(_serial.IsConnected);
             UpdateTransportIndicators();
@@ -8277,6 +8307,11 @@ try {{
 
         _screensaverMediaPath = dialog.FileName;
 
+        if (IsPixelProActive)
+            _pixelScreensaverMediaPath = dialog.FileName;
+        else
+            _rynorScreensaverMediaPath = dialog.FileName;
+
         // PIXEL PRO has its own Center/no-upscale policy. Do not mutate the
         // shared RYNOR scale preference when choosing PIXEL media.
         _screensaverSource = "Media";
@@ -8640,6 +8675,12 @@ try {{
     {
         _screensaverAnimation = null;
         _screensaverMediaPath = null;
+
+        if (IsPixelProActive)
+            _pixelScreensaverMediaPath = null;
+        else
+            _rynorScreensaverMediaPath = null;
+
         SaveAppSettings();
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Reset();
@@ -8648,6 +8689,13 @@ try {{
         ScreensaverPreviewImage.Source = null;
         ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
         ScreensaverPreviewHint.Visibility = Visibility.Visible;
+
+        if (PixelHomePreviewHint is not null)
+            PixelHomePreviewHint.Visibility =
+                IsPixelProActive
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
         ScreensaverFileName.Text = L("No file selected", "Chưa chọn tệp");
         ScreensaverMediaInfo.Text =
             IsPixelProActive
