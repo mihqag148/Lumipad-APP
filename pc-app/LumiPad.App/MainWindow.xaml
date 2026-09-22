@@ -407,88 +407,80 @@
                                                              Columns="4"
                                                              Margin="4,0,4,2"/>
 
-                                                <Grid Grid.Row="1"
-                                                      Margin="2,0,2,0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition/>
-                                                        <ColumnDefinition/>
-                                                        <ColumnDefinition/>
-                                                        <ColumnDefinition/>
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <Border Grid.Column="0"
-                                                            Margin="2,2"
-                                                            Background="#78000000"
-                                                            CornerRadius="5"
-                                                            Padding="4,2">
-                                                        <StackPanel VerticalAlignment="Center">
-                                                            <Ellipse Width="5" Height="5"
-                                                                     Fill="#C66CFF"
-                                                                     HorizontalAlignment="Center"
-                                                                     Margin="0,0,0,2"/>
-                                                            <TextBlock x:Name="PixelMenuPreviewProfileStatus"
-                                                                       Text="Profile 01/20"
-                                                                       FontSize="8"
+                                                <Border Grid.Row="1"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Background="#9C0B0B0D"
+                                                        BorderBrush="#4AFFFFFF"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10"
+                                                        Padding="7,4">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="34" Height="30"
+                                                                Margin="2,0"
+                                                                Background="#D51D5BE3"
+                                                                CornerRadius="7">
+                                                            <TextBlock x:Name="PixelMenuPreviewDock0"
+                                                                       Text="⊞"
+                                                                       FontSize="17"
                                                                        FontWeight="SemiBold"
                                                                        Foreground="White"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
                                                                        TextAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </Border>
-
-                                                    <Border Grid.Column="1"
-                                                            Margin="2,2"
-                                                            Background="#78000000"
-                                                            CornerRadius="5"
-                                                            Padding="4,2">
-                                                        <StackPanel VerticalAlignment="Center">
-                                                            <Ellipse Width="5" Height="5"
-                                                                     Fill="#FFFFFF"
-                                                                     HorizontalAlignment="Center"
-                                                                     Margin="0,0,0,2"/>
-                                                            <TextBlock x:Name="PixelMenuPreviewTimeStatus"
-                                                                       Text="09-22 15:30"
-                                                                       FontSize="8"
+                                                        </Border>
+                                                        <Border Width="34" Height="30"
+                                                                Margin="2,0"
+                                                                Background="#D5E9B949"
+                                                                CornerRadius="7">
+                                                            <TextBlock x:Name="PixelMenuPreviewDock1"
+                                                                       Text="▰"
+                                                                       FontSize="15"
                                                                        Foreground="White"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
                                                                        TextAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </Border>
-
-                                                    <Border Grid.Column="2"
-                                                            Margin="2,2"
-                                                            Background="#78000000"
-                                                            CornerRadius="5"
-                                                            Padding="4,2">
-                                                        <StackPanel VerticalAlignment="Center">
-                                                            <Ellipse Width="5" Height="5"
-                                                                     Fill="#56C8FF"
-                                                                     HorizontalAlignment="Center"
-                                                                     Margin="0,0,0,2"/>
-                                                            <TextBlock x:Name="PixelMenuPreviewCpuStatus"
-                                                                       Text="CPU --% --C"
-                                                                       FontSize="8"
+                                                        </Border>
+                                                        <Border Width="34" Height="30"
+                                                                Margin="2,0"
+                                                                Background="#D5347BEF"
+                                                                CornerRadius="7">
+                                                            <TextBlock x:Name="PixelMenuPreviewDock2"
+                                                                       Text="◎"
+                                                                       FontSize="16"
                                                                        Foreground="White"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
                                                                        TextAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </Border>
-
-                                                    <Border Grid.Column="3"
-                                                            Margin="2,2"
-                                                            Background="#78000000"
-                                                            CornerRadius="5"
-                                                            Padding="4,2">
-                                                        <StackPanel VerticalAlignment="Center">
-                                                            <Ellipse Width="5" Height="5"
-                                                                     Fill="#4CFFBC"
-                                                                     HorizontalAlignment="Center"
-                                                                     Margin="0,0,0,2"/>
-                                                            <TextBlock x:Name="PixelMenuPreviewGpuStatus"
-                                                                       Text="GPU --% --C"
-                                                                       FontSize="8"
+                                                        </Border>
+                                                        <Border Width="34" Height="30"
+                                                                Margin="2,0"
+                                                                Background="#D5222228"
+                                                                CornerRadius="7">
+                                                            <TextBlock x:Name="PixelMenuPreviewDock3"
+                                                                       Text="&gt;_"
+                                                                       FontSize="10"
+                                                                       FontWeight="Bold"
+                                                                       FontFamily="Consolas"
                                                                        Foreground="White"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
                                                                        TextAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </Grid>
+                                                        </Border>
+                                                        <Border Width="34" Height="30"
+                                                                Margin="2,0"
+                                                                Background="#D5666670"
+                                                                CornerRadius="7">
+                                                            <TextBlock x:Name="PixelMenuPreviewDock4"
+                                                                       Text="⚙"
+                                                                       FontSize="15"
+                                                                       Foreground="White"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       TextAlignment="Center"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Border>
                                             </Grid>
                                         </Grid>
                                     </Grid>
