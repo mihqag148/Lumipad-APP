@@ -756,129 +756,27 @@ public partial class MainWindow : Window
 
     private UIElement CreateRynorOnePreview()
     {
-        var container = new Grid();
-
-        var body = new Border
-        {
-            Width = 222,
-            Height = 220,
-            CornerRadius = new CornerRadius(24),
-            Background = new SolidColorBrush(
-                MediaColor.FromRgb(12, 12, 14)),
-            BorderBrush = new SolidColorBrush(
-                MediaColor.FromRgb(58, 58, 64)),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment =
-                System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        var device = new Grid
-        {
-            Width = 176,
-            Height = 190,
-            HorizontalAlignment =
-                System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        device.RowDefinitions.Add(new RowDefinition
-        {
-            Height = new GridLength(50)
-        });
-        device.RowDefinitions.Add(new RowDefinition
-        {
-            Height = new GridLength(8)
-        });
-        device.RowDefinitions.Add(new RowDefinition
-        {
-            Height = new GridLength(132)
-        });
-
-        var top = new Grid();
-        top.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(120)
-        });
-        top.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(8)
-        });
-        top.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(48)
-        });
-
-        var display = new Border
-        {
-            CornerRadius = new CornerRadius(7),
-            Background = new LinearGradientBrush(
-                MediaColor.FromRgb(25, 40, 75),
-                MediaColor.FromRgb(80, 42, 93),
-                90)
-        };
-        display.Child = new TextBlock
-        {
-            Text = "RYNOR ONE",
-            Foreground = System.Windows.Media.Brushes.White,
-            FontSize = 9,
-            FontWeight = FontWeights.SemiBold,
-            HorizontalAlignment =
-                System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        top.Children.Add(display);
-
-        var dial = new Ellipse
-        {
-            Width = 44,
-            Height = 44,
-            Fill = new LinearGradientBrush(
-                MediaColor.FromRgb(95, 95, 102),
-                MediaColor.FromRgb(30, 30, 34),
-                45),
-            Stroke = new SolidColorBrush(
-                MediaColor.FromRgb(145, 145, 150)),
-            StrokeThickness = 1,
-            HorizontalAlignment =
-                System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        Grid.SetColumn(dial, 2);
-        top.Children.Add(dial);
-        device.Children.Add(top);
-
-        var keys = new System.Windows.Controls.Primitives.UniformGrid
-        {
-            Rows = 3,
-            Columns = 4,
-            Width = 176,
-            Height = 132
-        };
-
-        for (int i = 0; i < 12; i++)
-        {
-            keys.Children.Add(new Border
+        // RYNOR ONE-only product card image.
+        // PIXEL PRO keeps its own independent preview path above.
+        var image =
+            new System.Windows.Controls.Image
             {
-                Width = 38,
-                Height = 38,
+                Source = RynorOneProductImage.Create(),
+                Width = 256,
+                Height = 256,
+                Stretch = Stretch.Uniform,
                 HorizontalAlignment =
                     System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = new SolidColorBrush(
-                    MediaColor.FromRgb(36, 36, 40)),
-                BorderBrush = new SolidColorBrush(
-                    MediaColor.FromRgb(70, 70, 76)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(5)
-            });
-        }
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+                SnapsToDevicePixels = true
+            };
 
-        Grid.SetRow(keys, 2);
-        device.Children.Add(keys);
+        RenderOptions.SetBitmapScalingMode(
+            image,
+            BitmapScalingMode.HighQuality);
 
-        body.Child = device;
-        container.Children.Add(body);
-        return container;
+        return image;
     }
 
     private async void ProductCard_Click(
