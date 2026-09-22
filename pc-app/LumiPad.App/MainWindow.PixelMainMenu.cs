@@ -1141,7 +1141,11 @@ public partial class MainWindow
 
         PixelProMainMenuSlot target =
             PixelMenuProfile
-                .Slots[Math.Clamp(slot, 0, 11)];
+                .Slots[
+                    Math.Clamp(
+                        slot,
+                        0,
+                        PixelProMainMenuStore.SlotCount - 1)];
 
         target.ActionId =
             action.ActionId;
