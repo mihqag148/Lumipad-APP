@@ -94,8 +94,8 @@ public partial class MainWindow
             var editorIcon =
                 new System.Windows.Controls.Image
                 {
-                    Width = 36,
-                    Height = 36,
+                    Width = 30,
+                    Height = 30,
                     Stretch = Stretch.Uniform,
                     HorizontalAlignment =
                         System.Windows.HorizontalAlignment.Center,
@@ -106,9 +106,9 @@ public partial class MainWindow
                 new System.Windows.Controls.ComboBox
                 {
                     Tag = capturedSlot,
-                    MinWidth = 88,
-                    FontSize = 10,
-                    Height = 24,
+                    MinWidth = 78,
+                    FontSize = 9,
+                    Height = 22,
                     Margin = new Thickness(0, 0, 0, 3)
                 };
 
@@ -120,8 +120,8 @@ public partial class MainWindow
                 {
                     Content = "App",
                     Tag = capturedSlot,
-                    FontSize = 9,
-                    Padding = new Thickness(4, 2, 4, 2),
+                    FontSize = 8,
+                    Padding = new Thickness(3, 1, 3, 1),
                     Margin = new Thickness(0, 0, 3, 0)
                 };
 
@@ -133,8 +133,8 @@ public partial class MainWindow
                 {
                     Content = "Icon",
                     Tag = capturedSlot,
-                    FontSize = 9,
-                    Padding = new Thickness(4, 2, 4, 2),
+                    FontSize = 8,
+                    Padding = new Thickness(3, 1, 3, 1),
                     Margin = new Thickness(0, 0, 3, 0)
                 };
 
@@ -146,9 +146,9 @@ public partial class MainWindow
                 {
                     Content = "×",
                     Tag = capturedSlot,
-                    Width = 23,
-                    Height = 23,
-                    FontSize = 11,
+                    Width = 20,
+                    Height = 20,
+                    FontSize = 10,
                     Padding = new Thickness(0)
                 };
 
@@ -192,8 +192,8 @@ public partial class MainWindow
                 new Border
                 {
                     Child = editorStack,
-                    Margin = new Thickness(2),
-                    Padding = new Thickness(3),
+                    Margin = new Thickness(1),
+                    Padding = new Thickness(2),
                     CornerRadius = new CornerRadius(7),
                     BorderBrush =
                         TryFindResource("Line") as
@@ -207,60 +207,70 @@ public partial class MainWindow
             var previewIcon =
                 new System.Windows.Controls.Image
                 {
+                    Width = 82,
+                    Height = 82,
                     Stretch = Stretch.Uniform,
                     HorizontalAlignment =
-                        System.Windows.HorizontalAlignment.Stretch,
+                        System.Windows.HorizontalAlignment.Center,
                     VerticalAlignment =
-                        System.Windows.VerticalAlignment.Stretch,
-                    Margin = new Thickness(2)
+                        System.Windows.VerticalAlignment.Center,
+                    Margin = new Thickness(0, 1, 0, 0),
+                    SnapsToDevicePixels = true
                 };
+
+            RenderOptions.SetBitmapScalingMode(
+                previewIcon,
+                BitmapScalingMode.HighQuality);
 
             var previewLabel =
                 new TextBlock
                 {
                     Text = "",
-                    FontSize = 11,
+                    FontSize = 9,
                     FontWeight = FontWeights.SemiBold,
                     Foreground =
                         System.Windows.Media.Brushes.White,
                     TextAlignment = TextAlignment.Center,
-                    TextWrapping = TextWrapping.Wrap,
-                    MaxWidth = 96,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 104,
                     HorizontalAlignment =
                         System.Windows.HorizontalAlignment.Center,
                     VerticalAlignment =
                         System.Windows.VerticalAlignment.Center,
-                    Margin = new Thickness(5)
+                    Margin = new Thickness(2, 0, 2, 0)
                 };
 
             var previewGrid =
-                new Grid();
+                new Grid
+                {
+                    Margin = new Thickness(2, 1, 2, 1)
+                };
+
+            previewGrid.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = new GridLength(1, GridUnitType.Star)
+                });
+
+            previewGrid.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = new GridLength(18)
+                });
+
+            Grid.SetRow(
+                previewIcon,
+                0);
+
+            Grid.SetRow(
+                previewLabel,
+                1);
 
             previewGrid.Children.Add(previewIcon);
             previewGrid.Children.Add(previewLabel);
 
             PixelMenuPreviewSlots.Children.Add(
-                new Border
-                {
-                    Child = previewGrid,
-                    Margin = new Thickness(4),
-                    CornerRadius = new CornerRadius(9),
-                    BorderBrush =
-                        new SolidColorBrush(
-                            System.Windows.Media.Color.FromArgb(
-                                150,
-                                180,
-                                180,
-                                184)),
-                    BorderThickness = new Thickness(1),
-                    Background =
-                        new SolidColorBrush(
-                            System.Windows.Media.Color.FromArgb(
-                                35,
-                                0,
-                                0,
-                                0))
-                });
+                previewGrid);
 
             _pixelMenuActionCombos.Add(combo);
             _pixelMenuEditorIcons.Add(editorIcon);
@@ -474,9 +484,9 @@ public partial class MainWindow
                         : Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Visibility =
-                    hasIcon
-                        ? Visibility.Collapsed
-                        : Visibility.Visible;
+                    actionId > 0
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Text =
                     actionId <= 0
