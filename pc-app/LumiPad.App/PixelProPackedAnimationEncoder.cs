@@ -46,7 +46,6 @@ internal static class PixelProPackedAnimationEncoder
     public const int PreferredMinBytes = 800 * 1024;
     public const int HardTargetBytes = 1100 * 1024;
 
-    private const int BaselineProbeBytes = (3 * 1024 * 1024) + 4096;
     private const int MaxCanvas = 1024;
 
     private readonly record struct PlannedFrame(
