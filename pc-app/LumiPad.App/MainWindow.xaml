@@ -448,7 +448,7 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,3,0,7"/>
-                                        <TextBlock Text="480×320 → 360×240 minimum · FPS 60 → 30 → 20 → 15 (lower only if needed) · RGB888 → RGB565 → P256 minimum"
+                                        <TextBlock Text="480×320 → 360×240 minimum · FPS 60 → 30 → 20 → 15 (lower only if needed) · RGB888 → RGB565 minimum"
                                                    FontSize="10"
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"

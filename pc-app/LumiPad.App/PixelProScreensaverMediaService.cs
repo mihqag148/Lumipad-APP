@@ -79,14 +79,14 @@ public static class PixelProScreensaverMediaService
         return ext switch
         {
             ".gif" =>
-                await Task.Run(
+                await RunCpuBoundLowPriorityAsync(
                     () => LoadGif(
                         path,
                         pixelScale,
                         gifMaxDurationSeconds)),
 
             ".png" or ".jpg" or ".jpeg" or ".bmp" =>
-                await Task.Run(
+                await RunCpuBoundLowPriorityAsync(
                     () => LoadStaticImage(
                         path,
                         pixelScale,
@@ -97,6 +97,34 @@ public static class PixelProScreensaverMediaService
                     "Choose a GIF or static PNG/JPG/BMP image.")
         };
     }
+
+    private static Task<T> RunCpuBoundLowPriorityAsync<T>(
+        Func<T> work) =>
+        Task.Factory.StartNew(
+            () =>
+            {
+                Thread thread =
+                    Thread.CurrentThread;
+
+                ThreadPriority oldPriority =
+                    thread.Priority;
+
+                try
+                {
+                    thread.Priority =
+                        ThreadPriority.BelowNormal;
+
+                    return work();
+                }
+                finally
+                {
+                    thread.Priority =
+                        oldPriority;
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
 
     public static ScreensaverScaleMode NormalizePixelScale(
         ScreensaverScaleMode scaleMode) =>

@@ -38,7 +38,7 @@ internal sealed record PixelProPackedAnimationResult(
 /// useful ideas for a small MCU: delta frames, per-run RLE, and selectable
 /// native/palette color depths. A progressive Smart Delta pass suppresses
 /// visually insignificant temporal noise before reducing resolution/FPS.
-/// New PIXEL PRO media keeps a quality floor of 360×240 and Palette256 while
+/// New PIXEL PRO media keeps a quality floor of 360×240 and RGB565 while
 /// using up to 1100 KiB when needed.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
@@ -55,7 +55,6 @@ internal static class PixelProPackedAnimationEncoder
     private static readonly int[] SmartDeltaLevels =
     [
         0,
-        1,
         2,
         3,
     ];
@@ -116,54 +115,72 @@ internal static class PixelProPackedAnimationEncoder
             maxDurationSeconds *
             1000;
 
-        PixelProPackedColorMode[] colorModes =
-        [
-            PixelProPackedColorMode.Rgb888,
-            PixelProPackedColorMode.Rgb565,
-            PixelProPackedColorMode.Palette256,
-        ];
+        // Keep full RGB888 when an easy 480×320 / 60 FPS source already fits.
+        // This probe aborts at the 1100 KiB ceiling, so complex GIFs move on
+        // quickly to the RGB565 search instead of spending time on RGB888.
+        Candidate rgb888Probe =
+            EncodeCandidate(
+                image,
+                dimension,
+                sourceDelays,
+                sourceFrameCount,
+                480,
+                320,
+                60,
+                maxDurationMs,
+                PixelProPackedColorMode.Rgb888,
+                scaleMode,
+                0,
+                HardTargetBytes);
 
+        if (!rgb888Probe.ExceededLimit &&
+            rgb888Probe.Bytes is not null &&
+            rgb888Probe.Bytes.Length <= HardTargetBytes)
+        {
+            return ToResult(
+                rgb888Probe,
+                scaleMode,
+                new FileInfo(path).Length,
+                false);
+        }
+
+        // RGB565 is now the hard color-quality floor. Never generate P256,
+        // P16, P4 or P2 for new PIXEL PRO GIF uploads.
         foreach ((int width, int height, int fps) in BuildQualityLadder())
         {
-            // Try exact delta first, then progressively suppress only tiny
-            // temporal changes. This keeps resolution/FPS/color quality high
-            // before the ladder has to fall back to a lower motion rate.
             foreach (int smartDeltaLevel in SmartDeltaLevels)
             {
-                foreach (PixelProPackedColorMode mode in colorModes)
-                {
-                    Candidate candidate =
-                        EncodeCandidate(
-                            image,
-                            dimension,
-                            sourceDelays,
-                            sourceFrameCount,
-                            width,
-                            height,
-                            fps,
-                            maxDurationMs,
-                            mode,
-                            scaleMode,
-                            smartDeltaLevel,
-                            HardTargetBytes);
+                Candidate candidate =
+                    EncodeCandidate(
+                        image,
+                        dimension,
+                        sourceDelays,
+                        sourceFrameCount,
+                        width,
+                        height,
+                        fps,
+                        maxDurationMs,
+                        PixelProPackedColorMode.Rgb565,
+                        scaleMode,
+                        smartDeltaLevel,
+                        HardTargetBytes);
 
-                    if (!candidate.ExceededLimit &&
-                        candidate.Bytes is not null &&
-                        candidate.Bytes.Length <=
-                            HardTargetBytes)
-                    {
-                        return ToResult(
-                            candidate,
-                            scaleMode,
-                            new FileInfo(path).Length,
-                            fps < 15);
-                    }
+                if (!candidate.ExceededLimit &&
+                    candidate.Bytes is not null &&
+                    candidate.Bytes.Length <=
+                        HardTargetBytes)
+                {
+                    return ToResult(
+                        candidate,
+                        scaleMode,
+                        new FileInfo(path).Length,
+                        fps < 15);
                 }
             }
         }
 
         throw new InvalidOperationException(
-            "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and Palette256. Shorten or simplify the GIF.");
+            "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and RGB565. Shorten or simplify the GIF.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -221,7 +238,7 @@ internal static class PixelProPackedAnimationEncoder
         Add(360, 240, 15);
 
         // Emergency temporal reduction keeps the requested resolution/color
-        // floor instead of falling back to 240×160 or Palette16/4/2.
+        // floor instead of falling back to 240×160 or palette color modes.
         foreach (int fps in new[] { 12, 10, 8, 6, 5 })
             Add(360, 240, fps);
 
@@ -254,23 +271,13 @@ internal static class PixelProPackedAnimationEncoder
                 frame =>
                     frame.DelayMs);
 
+        // EncodeBest only emits RGB888/RGB565 now. Palette decoding helpers
+        // remain in this file for backward compatibility with older PXQ data.
         Drawing.Color[] palette =
-            IsPaletteMode(colorMode)
-                ? BuildAdaptivePalette(
-                    image,
-                    dimension,
-                    plan,
-                    storageWidth,
-                    storageHeight,
-                    scaleMode,
-                    PaletteCount(colorMode))
-                : Array.Empty<Drawing.Color>();
+            Array.Empty<Drawing.Color>();
 
         byte[]? lookup =
-            IsPaletteMode(colorMode)
-                ? BuildPaletteLookup(
-                    palette)
-                : null;
+            null;
 
         using var output =
             new MemoryStream(
@@ -331,13 +338,22 @@ internal static class PixelProPackedAnimationEncoder
             output.WriteByte(color.B);
         }
 
+        int pixelCount =
+            storageWidth *
+            storageHeight;
+
         uint[] previous =
             Enumerable
                 .Repeat(
                     uint.MaxValue,
-                    storageWidth *
-                    storageHeight)
+                    pixelCount)
                 .ToArray();
+
+        var current =
+            new uint[pixelCount];
+
+        using var frameData =
+            new MemoryStream();
 
         foreach (PlannedFrame planned in plan)
         {
@@ -354,11 +370,11 @@ internal static class PixelProPackedAnimationEncoder
                     storageWidth,
                     storageHeight);
 
-            uint[] current =
-                ToCodes(
-                    stored,
-                    colorMode,
-                    lookup);
+            FillCodes(
+                stored,
+                colorMode,
+                lookup,
+                current);
 
             ApplySmartDeltaFilter(
                 current,
@@ -369,8 +385,8 @@ internal static class PixelProPackedAnimationEncoder
                 palette,
                 smartDeltaLevel);
 
-            using var frameData =
-                new MemoryStream();
+            frameData.SetLength(0);
+            frameData.Position = 0;
 
             int spanCount =
                 EncodeDeltaSpans(
@@ -395,8 +411,8 @@ internal static class PixelProPackedAnimationEncoder
             frameData.Position = 0;
             frameData.CopyTo(output);
 
-            previous =
-                current;
+            (previous, current) =
+                (current, previous);
 
             if (output.Length >
                 abortAfterBytes)
@@ -976,10 +992,11 @@ internal static class PixelProPackedAnimationEncoder
         }
     }
 
-    private static uint[] ToCodes(
+    private static void FillCodes(
         Drawing.Bitmap bitmap,
         PixelProPackedColorMode mode,
-        byte[]? paletteLookup)
+        byte[]? paletteLookup,
+        uint[] result)
     {
         int width =
             bitmap.Width;
@@ -987,10 +1004,13 @@ internal static class PixelProPackedAnimationEncoder
         int height =
             bitmap.Height;
 
-        var result =
-            new uint[
-                width *
-                height];
+        if (result.Length <
+            width * height)
+        {
+            throw new ArgumentException(
+                "PIXEL code buffer is too small.",
+                nameof(result));
+        }
 
         Drawing.Rectangle rect =
             new(
@@ -1084,8 +1104,6 @@ internal static class PixelProPackedAnimationEncoder
             bitmap.UnlockBits(
                 data);
         }
-
-        return result;
     }
 
     private static Drawing.Color[] BuildAdaptivePalette(
@@ -1361,26 +1379,77 @@ internal static class PixelProPackedAnimationEncoder
                     Math.Max(1, sampleFrames) /
                     180000.0));
 
-        for (int y = 0;
-             y < height;
-             y += step)
+        Drawing.Rectangle rect =
+            new(
+                0,
+                0,
+                width,
+                height);
+
+        BitmapData data =
+            bitmap.LockBits(
+                rect,
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb);
+
+        try
         {
-            for (int x = 0;
-                 x < width;
-                 x += step)
+            int stride =
+                data.Stride;
+
+            int rowBytes =
+                Math.Abs(
+                    stride);
+
+            var row =
+                new byte[rowBytes];
+
+            for (int y = 0;
+                 y < height;
+                 y += step)
             {
-                Drawing.Color color =
-                    bitmap.GetPixel(
-                        x,
-                        y);
+                IntPtr rowPtr =
+                    IntPtr.Add(
+                        data.Scan0,
+                        y *
+                        stride);
 
-                int bin =
-                    ((color.R >> 3) << 10) |
-                    ((color.G >> 3) << 5) |
-                    (color.B >> 3);
+                Marshal.Copy(
+                    rowPtr,
+                    row,
+                    0,
+                    rowBytes);
 
-                histogram[bin]++;
+                for (int x = 0;
+                     x < width;
+                     x += step)
+                {
+                    int p =
+                        x *
+                        3;
+
+                    byte b =
+                        row[p];
+
+                    byte g =
+                        row[p + 1];
+
+                    byte r =
+                        row[p + 2];
+
+                    int bin =
+                        ((r >> 3) << 10) |
+                        ((g >> 3) << 5) |
+                        (b >> 3);
+
+                    histogram[bin]++;
+                }
             }
+        }
+        finally
+        {
+            bitmap.UnlockBits(
+                data);
         }
     }
 
