@@ -608,7 +608,7 @@ public partial class MainWindow : Window
                 CornerRadius = new CornerRadius(25, 25, 0, 0),
                 ClipToBounds = true
             };
-            preview.Child = CreateProductPreview(product);
+            preview.Child = SafeCreateProductPreview(product);
             root.Children.Add(preview);
 
             var divider = new Border
@@ -724,6 +724,40 @@ public partial class MainWindow : Window
         }
 
         UpdateProductHubUi();
+    }
+
+    private UIElement SafeCreateProductPreview(ProductDefinition product)
+    {
+        try
+        {
+            return CreateProductPreview(product);
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "WARN",
+                "APP",
+                $"Product image failed for {product.Name}: {ex.Message}");
+
+            return new Border
+            {
+                Background =
+                    TryFindResource("Card2") as System.Windows.Media.Brush,
+                Child = new TextBlock
+                {
+                    Text = product.Name,
+                    FontSize = 24,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground =
+                        TryFindResource("Text") as System.Windows.Media.Brush,
+                    HorizontalAlignment =
+                        System.Windows.HorizontalAlignment.Center,
+                    VerticalAlignment =
+                        VerticalAlignment.Center,
+                    TextAlignment = TextAlignment.Center
+                }
+            };
+        }
     }
 
     private UIElement CreateProductPreview(ProductDefinition product)
