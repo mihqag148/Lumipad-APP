@@ -1122,20 +1122,6 @@ public sealed class PixelProCdcLink : IDeviceLink
             return false;
         }
 
-        (long Total, long Used, long Free, long Flash)? capacity =
-            await ReadSaverCapacityAsync();
-
-        if (capacity is not null &&
-            packedBytes.LongLength + 4096 >
-            capacity.Value.Free)
-        {
-            LastScreensaverError =
-                $"Packed animation is {packedBytes.LongLength / 1048576.0:0.00} MB but PIXEL PRO has " +
-                $"{capacity.Value.Free / 1048576.0:0.00} MB free for media.";
-
-            return false;
-        }
-
         await _commandGate.WaitAsync();
         try
         {
@@ -1297,29 +1283,6 @@ public sealed class PixelProCdcLink : IDeviceLink
         ScreensaverScaleMode scaleMode,
         IProgress<int>? progress)
     {
-        (long Total, long Used, long Free, long Flash)? capacity =
-            await ReadSaverCapacityAsync();
-
-        if (capacity is not null)
-        {
-            long required =
-                gifBytes.LongLength + 4096;
-
-            if (required > capacity.Value.Free)
-            {
-                LastScreensaverError =
-                    $"GIF file is {gifBytes.LongLength / 1048576.0:0.00} MB. " +
-                    $"PIXEL PRO LittleFS media partition has {capacity.Value.Free / 1048576.0:0.00} MB free " +
-                    $"of {capacity.Value.Total / 1048576.0:0.00} MB, while the physical flash chip is " +
-                    $"{capacity.Value.Flash / 1048576.0:0.00} MB. " +
-                    "GIF is already a compressed format; the original file cannot fit this media partition.";
-
-                Log("WARN", LastScreensaverError);
-                return false;
-            }
-        }
-
-
         if (gifBytes.Length < 10 ||
             gifBytes[0] != (byte)'G' ||
             gifBytes[1] != (byte)'I' ||
@@ -1477,19 +1440,6 @@ public sealed class PixelProCdcLink : IDeviceLink
         int height,
         IProgress<int>? progress)
     {
-        (long Total, long Used, long Free, long Flash)? capacity =
-            await ReadSaverCapacityAsync();
-
-        if (capacity is not null &&
-            jpegBytes.LongLength + 4096 >
-            capacity.Value.Free)
-        {
-            LastScreensaverError =
-                $"JPEG file is {jpegBytes.LongLength / 1048576.0:0.00} MB but PIXEL PRO has " +
-                $"{capacity.Value.Free / 1048576.0:0.00} MB free for media.";
-            return false;
-        }
-
         if (jpegBytes.Length < 4 ||
             jpegBytes[0] != 0xFF ||
             jpegBytes[1] != 0xD8)
@@ -1758,6 +1708,242 @@ public sealed class PixelProCdcLink : IDeviceLink
         }
 
         return null;
+    }
+
+    private async Task<bool> UploadMainMenuAssetAsync(
+        string beginCommand,
+        string beginAck,
+        string dataCommand,
+        string dataAckPrefix,
+        string endCommand,
+        string endAck,
+        byte[] bytes,
+        IProgress<int>? progress = null)
+    {
+        if (!IsConnected || bytes.Length == 0)
+            return false;
+
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 500;
+                port.WriteTimeout = 5000;
+
+                try { port.DiscardInBuffer(); } catch { }
+
+                Log("TX", beginCommand);
+                port.WriteLine(beginCommand);
+
+                string? start =
+                    await ReadExpectedLineAsync(
+                        port,
+                        beginAck,
+                        TimeSpan.FromSeconds(8));
+
+                if (!string.Equals(
+                        start,
+                        beginAck,
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                const int RawChunkSize = 1024;
+
+                for (int offset = 0;
+                     offset < bytes.Length;
+                     offset += RawChunkSize)
+                {
+                    int len =
+                        Math.Min(
+                            RawChunkSize,
+                            bytes.Length - offset);
+
+                    string encoded =
+                        Convert.ToBase64String(
+                            bytes,
+                            offset,
+                            len);
+
+                    port.WriteLine(
+                        $"{dataCommand}|{offset}|{encoded}");
+
+                    int nextOffset = offset + len;
+                    string expected =
+                        $"{dataAckPrefix}|{nextOffset}";
+
+                    string? ack =
+                        await ReadExpectedLineAsync(
+                            port,
+                            expected,
+                            TimeSpan.FromSeconds(5));
+
+                    if (!string.Equals(
+                            ack,
+                            expected,
+                            StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+
+                    progress?.Report(
+                        (int)Math.Clamp(
+                            nextOffset * 100L /
+                            Math.Max(1, bytes.Length),
+                            0,
+                            100));
+                }
+
+                port.WriteLine(endCommand);
+
+                string? finish =
+                    await ReadExpectedLineAsync(
+                        port,
+                        endAck,
+                        TimeSpan.FromSeconds(10));
+
+                bool ok =
+                    string.Equals(
+                        finish,
+                        endAck,
+                        StringComparison.Ordinal);
+
+                if (ok)
+                    progress?.Report(100);
+
+                return ok;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    public Task<bool> UploadMainMenuBackgroundAsync(
+        byte[] jpegBytes,
+        IProgress<int>? progress = null)
+    {
+        if (jpegBytes.Length > PixelProMainMenuMediaService.BackgroundMaxBytes)
+            return Task.FromResult(false);
+
+        return UploadMainMenuAssetAsync(
+            $"MENUBGBEGIN|{jpegBytes.Length}",
+            "OK|MENUBGBEGIN",
+            "MENUBGDATA",
+            "OK|MENUBGDATA",
+            "MENUBGEND",
+            "OK|MENUBGEND",
+            jpegBytes,
+            progress);
+    }
+
+    public Task<bool> UploadMainMenuIconAsync(
+        int page,
+        int slot,
+        byte[] iconBytes,
+        IProgress<int>? progress = null)
+    {
+        page = Math.Clamp(page, 0, 3);
+        slot = Math.Clamp(slot, 0, 11);
+
+        if (iconBytes.Length != PixelProMainMenuMediaService.IconBytes)
+            return Task.FromResult(false);
+
+        return UploadMainMenuAssetAsync(
+            $"MENUICONBEGIN|{page}|{slot}|{iconBytes.Length}",
+            "OK|MENUICONBEGIN",
+            "MENUICONDATA",
+            "OK|MENUICONDATA",
+            "MENUICONEND",
+            "OK|MENUICONEND",
+            iconBytes,
+            progress);
+    }
+
+    public async Task<bool> ClearMainMenuBackgroundAsync()
+    {
+        string? line =
+            await RequestLineAsync(
+                "MENUBGCLEAR",
+                "OK|MENUBGCLEAR");
+
+        return string.Equals(
+            line,
+            "OK|MENUBGCLEAR",
+            StringComparison.Ordinal);
+    }
+
+    public async Task<bool> ClearMainMenuIconAsync(
+        int page,
+        int slot)
+    {
+        page = Math.Clamp(page, 0, 3);
+        slot = Math.Clamp(slot, 0, 11);
+
+        string? line =
+            await RequestLineAsync(
+                $"MENUICONCLEAR|{page}|{slot}",
+                "OK|MENUICONCLEAR");
+
+        return string.Equals(
+            line,
+            "OK|MENUICONCLEAR",
+            StringComparison.Ordinal);
+    }
+
+    public async Task<bool> SetMainMenuPageAsync(
+        int page,
+        int layer,
+        IReadOnlyList<int> actions)
+    {
+        if (actions.Count != 12)
+            return false;
+
+        page = Math.Clamp(page, 0, 3);
+        layer = Math.Clamp(layer, 0, 3);
+
+        string payload =
+            string.Join(
+                ",",
+                actions.Select(
+                    id => Math.Clamp(id, 0, 32)));
+
+        string? line =
+            await RequestLineAsync(
+                $"MENUCFG|{page}|{layer}|{payload}",
+                "OK|MENUCFG");
+
+        return string.Equals(
+            line,
+            "OK|MENUCFG",
+            StringComparison.Ordinal);
+    }
+
+    public async Task<bool> ShowMainMenuAsync()
+    {
+        string? line =
+            await RequestLineAsync(
+                "MENUSHOW",
+                "OK|MENUSHOW");
+
+        return string.Equals(
+            line,
+            "OK|MENUSHOW",
+            StringComparison.Ordinal);
     }
 
     public void ClearScreensaverAnimation() =>

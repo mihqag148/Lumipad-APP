@@ -130,7 +130,22 @@ public partial class MainWindow : Window
     private byte _g = 120;
     private byte _b = 0;
     private ScreensaverAnimation? _screensaverAnimation;
+    // Keep RYNOR and PIXEL media paths isolated. Older builds shared one path,
+    // which let a saved PIXEL GIF get reprocessed by the RYNOR 160×86 service
+    // during startup before PIXEL PRO became the active product.
     private string? _screensaverMediaPath;
+    private string? _rynorScreensaverMediaPath;
+    private string? _pixelScreensaverMediaPath;
+
+    private readonly PixelProMainMenuConfig _pixelMainMenu =
+        PixelProMainMenuStore.Load();
+    private int _pixelMenuPageIndex;
+    private bool _syncingPixelMenuUi;
+    private readonly List<System.Windows.Controls.ComboBox> _pixelMenuActionCombos = [];
+    private readonly List<System.Windows.Controls.Image> _pixelMenuEditorIcons = [];
+    private readonly List<System.Windows.Controls.Image> _pixelMenuPreviewIcons = [];
+    private readonly List<TextBlock> _pixelMenuPreviewLabels = [];
+
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
     private readonly Stopwatch _screensaverPreviewClock = new();
     private readonly DispatcherTimer _pixelRgbPreviewTimer = new();
@@ -472,6 +487,8 @@ public partial class MainWindow : Window
             BuildProductCards();
             UpdateDeviceConfiguratorUi();
             _uiReady = true;
+            BuildPixelMainMenuEditor();
+            RefreshPixelMainMenuUi();
             _pixelRgbPreviewClock.Restart();
             _pixelRgbPreviewTimer.Start();
             UpdateSettingsInfo();
@@ -479,12 +496,6 @@ public partial class MainWindow : Window
             AddLog("INFO", "APP", "Lumi Macropad started");
             BuildColorWheel();
             SetDeviceControlsEnabled(false);
-
-            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
-                System.IO.File.Exists(_screensaverMediaPath))
-            {
-                await PrepareScreensaverMediaAsync();
-            }
 
             _nowPlaying.Updated += data =>
                 Dispatcher.Invoke(() => ApplyNowPlaying(data));
@@ -1004,11 +1015,41 @@ public partial class MainWindow : Window
             _activeProduct = product;
             _serial = LinkFor(product);
 
+            _screensaverMediaPath =
+                string.Equals(
+                    product.Id,
+                    ProductCatalog.PixelPro.Id,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? _pixelScreensaverMediaPath
+                    : _rynorScreensaverMediaPath;
+
+            _screensaverAnimation = null;
+            _screensaverPreviewTimer.Stop();
+            _screensaverPreviewClock.Reset();
+
             _configuratorInitialized = false;
             _loadedConfiguratorUrl = "";
 
             UpdateDeviceConfiguratorUi();
             UpdateProductSpecificText();
+
+            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
+                System.IO.File.Exists(_screensaverMediaPath))
+            {
+                await PrepareScreensaverMediaAsync();
+            }
+            else
+            {
+                ScreensaverPreviewImage.Source = null;
+                ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
+                ScreensaverPreviewHint.Visibility = Visibility.Visible;
+
+                if (PixelHomePreviewHint is not null)
+                    PixelHomePreviewHint.Visibility =
+                        IsPixelProActive
+                            ? Visibility.Visible
+                            : Visibility.Collapsed;
+            }
 
             SetDeviceControlsEnabled(_serial.IsConnected);
             UpdateTransportIndicators();
@@ -1170,6 +1211,90 @@ public partial class MainWindow : Window
     {
         bool pixel = IsPixelProActive;
 
+        if (PixelMainMenuTab is not null)
+            PixelMainMenuTab.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        // PIXEL PRO Home uses a compact media card beside a dedicated
+        // 480×320 display preview. Screensaver controls move to the full-width
+        // row below. RYNOR ONE keeps the original two-column Home layout.
+        if (HomeDashboardGrid is not null &&
+            HomeDashboardGrid.RowDefinitions.Count >= 3)
+        {
+            HomeDashboardGrid.RowDefinitions[0].Height =
+                pixel
+                    ? new GridLength(300)
+                    : new GridLength(1, GridUnitType.Star);
+
+            HomeDashboardGrid.RowDefinitions[2].Height =
+                pixel
+                    ? new GridLength(1, GridUnitType.Star)
+                    : GridLength.Auto;
+        }
+
+        if (HomeMediaCard is not null)
+        {
+            HomeMediaCard.Padding =
+                pixel
+                    ? new Thickness(16)
+                    : new Thickness(24);
+
+            HomeMediaCard.Height =
+                pixel
+                    ? 300
+                    : double.NaN;
+        }
+
+        if (AlbumArtBorder is not null)
+        {
+            AlbumArtBorder.Width =
+                pixel ? 96 : 138;
+            AlbumArtBorder.Height =
+                pixel ? 96 : 138;
+        }
+
+        if (TitleText is not null)
+            TitleText.FontSize =
+                pixel ? 18 : 23;
+
+        if (ArtistText is not null)
+        {
+            ArtistText.FontSize =
+                pixel ? 12 : 14;
+            ArtistText.Margin =
+                pixel
+                    ? new Thickness(0, 3, 0, 8)
+                    : new Thickness(0, 5, 0, 17);
+        }
+
+        if (PixelHomePreviewCard is not null)
+            PixelHomePreviewCard.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (HomeScreensaverCard is not null)
+        {
+            Grid.SetRow(
+                HomeScreensaverCard,
+                pixel ? 2 : 0);
+
+            Grid.SetColumn(
+                HomeScreensaverCard,
+                pixel ? 0 : 2);
+
+            Grid.SetColumnSpan(
+                HomeScreensaverCard,
+                pixel ? 3 : 1);
+
+            HomeScreensaverCard.Padding =
+                pixel
+                    ? new Thickness(18)
+                    : new Thickness(22);
+        }
+
         if (ScreensaverPreviewBorder is not null)
         {
             ScreensaverPreviewBorder.Width =
@@ -1177,6 +1302,11 @@ public partial class MainWindow : Window
 
             ScreensaverPreviewBorder.Height =
                 pixel ? 320 : 193.5;
+
+            ScreensaverPreviewBorder.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
         }
 
         if (ScreensaverPreviewSurface is not null)
@@ -1853,6 +1983,7 @@ public partial class MainWindow : Window
         public int RgbIdleDelaySeconds { get; set; } = 60;
         public int DeepSleepDelaySeconds { get; set; } = 0;
         public string? ScreensaverMediaPath { get; set; }
+        public string? PixelScreensaverMediaPath { get; set; }
         public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
         public bool PcMonitorEnabled { get; set; } = true;
         public int PcMonitorIntervalMs { get; set; } = 1000;
@@ -1953,7 +2084,20 @@ public partial class MainWindow : Window
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
             _deepSleepDelaySeconds = Math.Max(0, settings.DeepSleepDelaySeconds);
-            _screensaverMediaPath = settings.ScreensaverMediaPath;
+            _rynorScreensaverMediaPath =
+                settings.ScreensaverMediaPath;
+
+            // One-time migration for builds that shared a single media path.
+            // Keeping the legacy path available to both products lets PIXEL
+            // reprocess it with the correct 480×320 service after selection.
+            _pixelScreensaverMediaPath =
+                string.IsNullOrWhiteSpace(settings.PixelScreensaverMediaPath)
+                    ? settings.ScreensaverMediaPath
+                    : settings.PixelScreensaverMediaPath;
+
+            _screensaverMediaPath =
+                _rynorScreensaverMediaPath;
+
             _screensaverScaleMode = settings.ScreensaverScaleMode;
             _screensaverSource =
                 string.Equals(settings.ScreensaverSource, "PcMonitor", StringComparison.Ordinal)
@@ -2027,7 +2171,8 @@ public partial class MainWindow : Window
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
                 DeepSleepDelaySeconds = _deepSleepDelaySeconds,
-                ScreensaverMediaPath = _screensaverMediaPath,
+                ScreensaverMediaPath = _rynorScreensaverMediaPath,
+                PixelScreensaverMediaPath = _pixelScreensaverMediaPath,
                 // Preserve RYNOR's scale even while PIXEL PRO is active.
                 ScreensaverScaleMode = _screensaverScaleMode,
                 PcMonitorEnabled = _pcMonitorEnabled,
@@ -3047,11 +3192,21 @@ public partial class MainWindow : Window
         {
             if (FlashUsageText is not null)
             {
+                double flashPct =
+                    usage.Value.FlashTotal > 0
+                        ? Math.Clamp(
+                            usage.Value.FlashUsed * 100.0 /
+                            usage.Value.FlashTotal,
+                            0.0,
+                            100.0)
+                        : 0.0;
+
                 FlashUsageText.Text =
-                    PercentText(
-                        "FLASH",
-                        usage.Value.FlashUsed,
-                        usage.Value.FlashTotal);
+                    usage.Value.FlashTotal > 0
+                        ? $"FLASH {flashPct:0.0}% · " +
+                          $"{usage.Value.FlashUsed / 1048576.0:0.00}/" +
+                          $"{usage.Value.FlashTotal / 1048576.0:0.00} MB"
+                        : "FLASH --";
             }
 
             if (SramUsageText is not null)
@@ -6620,6 +6775,7 @@ try {{
         }
 
         RefreshPixelMacroActionCombo();
+        RefreshPixelMainMenuActionChoices();
 
         if (string.Equals(
                 _pixelCurrentCategory,
@@ -8251,6 +8407,11 @@ try {{
 
         _screensaverMediaPath = dialog.FileName;
 
+        if (IsPixelProActive)
+            _pixelScreensaverMediaPath = dialog.FileName;
+        else
+            _rynorScreensaverMediaPath = dialog.FileName;
+
         // PIXEL PRO has its own Center/no-upscale policy. Do not mutate the
         // shared RYNOR scale preference when choosing PIXEL media.
         _screensaverSource = "Media";
@@ -8443,6 +8604,12 @@ try {{
             ScreensaverPreviewImage.Visibility = Visibility.Visible;
             ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
 
+            if (PixelHomePreviewHint is not null)
+                PixelHomePreviewHint.Visibility =
+                    pixel
+                        ? Visibility.Collapsed
+                        : Visibility.Visible;
+
             _screensaverPreviewIndex = 0;
             _screensaverPreviewTimer.Stop();
             _screensaverPreviewClock.Reset();
@@ -8542,6 +8709,9 @@ try {{
                 ScreensaverSendStatus.Text =
                     L("LumiPad confirmed the custom screensaver is ready.",
                       "LumiPad đã xác nhận bảo vệ màn hình tùy chỉnh sẵn sàng.");
+
+                if (IsPixelProActive)
+                    await UpdateMemoryUsageAsync();
                 SaveAppSettings();
             }
             else
@@ -8614,14 +8784,37 @@ try {{
     {
         _screensaverAnimation = null;
         _screensaverMediaPath = null;
+
+        if (IsPixelProActive)
+            _pixelScreensaverMediaPath = null;
+        else
+            _rynorScreensaverMediaPath = null;
+
         SaveAppSettings();
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Reset();
         _serial.ClearScreensaverAnimation();
 
+        if (IsPixelProActive)
+        {
+            Dispatcher.BeginInvoke(
+                new Action(async () =>
+                {
+                    await Task.Delay(300);
+                    await UpdateMemoryUsageAsync();
+                }));
+        }
+
         ScreensaverPreviewImage.Source = null;
         ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
         ScreensaverPreviewHint.Visibility = Visibility.Visible;
+
+        if (PixelHomePreviewHint is not null)
+            PixelHomePreviewHint.Visibility =
+                IsPixelProActive
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
         ScreensaverFileName.Text = L("No file selected", "Chưa chọn tệp");
         ScreensaverMediaInfo.Text =
             IsPixelProActive
@@ -11736,6 +11929,13 @@ try {{
         Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
         UpdateDeviceConfiguratorUi();
+
+        if (PixelMainMenuTab is not null &&
+            PixelMainMenuTab.IsSelected &&
+            IsPixelProActive)
+        {
+            RefreshPixelMainMenuUi();
+        }
 
         if (ConfiguratorTab.IsSelected)
         {

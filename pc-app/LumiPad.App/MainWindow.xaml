@@ -132,7 +132,7 @@
                     SelectionChanged="MainTabs_SelectionChanged">
 
             <TabItem Header="Home">
-                <Grid Margin="0,14,0,0">
+                <Grid x:Name="HomeDashboardGrid" Margin="0,14,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="14"/>
@@ -144,7 +144,8 @@
                         <ColumnDefinition Width="0.82*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0"
+                    <Border x:Name="HomeMediaCard"
+                            Grid.Column="0"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="1"
@@ -178,7 +179,8 @@
                                     <ColumnDefinition/>
                                 </Grid.ColumnDefinitions>
 
-                                <Border Width="138"
+                                <Border x:Name="AlbumArtBorder"
+                                        Width="138"
                                         Height="138"
                                         CornerRadius="18"
                                         Background="{DynamicResource Card2}"
@@ -337,7 +339,62 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="2"
+                    <Border x:Name="PixelHomePreviewCard"
+                            Grid.Column="2"
+                            Visibility="Collapsed"
+                            Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="28"
+                            Padding="18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="10"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid>
+                                <TextBlock Text="PIXEL PRO DISPLAY"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <TextBlock Text="480 × 320"
+                                           HorizontalAlignment="Right"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Muted}"/>
+                            </Grid>
+
+                            <Border Grid.Row="2"
+                                    Background="#050505"
+                                    BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="14"
+                                    ClipToBounds="True"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                <Viewbox Width="420"
+                                         Height="280"
+                                         Stretch="Uniform">
+                                    <Grid Width="480"
+                                          Height="320"
+                                          Background="#050505">
+                                        <Image x:Name="PixelHomePreviewImage"
+                                               Source="{Binding ElementName=ScreensaverPreviewImage, Path=Source}"
+                                               Stretch="Fill"/>
+                                        <TextBlock x:Name="PixelHomePreviewHint"
+                                                   Text="Preview"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Muted}"/>
+                                    </Grid>
+                                </Viewbox>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="HomeScreensaverCard"
+                            Grid.Column="2"
                             Background="{DynamicResource Card}"
                             BorderBrush="{DynamicResource Line}" BorderThickness="1"
                             CornerRadius="28" Padding="22">
@@ -580,6 +637,185 @@
 
 
                 </Grid>
+            </TabItem>
+
+            <TabItem x:Name="PixelMainMenuTab"
+                     Header="Main Menu"
+                     Visibility="Collapsed">
+                <ScrollViewer Margin="0,14,0,0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="0,0,8,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="520"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="24"
+                                Padding="18">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,12">
+                                    <TextBlock Text="MAIN MENU PREVIEW"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <TextBlock x:Name="PixelMenuPreviewLayerText"
+                                               Text="Menu 1 · Layer 0"
+                                               HorizontalAlignment="Right"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Muted}"/>
+                                </Grid>
+
+                                <Border Width="480"
+                                        Height="320"
+                                        HorizontalAlignment="Center"
+                                        Background="#050505"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1"
+                                        CornerRadius="14"
+                                        ClipToBounds="True">
+                                    <Grid>
+                                        <Image x:Name="PixelMenuBackgroundPreview"
+                                               Stretch="UniformToFill"/>
+                                        <Border x:Name="PixelMenuBrightnessOverlay"
+                                                Background="Black"
+                                                Opacity="0.30"/>
+                                        <UniformGrid x:Name="PixelMenuPreviewSlots"
+                                                     Rows="3"
+                                                     Columns="4"
+                                                     Margin="12,10"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="{DynamicResource Card}"
+                                BorderBrush="{DynamicResource Line}"
+                                BorderThickness="1"
+                                CornerRadius="24"
+                                Padding="20">
+                            <StackPanel>
+                                <TextBlock Text="PIXEL PRO MAIN MENU"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Muted}"/>
+                                <TextBlock Text="Static background + 4 × 3 action icons"
+                                           FontSize="22"
+                                           FontWeight="SemiBold"
+                                           Margin="0,7,0,16"/>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Menu"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PixelMenuPageCombo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PixelMenuPageCombo_SelectionChanged">
+                                            <ComboBoxItem Content="Menu 1" Tag="0" IsSelected="True"/>
+                                            <ComboBoxItem Content="Menu 2" Tag="1"/>
+                                            <ComboBoxItem Content="Menu 3" Tag="2"/>
+                                            <ComboBoxItem Content="Menu 4" Tag="3"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Layer"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="PixelMenuLayerCombo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PixelMenuLayerCombo_SelectionChanged">
+                                            <ComboBoxItem Content="Layer 0" Tag="0" IsSelected="True"/>
+                                            <ComboBoxItem Content="Layer 1" Tag="1"/>
+                                            <ComboBoxItem Content="Layer 2" Tag="2"/>
+                                            <ComboBoxItem Content="Layer 3" Tag="3"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock Text="Background"
+                                           Foreground="{DynamicResource Muted}"
+                                           Margin="0,0,0,5"/>
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,0,0,10">
+                                    <Button Content="Choose static image"
+                                            Click="PixelMenuChooseBackground_Click"/>
+                                    <Button Content="Clear"
+                                            Click="PixelMenuClearBackground_Click"/>
+                                    <TextBlock x:Name="PixelMenuBackgroundName"
+                                               Text="No background"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="220"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="8,0,0,0"/>
+                                </StackPanel>
+
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="55"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Brightness"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,10,0"/>
+                                    <Slider x:Name="PixelMenuBrightnessSlider"
+                                            Grid.Column="1"
+                                            Minimum="20"
+                                            Maximum="100"
+                                            Value="70"
+                                            IsMoveToPointEnabled="True"
+                                            ValueChanged="PixelMenuBrightnessSlider_ValueChanged"/>
+                                    <TextBlock x:Name="PixelMenuBrightnessText"
+                                               Grid.Column="2"
+                                               Text="70%"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <TextBlock Text="12 action slots"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,8"/>
+                                <UniformGrid x:Name="PixelMenuSlotsEditor"
+                                             Rows="3"
+                                             Columns="4"/>
+
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,16,0,0">
+                                    <Button x:Name="PixelMenuSaveButton"
+                                            Content="Save to PIXEL PRO"
+                                            Click="PixelMenuSave_Click"/>
+                                    <Button Content="Show now"
+                                            Click="PixelMenuShowNow_Click"/>
+                                </StackPanel>
+
+                                <ProgressBar x:Name="PixelMenuUploadProgress"
+                                             Minimum="0"
+                                             Maximum="100"
+                                             Height="5"
+                                             Margin="0,12,0,0"/>
+                                <TextBlock x:Name="PixelMenuStatusText"
+                                           Text="Configure a menu and save it to PIXEL PRO."
+                                           Foreground="{DynamicResource Muted}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,7,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
             </TabItem>
 
             <TabItem x:Name="ConfiguratorTab" Header="Device Config">
