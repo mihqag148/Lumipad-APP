@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Ports;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace LumiPad.App;
@@ -1879,9 +1880,8 @@ public sealed class PixelProCdcLink : IDeviceLink
                 0,
                 PixelProMainMenuStore.SlotCount - 1);
 
-        if (iconBytes.Length < 4 ||
-            iconBytes.Length >
-                PixelProMainMenuMediaService.IconMaxBytes)
+        if (iconBytes.Length !=
+            PixelProMainMenuMediaService.IconBytes)
         {
             return Task.FromResult(false);
         }
@@ -2008,8 +2008,35 @@ public sealed class PixelProCdcLink : IDeviceLink
             StringComparison.Ordinal);
     }
 
+    private static string MainMenuHostOsCode()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return "MAC";
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return "LINUX";
+
+        return "WIN";
+    }
+
     public async Task<bool> ShowMainMenuAsync()
     {
+        string os =
+            MainMenuHostOsCode();
+
+        string? osLine =
+            await RequestLineAsync(
+                $"MENUOS|{os}",
+                "OK|MENUOS");
+
+        if (!string.Equals(
+                osLine,
+                "OK|MENUOS",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         string? line =
             await RequestLineAsync(
                 "MENUSHOW",
