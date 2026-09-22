@@ -38,7 +38,7 @@ internal sealed record PixelProPackedAnimationResult(
 /// useful ideas for a small MCU: delta frames, per-run RLE, and selectable
 /// native/palette color depths. A progressive Smart Delta pass suppresses
 /// visually insignificant temporal noise before reducing resolution/FPS.
-/// New PIXEL PRO media keeps a quality floor of 360×240 and Palette256 while
+/// New PIXEL PRO media keeps a quality floor of 360×240 and RGB565 while
 /// using up to 1100 KiB when needed.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
@@ -58,10 +58,6 @@ internal static class PixelProPackedAnimationEncoder
         2,
         3,
     ];
-
-    private sealed record PaletteEncoding(
-        Drawing.Color[] Colors,
-        byte[] Lookup);
 
     private readonly record struct PlannedFrame(
         int SourceIndex,
@@ -119,16 +115,10 @@ internal static class PixelProPackedAnimationEncoder
             maxDurationSeconds *
             1000;
 
-        var paletteCache =
-            new Dictionary<
-                (int Width, int Height, int Colors),
-                PaletteEncoding>();
-
-        // One fast high-color probe preserves RGB565 for very simple GIFs.
-        // If it does not fit, Palette256 is the most efficient format that
-        // still meets the requested quality floor, so do not waste CPU trying
-        // larger RGB888/RGB565 payloads at every ladder step.
-        Candidate highColor =
+        // Keep full RGB888 when an easy 480×320 / 60 FPS source already fits.
+        // This probe aborts at the 1100 KiB ceiling, so complex GIFs move on
+        // quickly to the RGB565 search instead of spending time on RGB888.
+        Candidate rgb888Probe =
             EncodeCandidate(
                 image,
                 dimension,
@@ -138,28 +128,26 @@ internal static class PixelProPackedAnimationEncoder
                 320,
                 60,
                 maxDurationMs,
-                PixelProPackedColorMode.Rgb565,
+                PixelProPackedColorMode.Rgb888,
                 scaleMode,
                 0,
-                paletteCache,
                 HardTargetBytes);
 
-        if (!highColor.ExceededLimit &&
-            highColor.Bytes is not null &&
-            highColor.Bytes.Length <= HardTargetBytes)
+        if (!rgb888Probe.ExceededLimit &&
+            rgb888Probe.Bytes is not null &&
+            rgb888Probe.Bytes.Length <= HardTargetBytes)
         {
             return ToResult(
-                highColor,
+                rgb888Probe,
                 scaleMode,
                 new FileInfo(path).Length,
                 false);
         }
 
+        // RGB565 is now the hard color-quality floor. Never generate P256,
+        // P16, P4 or P2 for new PIXEL PRO GIF uploads.
         foreach ((int width, int height, int fps) in BuildQualityLadder())
         {
-            // Try exact delta first, then two perceptual levels. Palette and
-            // its expensive 32K lookup table are cached per resolution and
-            // reused across FPS/Smart Delta attempts.
             foreach (int smartDeltaLevel in SmartDeltaLevels)
             {
                 Candidate candidate =
@@ -172,10 +160,9 @@ internal static class PixelProPackedAnimationEncoder
                         height,
                         fps,
                         maxDurationMs,
-                        PixelProPackedColorMode.Palette256,
+                        PixelProPackedColorMode.Rgb565,
                         scaleMode,
                         smartDeltaLevel,
-                        paletteCache,
                         HardTargetBytes);
 
                 if (!candidate.ExceededLimit &&
@@ -193,7 +180,7 @@ internal static class PixelProPackedAnimationEncoder
         }
 
         throw new InvalidOperationException(
-            "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and Palette256. Shorten or simplify the GIF.");
+            "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and RGB565. Shorten or simplify the GIF.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -251,7 +238,7 @@ internal static class PixelProPackedAnimationEncoder
         Add(360, 240, 15);
 
         // Emergency temporal reduction keeps the requested resolution/color
-        // floor instead of falling back to 240×160 or Palette16/4/2.
+        // floor instead of falling back to 240×160 or palette color modes.
         foreach (int fps in new[] { 12, 10, 8, 6, 5 })
             Add(360, 240, fps);
 
@@ -270,9 +257,6 @@ internal static class PixelProPackedAnimationEncoder
         PixelProPackedColorMode colorMode,
         ScreensaverScaleMode scaleMode,
         int smartDeltaLevel,
-        IDictionary<
-            (int Width, int Height, int Colors),
-            PaletteEncoding> paletteCache,
         int abortAfterBytes)
     {
         List<PlannedFrame> plan =
@@ -287,53 +271,13 @@ internal static class PixelProPackedAnimationEncoder
                 frame =>
                     frame.DelayMs);
 
+        // EncodeBest only emits RGB888/RGB565 now. Palette decoding helpers
+        // remain in this file for backward compatibility with older PXQ data.
         Drawing.Color[] palette =
             Array.Empty<Drawing.Color>();
 
         byte[]? lookup =
             null;
-
-        if (IsPaletteMode(colorMode))
-        {
-            int paletteCount =
-                PaletteCount(colorMode);
-
-            var cacheKey =
-                (
-                    Width: storageWidth,
-                    Height: storageHeight,
-                    Colors: paletteCount);
-
-            if (!paletteCache.TryGetValue(
-                    cacheKey,
-                    out PaletteEncoding? cached))
-            {
-                Drawing.Color[] colors =
-                    BuildAdaptivePalette(
-                        image,
-                        dimension,
-                        plan,
-                        storageWidth,
-                        storageHeight,
-                        scaleMode,
-                        paletteCount);
-
-                cached =
-                    new PaletteEncoding(
-                        colors,
-                        BuildPaletteLookup(
-                            colors));
-
-                paletteCache[cacheKey] =
-                    cached;
-            }
-
-            palette =
-                cached.Colors;
-
-            lookup =
-                cached.Lookup;
-        }
 
         using var output =
             new MemoryStream(
