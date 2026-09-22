@@ -130,7 +130,22 @@ public partial class MainWindow : Window
     private byte _g = 120;
     private byte _b = 0;
     private ScreensaverAnimation? _screensaverAnimation;
+    // Keep RYNOR and PIXEL media paths isolated. Older builds shared one path,
+    // which let a saved PIXEL GIF get reprocessed by the RYNOR 160×86 service
+    // during startup before PIXEL PRO became the active product.
     private string? _screensaverMediaPath;
+    private string? _rynorScreensaverMediaPath;
+    private string? _pixelScreensaverMediaPath;
+
+    private readonly PixelProMainMenuConfig _pixelMainMenu =
+        PixelProMainMenuStore.Load();
+    private int _pixelMenuPageIndex;
+    private bool _syncingPixelMenuUi;
+    private readonly List<ComboBox> _pixelMenuActionCombos = [];
+    private readonly List<System.Windows.Controls.Image> _pixelMenuEditorIcons = [];
+    private readonly List<System.Windows.Controls.Image> _pixelMenuPreviewIcons = [];
+    private readonly List<TextBlock> _pixelMenuPreviewLabels = [];
+
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
     private readonly Stopwatch _screensaverPreviewClock = new();
     private readonly DispatcherTimer _pixelRgbPreviewTimer = new();
