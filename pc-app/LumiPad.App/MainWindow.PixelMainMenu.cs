@@ -246,28 +246,13 @@ public partial class MainWindow
                     Margin = new Thickness(2, 1, 2, 1)
                 };
 
-            previewGrid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = new GridLength(1, GridUnitType.Star)
-                });
-
-            previewGrid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = new GridLength(18)
-                });
-
-            Grid.SetRow(
-                previewIcon,
-                0);
-
-            Grid.SetRow(
-                previewLabel,
-                1);
-
             previewGrid.Children.Add(previewIcon);
-            previewGrid.Children.Add(previewLabel);
+
+            // Keep previewLabel in the backing list for compatibility with
+            // existing refresh code, but do not render action/app names on
+            // the PIXEL PRO screen preview. The real LCD is icon-only too.
+            previewLabel.Visibility =
+                Visibility.Collapsed;
 
             PixelMenuPreviewSlots.Children.Add(
                 previewGrid);
@@ -478,16 +463,10 @@ public partial class MainWindow
                         : Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Visibility =
-                    actionId > 0
-                        ? Visibility.Visible
-                        : Visibility.Collapsed;
+                    Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Text =
-                    actionId <= 0
-                        ? ""
-                        : action is null
-                            ? $"A{actionId:00}"
-                            : action.Name;
+                    "";
             }
         }
         finally
@@ -509,50 +488,38 @@ public partial class MainWindow
             return;
         }
 
-        int profileIndex =
-            PixelMenuProfileIndex;
+        string os =
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? "WIN"
+                : RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    ? "MAC"
+                    : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                        ? "LINUX"
+                        : "OTHER";
 
-        PixelMenuPreviewProfileStatus.Text =
-            $"Profile {profileIndex + 1:00}/{PixelProMainMenuStore.ProfileCount:00}";
-
-        DateTime now =
-            DateTime.Now;
-
-        PixelMenuPreviewTimeStatus.Text =
-            $"{now:MM-dd  HH:mm}";
-
-        PcMonitorSnapshot? snapshot =
-            _lastPcMonitorSnapshot;
-
-        if (snapshot is null)
+        // Four compact icon-only system tiles, mirroring the LCD:
+        // OS/Home, Files, OS task/terminal view, Settings.
+        if (os == "MAC")
         {
-            PixelMenuPreviewCpuStatus.Text =
-                "CPU --%  --C";
-            PixelMenuPreviewGpuStatus.Text =
-                "GPU --%  --C";
-            return;
+            PixelMenuPreviewProfileStatus.Text = "◆";
+            PixelMenuPreviewTimeStatus.Text = "▰";
+            PixelMenuPreviewCpuStatus.Text = "▣";
+            PixelMenuPreviewGpuStatus.Text = "⚙";
         }
-
-        string cpuTemp =
-            snapshot.CpuTemperature.HasValue
-                ? $"{Math.Round(snapshot.CpuTemperature.Value):0}C"
-                : "--C";
-
-        string gpuLoad =
-            snapshot.GpuLoad.HasValue
-                ? $"{Math.Round(snapshot.GpuLoad.Value):0}%"
-                : "--%";
-
-        string gpuTemp =
-            snapshot.GpuTemperature.HasValue
-                ? $"{Math.Round(snapshot.GpuTemperature.Value):0}C"
-                : "--C";
-
-        PixelMenuPreviewCpuStatus.Text =
-            $"CPU {Math.Round(snapshot.CpuLoad):0}%  {cpuTemp}";
-
-        PixelMenuPreviewGpuStatus.Text =
-            $"GPU {gpuLoad}  {gpuTemp}";
+        else if (os == "LINUX")
+        {
+            PixelMenuPreviewProfileStatus.Text = "◉";
+            PixelMenuPreviewTimeStatus.Text = "▰";
+            PixelMenuPreviewCpuStatus.Text = ">_";
+            PixelMenuPreviewGpuStatus.Text = "⚙";
+        }
+        else
+        {
+            PixelMenuPreviewProfileStatus.Text = "⊞";
+            PixelMenuPreviewTimeStatus.Text = "▰";
+            PixelMenuPreviewCpuStatus.Text = "▣";
+            PixelMenuPreviewGpuStatus.Text = "⚙";
+        }
     }
 
     private static ImageSource? LoadImageSource(
