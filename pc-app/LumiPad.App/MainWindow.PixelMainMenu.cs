@@ -163,7 +163,7 @@ public partial class MainWindow
                     CornerRadius = new CornerRadius(9),
                     BorderBrush =
                         new SolidColorBrush(
-                            MediaColor.FromArgb(
+                            Color.FromArgb(
                                 150,
                                 180,
                                 180,
