@@ -36,15 +36,16 @@ internal sealed record PixelProPackedAnimationResult(
 ///
 /// The wire format is PIXEL-specific rather than QGF, but follows the same
 /// useful ideas for a small MCU: delta frames, per-run RLE, and selectable
-/// native/palette color depths. The output is strictly kept below 1 MiB.
+/// native/palette color depths. New PIXEL PRO media keeps a quality floor of
+/// 360×240 and Palette256 while using up to 1100 KiB when needed.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
 {
     public const int DisplayWidth = 480;
     public const int DisplayHeight = 320;
-    public const int HardTargetBytes = (1024 * 1024) - 1024;
+    public const int PreferredMinBytes = 800 * 1024;
+    public const int HardTargetBytes = 1100 * 1024;
 
-    private const int BaselineProbeBytes = (3 * 1024 * 1024) + 4096;
     private const int MaxCanvas = 1024;
 
     private readonly record struct PlannedFrame(
@@ -103,78 +104,14 @@ internal static class PixelProPackedAnimationEncoder
             maxDurationSeconds *
             1000;
 
-        // First probe the absolute best candidate. We only need to know the
-        // 1/2/3 MiB tier, so the probe aborts once it passes 3 MiB.
-        Candidate baseline =
-            EncodeCandidate(
-                image,
-                dimension,
-                sourceDelays,
-                sourceFrameCount,
-                480,
-                320,
-                60,
-                maxDurationMs,
-                PixelProPackedColorMode.Rgb888,
-                scaleMode,
-                BaselineProbeBytes);
-
-        if (!baseline.ExceededLimit &&
-            baseline.Bytes is not null &&
-            baseline.Bytes.Length <
-                HardTargetBytes)
-        {
-            return ToResult(
-                baseline,
-                scaleMode,
-                new FileInfo(path).Length,
-                false);
-        }
-
-        long probeSize =
-            baseline.EncodedBytes;
-
-        int startWidth;
-        int startHeight;
-        int startFps;
-
-        if (probeSize > 3L * 1024 * 1024)
-        {
-            startWidth = 240;
-            startHeight = 160;
-            startFps = 15;
-        }
-        else if (probeSize > 2L * 1024 * 1024)
-        {
-            startWidth = 240;
-            startHeight = 160;
-            startFps = 20;
-        }
-        else
-        {
-            // >1 MiB: first reduce spatial resolution to 75% and cap at 30 FPS.
-            startWidth = 360;
-            startHeight = 240;
-            startFps = 30;
-        }
-
         PixelProPackedColorMode[] colorModes =
         [
             PixelProPackedColorMode.Rgb888,
             PixelProPackedColorMode.Rgb565,
             PixelProPackedColorMode.Palette256,
-            PixelProPackedColorMode.Palette16,
-            PixelProPackedColorMode.Palette4,
-            PixelProPackedColorMode.Palette2,
         ];
 
-        var qualityLadder =
-            BuildQualityLadder(
-                startWidth,
-                startHeight,
-                startFps);
-
-        foreach ((int width, int height, int fps) in qualityLadder)
+        foreach ((int width, int height, int fps) in BuildQualityLadder())
         {
             foreach (PixelProPackedColorMode mode in colorModes)
             {
@@ -194,7 +131,7 @@ internal static class PixelProPackedAnimationEncoder
 
                 if (!candidate.ExceededLimit &&
                     candidate.Bytes is not null &&
-                    candidate.Bytes.Length <
+                    candidate.Bytes.Length <=
                         HardTargetBytes)
                 {
                     return ToResult(
@@ -206,39 +143,8 @@ internal static class PixelProPackedAnimationEncoder
             }
         }
 
-        // Hard-cap guarantee. This path is intentionally below the requested
-        // 15 FPS floor only when even 240×160 / palette2 cannot satisfy 1 MiB.
-        foreach (int emergencyFps in new[] { 12, 10, 8, 6, 5 })
-        {
-            Candidate candidate =
-                EncodeCandidate(
-                    image,
-                    dimension,
-                    sourceDelays,
-                    sourceFrameCount,
-                    240,
-                    160,
-                    emergencyFps,
-                    maxDurationMs,
-                    PixelProPackedColorMode.Palette2,
-                    scaleMode,
-                    HardTargetBytes);
-
-            if (!candidate.ExceededLimit &&
-                candidate.Bytes is not null &&
-                candidate.Bytes.Length <
-                    HardTargetBytes)
-            {
-                return ToResult(
-                    candidate,
-                    scaleMode,
-                    new FileInfo(path).Length,
-                    true);
-            }
-        }
-
         throw new InvalidOperationException(
-            "PIXEL PRO could not pack this GIF below 1 MiB even at 240×160, palette2 and 5 FPS. Shorten the GIF duration.");
+            "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and Palette256. Shorten or simplify the GIF.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -261,10 +167,7 @@ internal static class PixelProPackedAnimationEncoder
             emergency);
 
     private static IReadOnlyList<(int Width, int Height, int Fps)>
-        BuildQualityLadder(
-            int startWidth,
-            int startHeight,
-            int startFps)
+        BuildQualityLadder()
     {
         var result =
             new List<(int, int, int)>();
@@ -281,22 +184,27 @@ internal static class PixelProPackedAnimationEncoder
                 result.Add(item);
         }
 
-        Add(
-            startWidth,
-            startHeight,
-            startFps);
+        // Preserve native panel resolution whenever practical, then trade
+        // spatial detail for motion. Never go below 360×240.
+        foreach (int fps in new[] { 60, 50, 40, 30 })
+            Add(480, 320, fps);
 
-        if (startWidth == 360)
-        {
-            Add(360, 240, 20);
-            Add(360, 240, 15);
-            Add(240, 160, 30);
-        }
+        foreach (int fps in new[] { 60, 50, 40, 30 })
+            Add(360, 240, fps);
 
-        if (startFps > 20)
-            Add(240, 160, 20);
+        foreach (int fps in new[] { 25, 20 })
+            Add(480, 320, fps);
 
-        Add(240, 160, 15);
+        foreach (int fps in new[] { 25, 20 })
+            Add(360, 240, fps);
+
+        Add(480, 320, 15);
+        Add(360, 240, 15);
+
+        // Emergency temporal reduction keeps the requested resolution/color
+        // floor instead of falling back to 240×160 or Palette16/4/2.
+        foreach (int fps in new[] { 12, 10, 8, 6, 5 })
+            Add(360, 240, fps);
 
         return result;
     }
@@ -461,7 +369,7 @@ internal static class PixelProPackedAnimationEncoder
             previous =
                 current;
 
-            if (output.Length >=
+            if (output.Length >
                 abortAfterBytes)
             {
                 return new Candidate(
@@ -1307,111 +1215,19 @@ internal static class PixelProPackedAnimationEncoder
                 0);
         }
 
-        var logical =
-            new Drawing.Bitmap(
-                DisplayWidth,
-                DisplayHeight,
-                PixelFormat.Format24bppRgb);
-
-        using Drawing.Graphics g =
-            Drawing.Graphics.FromImage(
-                logical);
-
-        g.Clear(
-            Drawing.Color.Black);
-
-        g.InterpolationMode =
-            Drawing2D.InterpolationMode.HighQualityBicubic;
-
-        g.PixelOffsetMode =
-            Drawing2D.PixelOffsetMode.HighQuality;
-
-        g.CompositingQuality =
-            Drawing2D.CompositingQuality.HighQuality;
-
-        double fit =
-            Math.Min(
-                DisplayWidth /
-                    (double)source.Width,
-                DisplayHeight /
-                    (double)source.Height);
-
-        double fill =
-            Math.Max(
-                DisplayWidth /
-                    (double)source.Width,
-                DisplayHeight /
-                    (double)source.Height);
-
-        double scale =
-            scaleMode switch
-            {
-                ScreensaverScaleMode.Fill =>
-                    fill,
-
-                ScreensaverScaleMode.Stretch =>
-                    1.0,
-
-                ScreensaverScaleMode.Fit =>
-                    fit,
-
-                ScreensaverScaleMode.Span =>
-                    fill,
-
-                _ =>
-                    Math.Min(
-                        1.0,
-                        fit)
-            };
-
-        if (scaleMode ==
-            ScreensaverScaleMode.Stretch)
-        {
-            g.DrawImage(
-                source,
-                0,
-                0,
-                DisplayWidth,
-                DisplayHeight);
-
-            return logical;
-        }
-
-        int drawWidth =
-            Math.Max(
-                1,
-                (int)Math.Round(
-                    source.Width *
-                    scale));
-
-        int drawHeight =
-            Math.Max(
-                1,
-                (int)Math.Round(
-                    source.Height *
-                    scale));
-
-        int x =
-            (DisplayWidth -
-             drawWidth) /
-            2;
-
-        int y =
-            (DisplayHeight -
-             drawHeight) /
-            2;
-
-        g.DrawImage(
+        return RenderLogicalBitmap(
             source,
-            x,
-            y,
-            drawWidth,
-            drawHeight);
-
-        return logical;
+            scaleMode);
     }
 
     internal static Drawing.Bitmap RenderStaticLogical(
+        Drawing.Bitmap source,
+        ScreensaverScaleMode scaleMode) =>
+        RenderLogicalBitmap(
+            source,
+            scaleMode);
+
+    private static Drawing.Bitmap RenderLogicalBitmap(
         Drawing.Bitmap source,
         ScreensaverScaleMode scaleMode)
     {
@@ -1450,6 +1266,24 @@ internal static class PixelProPackedAnimationEncoder
             return logical;
         }
 
+        if (scaleMode ==
+            ScreensaverScaleMode.Tile)
+        {
+            using var brush =
+                new Drawing.TextureBrush(
+                    source,
+                    Drawing2D.WrapMode.Tile);
+
+            g.FillRectangle(
+                brush,
+                0,
+                0,
+                DisplayWidth,
+                DisplayHeight);
+
+            return logical;
+        }
+
         double fit =
             Math.Min(
                 DisplayWidth /
@@ -1457,21 +1291,31 @@ internal static class PixelProPackedAnimationEncoder
                 DisplayHeight /
                     (double)source.Height);
 
+        double fill =
+            Math.Max(
+                DisplayWidth /
+                    (double)source.Width,
+                DisplayHeight /
+                    (double)source.Height);
+
         double scale =
-            scaleMode is
-                ScreensaverScaleMode.Fill or
-                ScreensaverScaleMode.Span
-                ? Math.Max(
-                    DisplayWidth /
-                        (double)source.Width,
-                    DisplayHeight /
-                        (double)source.Height)
-                : scaleMode ==
-                    ScreensaverScaleMode.Fit
-                    ? fit
-                    : Math.Min(
-                        1.0,
-                        fit);
+            scaleMode switch
+            {
+                ScreensaverScaleMode.Fit =>
+                    fit,
+
+                ScreensaverScaleMode.Center =>
+                    1.0,
+
+                ScreensaverScaleMode.Span =>
+                    fill,
+
+                ScreensaverScaleMode.Fill =>
+                    fill,
+
+                _ =>
+                    fill
+            };
 
         int drawWidth =
             Math.Max(
@@ -1487,14 +1331,20 @@ internal static class PixelProPackedAnimationEncoder
                     source.Height *
                     scale));
 
-        g.DrawImage(
-            source,
+        int x =
             (DisplayWidth -
              drawWidth) /
-            2,
+            2;
+
+        int y =
             (DisplayHeight -
              drawHeight) /
-            2,
+            2;
+
+        g.DrawImage(
+            source,
+            x,
+            y,
             drawWidth,
             drawHeight);
 

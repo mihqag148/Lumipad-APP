@@ -443,12 +443,12 @@
                                                    FontSize="11"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Accent}"/>
-                                        <TextBlock Text="Hard cap &lt; 1 MiB · Delta frames + RLE · best color mode automatically selected"
+                                        <TextBlock Text="Quality budget 800–1100 KiB · Delta frames + RLE · high-quality floor preserved"
                                                    FontSize="10"
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,3,0,7"/>
-                                        <TextBlock Text="480×320 → 360×240 → 240×160 · FPS 60 → 30 → 20 → 15 · RGB888 → RGB565 → P256 → P16 → P4 → P2"
+                                        <TextBlock Text="480×320 → 360×240 minimum · FPS 60 → 30 → 20 → 15 (lower only if needed) · RGB888 → RGB565 → P256 minimum"
                                                    FontSize="10"
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"
@@ -462,24 +462,25 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="Layout" Width="72" VerticalAlignment="Center"/>
                                             <ComboBox x:Name="PixelMediaScaleCombo"
-                                                      Width="110"
+                                                      Width="150"
                                                       SelectedValuePath="Tag"
                                                       SelectionChanged="PixelMediaSetting_SelectionChanged">
                                                 <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
+                                                <ComboBoxItem Content="Fit" Tag="Fit"/>
+                                                <ComboBoxItem Content="Stretch" Tag="Stretch"/>
+                                                <ComboBoxItem Content="Tile" Tag="Tile"/>
                                                 <ComboBoxItem Content="Center" Tag="Center"/>
+                                                <ComboBoxItem Content="Span" Tag="Span"/>
                                             </ComboBox>
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Margin="0,6,0,0"
+                                                    Visibility="Collapsed">
                                             <TextBlock Text="Max time" Width="72" VerticalAlignment="Center"/>
                                             <ComboBox x:Name="PixelGifDurationCombo"
                                                       Width="110"
-                                                      SelectedValuePath="Tag"
-                                                      SelectionChanged="PixelMediaSetting_SelectionChanged">
-                                                <ComboBoxItem Content="5 s" Tag="5"/>
-                                                <ComboBoxItem Content="10 s" Tag="10"/>
-                                                <ComboBoxItem Content="15 s" Tag="15" IsSelected="True"/>
-                                                <ComboBoxItem Content="20 s" Tag="20"/>
-                                                <ComboBoxItem Content="30 s" Tag="30"/>
+                                                      SelectedValuePath="Tag">
+                                                <ComboBoxItem Content="10 s" Tag="10" IsSelected="True"/>
                                             </ComboBox>
                                         </StackPanel>
                                     </StackPanel>
@@ -494,7 +495,7 @@
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,3,0,5"/>
-                                        <TextBlock Text="Output 480×320 · Fill or Center uses the same layout selector as GIF"
+                                        <TextBlock Text="Output 480×320 · uses the same Windows-style Fill / Fit / Stretch / Tile / Center / Span layout selector"
                                                    FontSize="10"
                                                    Foreground="{DynamicResource Muted}"
                                                    TextWrapping="Wrap"/>

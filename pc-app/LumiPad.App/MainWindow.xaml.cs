@@ -184,7 +184,7 @@ public partial class MainWindow : Window
     private int[] _pixelRgbEffects = Enumerable.Repeat(3, 20).ToArray();
     private int _pixelRgbSpeed = 50;
 
-    // This remains the RYNOR scale preference. PIXEL PRO uses fixed Center/no-upscale.
+    // This remains the RYNOR scale preference. PIXEL PRO keeps a separate Windows-style layout preference.
     private ScreensaverScaleMode _screensaverScaleMode = ScreensaverScaleMode.Fill;
     private string _screensaverSource = "Media";
 
@@ -1122,8 +1122,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · PXQ hard cap <1 MiB · Delta + RLE · auto resolution/FPS/color depth · Fill/Center.",
-                        "ILI9486 480×320 · PXQ bắt buộc <1 MiB · Delta + RLE · tự chọn độ phân giải/FPS/độ sâu màu · Fill/Center.")
+                        "ILI9486 480×320 · PXQ quality budget up to 1100 KiB · minimum 360×240 / P256 · Delta + RLE · Windows-style layouts.",
+                        "ILI9486 480×320 · PXQ tối đa 1100 KiB · tối thiểu 360×240 / P256 · Delta + RLE · kiểu hiển thị như Windows.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -1903,10 +1903,10 @@ public partial class MainWindow : Window
                     ? settings.PixelGifMaxFps
                     : PixelProScreensaverMediaService.DefaultGifMaxFps;
 
+            // PIXEL PRO GIF length is intentionally fixed at 10 seconds.
+            // Ignore older saved 5/15/20/30 second values from previous builds.
             _pixelGifMaxDurationSeconds =
-                settings.PixelGifMaxDurationSeconds is 5 or 10 or 15 or 20 or 30
-                    ? settings.PixelGifMaxDurationSeconds
-                    : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
+                PixelProScreensaverMediaService.DefaultGifDurationSeconds;
 
             _pixelImageJpegQuality =
                 Math.Clamp(
@@ -1915,10 +1915,8 @@ public partial class MainWindow : Window
                     100);
 
             _pixelMediaScaleMode =
-                settings.PixelMediaScaleMode ==
-                    ScreensaverScaleMode.Center
-                    ? ScreensaverScaleMode.Center
-                    : ScreensaverScaleMode.Fill;
+                PixelProScreensaverMediaService.NormalizePixelScale(
+                    settings.PixelMediaScaleMode);
 
             if (settings.PixelRgbProfiles is { Length: >= 20 } savedPixelRgb &&
                 savedPixelRgb.Take(20).All(profile => profile is { Length: >= 8 }))
@@ -8271,14 +8269,8 @@ try {{
                     : PixelProScreensaverMediaService.DefaultGifMaxFps;
         }
 
-        if (PixelGifDurationCombo?.SelectedValue is string durationText &&
-            int.TryParse(durationText, out int duration))
-        {
-            _pixelGifMaxDurationSeconds =
-                duration is 5 or 10 or 15 or 20 or 30
-                    ? duration
-                    : PixelProScreensaverMediaService.DefaultGifDurationSeconds;
-        }
+        _pixelGifMaxDurationSeconds =
+            PixelProScreensaverMediaService.DefaultGifDurationSeconds;
 
         if (PixelMediaScaleCombo?.SelectedValue is string scaleText &&
             Enum.TryParse<ScreensaverScaleMode>(
@@ -8287,9 +8279,8 @@ try {{
                 out ScreensaverScaleMode parsedScale))
         {
             _pixelMediaScaleMode =
-                parsedScale == ScreensaverScaleMode.Center
-                    ? ScreensaverScaleMode.Center
-                    : ScreensaverScaleMode.Fill;
+                PixelProScreensaverMediaService.NormalizePixelScale(
+                    parsedScale);
         }
 
         SaveAppSettings();
@@ -8384,14 +8375,14 @@ try {{
                     string emergency =
                         pixelPackedInfo.EmergencyFps
                             ? L(
-                                " · emergency FPS used to keep the hard 1 MiB cap",
-                                " · đã hạ FPS khẩn cấp để giữ cứng dưới 1 MiB")
+                                " · emergency FPS used to keep the 1100 KiB cap without dropping below P256 / 360×240",
+                                " · đã hạ FPS khẩn cấp để giữ giới hạn 1100 KiB mà không hạ dưới P256 / 360×240")
                             : "";
 
                     pixelGifSummary =
                         L(
-                            $"PIXEL PXQ · {storedKb:0.#} KB (<1 MiB hard cap) from {sourceKb:0.#} KB · logical 480×320 · stored {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}",
-                            $"PIXEL PXQ · {storedKb:0.#} KB (<1 MiB bắt buộc) từ {sourceKb:0.#} KB · logical 480×320 · lưu {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}");
+                            $"PIXEL PXQ · {storedKb:0.#} KB (≤1100 KiB quality cap) from {sourceKb:0.#} KB · logical 480×320 · stored {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · minimum P256 / 360×240 · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}",
+                            $"PIXEL PXQ · {storedKb:0.#} KB (giới hạn chất lượng ≤1100 KiB) từ {sourceKb:0.#} KB · logical 480×320 · lưu {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · tối thiểu P256 / 360×240 · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -8424,8 +8415,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE under 1 MiB; images use JPEG quality 100. Display refresh remains 60 Hz.",
-                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE dưới 1 MiB; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
+                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE up to 1100 KiB, minimum 360×240 / P256; images use JPEG quality 100. Display refresh remains 60 Hz.",
+                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE tối đa 1100 KiB, tối thiểu 360×240 / P256; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
