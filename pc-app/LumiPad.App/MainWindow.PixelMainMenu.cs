@@ -12,6 +12,40 @@ namespace LumiPad.App;
 
 public partial class MainWindow
 {
+    private void SetPixelHomePreviewMode(bool mainMenu)
+    {
+        if (!IsPixelProActive)
+            return;
+
+        if (PixelHomeScreensaverPreviewPanel is not null)
+            PixelHomeScreensaverPreviewPanel.Visibility =
+                mainMenu
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+        if (PixelHomeMenuPreviewPanel is not null)
+            PixelHomeMenuPreviewPanel.Visibility =
+                mainMenu
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (PixelHomePreviewModeText is not null)
+            PixelHomePreviewModeText.Text =
+                mainMenu
+                    ? "MAIN MENU"
+                    : "SCREENSAVER";
+    }
+
+    private void ScreensaverEditor_PreviewMouseDown(
+        object sender,
+        System.Windows.Input.MouseButtonEventArgs e) =>
+        SetPixelHomePreviewMode(false);
+
+    private void MainMenuEditor_PreviewMouseDown(
+        object sender,
+        System.Windows.Input.MouseButtonEventArgs e) =>
+        SetPixelHomePreviewMode(true);
+
     private void BuildPixelMainMenuEditor()
     {
         if (PixelMenuSlotsEditor is null ||
@@ -125,25 +159,25 @@ public partial class MainWindow
             var previewIcon =
                 new System.Windows.Controls.Image
                 {
-                    Width = 40,
-                    Height = 40,
                     Stretch = Stretch.Uniform,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 0, 13)
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+                    Margin = new Thickness(9)
                 };
 
             var previewLabel =
                 new TextBlock
                 {
                     Text = "--",
-                    FontSize = 10,
+                    FontSize = 11,
                     FontWeight = FontWeights.SemiBold,
                     Foreground = System.Windows.Media.Brushes.White,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 92,
                     HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                    VerticalAlignment = System.Windows.VerticalAlignment.Bottom,
-                    Margin = new Thickness(5, 0, 5, 8)
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
+                    Margin = new Thickness(7)
                 };
 
             var previewGrid =
@@ -291,9 +325,19 @@ public partial class MainWindow
             PixelMenuBrightnessText.Text =
                 $"{_pixelMainMenu.BrightnessPercent}%";
 
+            PixelMenuOpacitySlider.Value =
+                _pixelMainMenu.OpacityPercent;
+
+            PixelMenuOpacityText.Text =
+                $"{_pixelMainMenu.OpacityPercent}%";
+
             PixelMenuBrightnessOverlay.Opacity =
                 1.0 -
                 _pixelMainMenu.BrightnessPercent /
+                100.0;
+
+            PixelMenuBackgroundPreview.Opacity =
+                _pixelMainMenu.OpacityPercent /
                 100.0;
 
             PixelMenuPreviewLayerText.Text =
@@ -331,9 +375,22 @@ public partial class MainWindow
                     _actionScripts.FirstOrDefault(
                         x => x.ActionId == actionId);
 
+                bool hasIcon =
+                    source is not null;
+
+                _pixelMenuPreviewIcons[slot].Visibility =
+                    hasIcon
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+
+                _pixelMenuPreviewLabels[slot].Visibility =
+                    hasIcon
+                        ? Visibility.Collapsed
+                        : Visibility.Visible;
+
                 _pixelMenuPreviewLabels[slot].Text =
                     actionId <= 0
-                        ? "--"
+                        ? ""
                         : action is null
                             ? $"A{actionId:00}"
                             : action.Name;
@@ -398,6 +455,7 @@ public partial class MainWindow
         _pixelMenuPageIndex =
             Math.Clamp(page, 0, 3);
 
+        SetPixelHomePreviewMode(true);
         RefreshPixelMainMenuUi();
     }
 
@@ -422,6 +480,8 @@ public partial class MainWindow
 
         page.Layer =
             Math.Clamp(layer, 0, 3);
+
+        SetPixelHomePreviewMode(true);
 
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
@@ -451,6 +511,8 @@ public partial class MainWindow
             .Slots[Math.Clamp(slot, 0, 11)]
             .ActionId =
                 Math.Clamp(actionId, 0, 32);
+
+        SetPixelHomePreviewMode(true);
 
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
@@ -487,6 +549,8 @@ public partial class MainWindow
             _pixelMainMenu.BackgroundPath =
                 dialog.FileName;
 
+            SetPixelHomePreviewMode(true);
+
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
@@ -507,6 +571,8 @@ public partial class MainWindow
     {
         _pixelMainMenu.BackgroundPath =
             null;
+
+        SetPixelHomePreviewMode(true);
 
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
@@ -530,6 +596,8 @@ public partial class MainWindow
                 20,
                 100);
 
+        SetPixelHomePreviewMode(true);
+
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
 
@@ -541,6 +609,37 @@ public partial class MainWindow
             PixelMenuBrightnessOverlay.Opacity =
                 1.0 -
                 _pixelMainMenu.BrightnessPercent /
+                100.0;
+    }
+
+    private void PixelMenuOpacitySlider_ValueChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady ||
+            _syncingPixelMenuUi)
+        {
+            return;
+        }
+
+        _pixelMainMenu.OpacityPercent =
+            Math.Clamp(
+                (int)Math.Round(e.NewValue),
+                0,
+                100);
+
+        SetPixelHomePreviewMode(true);
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
+        if (PixelMenuOpacityText is not null)
+            PixelMenuOpacityText.Text =
+                $"{_pixelMainMenu.OpacityPercent}%";
+
+        if (PixelMenuBackgroundPreview is not null)
+            PixelMenuBackgroundPreview.Opacity =
+                _pixelMainMenu.OpacityPercent /
                 100.0;
     }
 
@@ -582,6 +681,8 @@ public partial class MainWindow
                 .IconPath =
                     dialog.FileName;
 
+            SetPixelHomePreviewMode(true);
+
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
@@ -612,6 +713,8 @@ public partial class MainWindow
             .IconPath =
                 null;
 
+        SetPixelHomePreviewMode(true);
+
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
 
@@ -632,6 +735,8 @@ public partial class MainWindow
                     "Hãy kết nối PIXEL PRO bằng USB trước.");
             return;
         }
+
+        SetPixelHomePreviewMode(true);
 
         PixelMenuSaveButton.IsEnabled = false;
         PixelMenuUploadProgress.Value = 0;
@@ -668,7 +773,8 @@ public partial class MainWindow
                             PixelProMainMenuMediaService
                                 .CreateBackgroundJpeg(
                                     _pixelMainMenu.BackgroundPath!,
-                                    _pixelMainMenu.BrightnessPercent));
+                                    _pixelMainMenu.BrightnessPercent,
+                                    _pixelMainMenu.OpacityPercent));
 
                 if (!await pixel.UploadMainMenuBackgroundAsync(
                         background))
@@ -694,10 +800,28 @@ public partial class MainWindow
                 PixelProMainMenuPage menu =
                     _pixelMainMenu.Pages[page];
 
+                string[] labels =
+                    menu.Slots
+                        .Select(slot =>
+                        {
+                            ActionScriptDefinition? action =
+                                _actionScripts.FirstOrDefault(
+                                    item =>
+                                        item.ActionId ==
+                                        slot.ActionId);
+
+                            return action?.Name ??
+                                   (slot.ActionId > 0
+                                       ? $"A{slot.ActionId:00}"
+                                       : "");
+                        })
+                        .ToArray();
+
                 if (!await pixel.SetMainMenuPageAsync(
                         page,
                         menu.Layer,
-                        menu.Slots.Select(x => x.ActionId).ToArray()))
+                        menu.Slots.Select(x => x.ActionId).ToArray(),
+                        labels))
                 {
                     throw new InvalidOperationException(
                         $"PIXEL PRO rejected Menu {page + 1} config.");
@@ -800,6 +924,8 @@ public partial class MainWindow
                     "Hãy kết nối PIXEL PRO trước.");
             return;
         }
+
+        SetPixelHomePreviewMode(true);
 
         bool ok =
             await pixel.ShowMainMenuAsync();
