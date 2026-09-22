@@ -6765,6 +6765,7 @@ try {{
         }
 
         RefreshPixelMacroActionCombo();
+        RefreshPixelMainMenuActionChoices();
 
         if (string.Equals(
                 _pixelCurrentCategory,
@@ -11899,6 +11900,13 @@ try {{
         Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
         UpdateDeviceConfiguratorUi();
+
+        if (PixelMainMenuTab is not null &&
+            PixelMainMenuTab.IsSelected &&
+            IsPixelProActive)
+        {
+            RefreshPixelMainMenuUi();
+        }
 
         if (ConfiguratorTab.IsSelected)
         {
