@@ -12,9 +12,13 @@ public static class PixelProMainMenuMediaService
     public const int BackgroundWidth = 480;
     public const int BackgroundHeight = 320;
     public const int BackgroundMaxBytes = 96 * 1024;
-    public const int IconWidth = 40;
-    public const int IconHeight = 40;
-    public const int IconBytes = IconWidth * IconHeight * 2;
+
+    // eezBotFun-style 8-key layout uses substantially larger icons than the
+    // previous 40x40 raw tiles. JPEG keeps flash use reasonable while letting
+    // PIXEL PRO draw a native 96x96 icon without firmware upscaling blur.
+    public const int IconWidth = 96;
+    public const int IconHeight = 96;
+    public const int IconMaxBytes = 24 * 1024;
 
     public static byte[] CreateBackgroundJpeg(
         string path,
@@ -51,10 +55,7 @@ public static class PixelProMainMenuMediaService
         using (Graphics g = Graphics.FromImage(composed))
         {
             g.Clear(Color.Black);
-            g.CompositingQuality = CompositingQuality.HighQuality;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.SmoothingMode = SmoothingMode.HighQuality;
+            ConfigureHighQuality(g);
 
             if (scaleMode == ScreensaverScaleMode.Stretch)
             {
@@ -144,11 +145,79 @@ public static class PixelProMainMenuMediaService
                 attributes);
         }
 
+        return EncodeJpegWithinLimit(
+            output,
+            BackgroundMaxBytes,
+            [90, 84, 78, 72, 66, 60, 54, 48],
+            "Main-menu background cannot be reduced below 96 KiB.");
+    }
+
+    public static byte[] CreateIconJpeg(string path)
+    {
+        ValidateStaticImage(path);
+
+        using var source =
+            new Bitmap(path);
+
+        using var output =
+            new Bitmap(
+                IconWidth,
+                IconHeight,
+                PixelFormat.Format24bppRgb);
+
+        using (Graphics g = Graphics.FromImage(output))
+        {
+            g.Clear(Color.Black);
+            ConfigureHighQuality(g);
+
+            Rectangle visible =
+                FindVisibleBounds(source);
+
+            const int padding = 2;
+            int targetWidth =
+                IconWidth - padding * 2;
+            int targetHeight =
+                IconHeight - padding * 2;
+
+            Rectangle fit =
+                FitRect(
+                    visible.Width,
+                    visible.Height,
+                    targetWidth,
+                    targetHeight);
+
+            fit.Offset(
+                padding,
+                padding);
+
+            g.DrawImage(
+                source,
+                fit,
+                visible,
+                GraphicsUnit.Pixel);
+        }
+
+        return EncodeJpegWithinLimit(
+            output,
+            IconMaxBytes,
+            [96, 94, 92, 90, 88, 85],
+            "Main-menu icon cannot be reduced below the 24 KiB icon budget.");
+    }
+
+    private static byte[] EncodeJpegWithinLimit(
+        Bitmap image,
+        int maxBytes,
+        long[] qualities,
+        string failureMessage)
+    {
         ImageCodecInfo codec =
             ImageCodecInfo.GetImageEncoders()
-                .First(x => x.FormatID == ImageFormat.Jpeg.Guid);
+                .First(
+                    x =>
+                        x.FormatID ==
+                        ImageFormat.Jpeg.Guid);
 
-        foreach (long quality in new long[] { 90, 84, 78, 72, 66, 60, 54, 48 })
+        foreach (long quality in qualities)
         {
             using var stream =
                 new MemoryStream();
@@ -161,17 +230,17 @@ public static class PixelProMainMenuMediaService
                     Encoder.Quality,
                     quality);
 
-            output.Save(
+            image.Save(
                 stream,
                 codec,
                 parameters);
 
-            if (stream.Length <= BackgroundMaxBytes)
+            if (stream.Length <= maxBytes)
                 return stream.ToArray();
         }
 
         throw new InvalidOperationException(
-            "Main-menu background cannot be reduced below 96 KiB.");
+            failureMessage);
     }
 
     private static Bitmap CreateBlurredBitmap(
@@ -181,8 +250,6 @@ public static class PixelProMainMenuMediaService
         if (blurPercent <= 0)
             return new Bitmap(source);
 
-        // Static menu art is prepared on the PC. A progressive downsample /
-        // upsample gives a smooth blur without consuming any ESP32 runtime RAM.
         double amount =
             Math.Clamp(
                 blurPercent / 100.0,
@@ -213,9 +280,13 @@ public static class PixelProMainMenuMediaService
         using (Graphics g = Graphics.FromImage(small))
         {
             g.Clear(Color.Black);
-            g.CompositingQuality = CompositingQuality.HighQuality;
-            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.CompositingQuality =
+                CompositingQuality.HighQuality;
+            g.InterpolationMode =
+                InterpolationMode.HighQualityBilinear;
+            g.PixelOffsetMode =
+                PixelOffsetMode.HighQuality;
+
             g.DrawImage(
                 source,
                 new Rectangle(
@@ -234,9 +305,7 @@ public static class PixelProMainMenuMediaService
         using (Graphics g = Graphics.FromImage(result))
         {
             g.Clear(Color.Black);
-            g.CompositingQuality = CompositingQuality.HighQuality;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            ConfigureHighQuality(g);
             g.DrawImage(
                 small,
                 new Rectangle(
@@ -249,67 +318,68 @@ public static class PixelProMainMenuMediaService
         return result;
     }
 
-    public static byte[] CreateIconRgb565(string path)
+    private static void ConfigureHighQuality(
+        Graphics graphics)
     {
-        ValidateStaticImage(path);
+        graphics.CompositingQuality =
+            CompositingQuality.HighQuality;
+        graphics.InterpolationMode =
+            InterpolationMode.HighQualityBicubic;
+        graphics.PixelOffsetMode =
+            PixelOffsetMode.HighQuality;
+        graphics.SmoothingMode =
+            SmoothingMode.HighQuality;
+    }
 
-        using var source =
-            new Bitmap(path);
+    private static Rectangle FindVisibleBounds(
+        Bitmap source)
+    {
+        bool hasAlpha =
+            Image.IsAlphaPixelFormat(
+                source.PixelFormat);
 
-        using var output =
-            new Bitmap(
-                IconWidth,
-                IconHeight,
-                PixelFormat.Format32bppArgb);
-
-        using (Graphics g = Graphics.FromImage(output))
+        if (!hasAlpha)
         {
-            g.Clear(Color.Transparent);
-            g.CompositingQuality = CompositingQuality.HighQuality;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.SmoothingMode = SmoothingMode.HighQuality;
-
-            Rectangle fit =
-                FitRect(
-                    source.Width,
-                    source.Height,
-                    IconWidth,
-                    IconHeight);
-
-            g.DrawImage(
-                source,
-                fit);
+            return new Rectangle(
+                0,
+                0,
+                source.Width,
+                source.Height);
         }
 
-        var bytes =
-            new byte[IconBytes];
+        int left = source.Width;
+        int top = source.Height;
+        int right = -1;
+        int bottom = -1;
 
-        int offset = 0;
-
-        for (int y = 0; y < IconHeight; y++)
+        for (int y = 0; y < source.Height; y++)
         {
-            for (int x = 0; x < IconWidth; x++)
+            for (int x = 0; x < source.Width; x++)
             {
-                Color c =
-                    output.GetPixel(x, y);
+                if (source.GetPixel(x, y).A <= 8)
+                    continue;
 
-                int r = c.R * c.A / 255;
-                int g = c.G * c.A / 255;
-                int b = c.B * c.A / 255;
-
-                ushort rgb565 =
-                    (ushort)(
-                        ((r & 0xF8) << 8) |
-                        ((g & 0xFC) << 3) |
-                        (b >> 3));
-
-                bytes[offset++] = (byte)(rgb565 & 0xFF);
-                bytes[offset++] = (byte)(rgb565 >> 8);
+                left = Math.Min(left, x);
+                top = Math.Min(top, y);
+                right = Math.Max(right, x);
+                bottom = Math.Max(bottom, y);
             }
         }
 
-        return bytes;
+        if (right < left || bottom < top)
+        {
+            return new Rectangle(
+                0,
+                0,
+                source.Width,
+                source.Height);
+        }
+
+        return Rectangle.FromLTRB(
+            left,
+            top,
+            right + 1,
+            bottom + 1);
     }
 
     public static void ValidateStaticImage(string path)
@@ -356,18 +426,28 @@ public static class PixelProMainMenuMediaService
         int cropWidth =
             Math.Max(
                 1,
-                (int)Math.Round(targetWidth / scale));
+                (int)Math.Round(
+                    targetWidth / scale));
 
         int cropHeight =
             Math.Max(
                 1,
-                (int)Math.Round(targetHeight / scale));
+                (int)Math.Round(
+                    targetHeight / scale));
 
         return new Rectangle(
-            Math.Max(0, (sourceWidth - cropWidth) / 2),
-            Math.Max(0, (sourceHeight - cropHeight) / 2),
-            Math.Min(sourceWidth, cropWidth),
-            Math.Min(sourceHeight, cropHeight));
+            Math.Max(
+                0,
+                (sourceWidth - cropWidth) / 2),
+            Math.Max(
+                0,
+                (sourceHeight - cropHeight) / 2),
+            Math.Min(
+                sourceWidth,
+                cropWidth),
+            Math.Min(
+                sourceHeight,
+                cropHeight));
     }
 
     private static Rectangle FitRect(
@@ -384,12 +464,14 @@ public static class PixelProMainMenuMediaService
         int width =
             Math.Max(
                 1,
-                (int)Math.Round(sourceWidth * scale));
+                (int)Math.Round(
+                    sourceWidth * scale));
 
         int height =
             Math.Max(
                 1,
-                (int)Math.Round(sourceHeight * scale));
+                (int)Math.Round(
+                    sourceHeight * scale));
 
         return new Rectangle(
             (targetWidth - width) / 2,
