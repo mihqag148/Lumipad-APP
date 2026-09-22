@@ -147,6 +147,25 @@ internal static class PixelProPackedAnimationEncoder
             "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and Palette256. Shorten or simplify the GIF.");
     }
 
+    private static PixelProPackedAnimationResult ToResult(
+        Candidate candidate,
+        ScreensaverScaleMode scaleMode,
+        long sourceBytes,
+        bool emergency) =>
+        new(
+            candidate.Bytes ??
+                throw new InvalidOperationException(
+                    "Packed animation payload is missing."),
+            candidate.StorageWidth,
+            candidate.StorageHeight,
+            candidate.FrameCount,
+            candidate.Fps,
+            candidate.DurationMs,
+            candidate.ColorMode,
+            scaleMode,
+            sourceBytes,
+            emergency);
+
     private static IReadOnlyList<(int Width, int Height, int Fps)>
         BuildQualityLadder()
     {
