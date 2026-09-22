@@ -350,7 +350,7 @@ internal static class PixelProPackedAnimationEncoder
             previous =
                 current;
 
-            if (output.Length >=
+            if (output.Length >
                 abortAfterBytes)
             {
                 return new Candidate(
