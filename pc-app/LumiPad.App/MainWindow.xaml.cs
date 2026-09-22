@@ -769,7 +769,7 @@ public partial class MainWindow : Window
                 UriKind.Relative);
 
         var streamInfo =
-            Application.GetResourceStream(
+            System.Windows.Application.GetResourceStream(
                 resourceUri);
 
         if (streamInfo is null)
@@ -778,23 +778,23 @@ public partial class MainWindow : Window
                 $"Embedded product image was not found: {resourcePath}");
         }
 
-        using (streamInfo.Stream)
-        {
-            var bitmap =
-                new BitmapImage();
+        using IO.Stream resourceStream =
+            streamInfo.Stream;
 
-            bitmap.BeginInit();
-            bitmap.CacheOption =
-                BitmapCacheOption.OnLoad;
-            bitmap.CreateOptions =
-                BitmapCreateOptions.PreservePixelFormat;
-            bitmap.StreamSource =
-                streamInfo.Stream;
-            bitmap.EndInit();
-            bitmap.Freeze();
+        var bitmap =
+            new BitmapImage();
 
-            return bitmap;
-        }
+        bitmap.BeginInit();
+        bitmap.CacheOption =
+            BitmapCacheOption.OnLoad;
+        bitmap.CreateOptions =
+            BitmapCreateOptions.PreservePixelFormat;
+        bitmap.StreamSource =
+            resourceStream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+
+        return bitmap;
     }
 
     private static System.Windows.Controls.Image CreateProductHubImage(
