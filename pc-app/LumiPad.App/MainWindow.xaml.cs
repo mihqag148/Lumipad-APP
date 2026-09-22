@@ -133,6 +133,8 @@ public partial class MainWindow : Window
     private string? _screensaverMediaPath;
     private readonly DispatcherTimer _screensaverPreviewTimer = new();
     private readonly Stopwatch _screensaverPreviewClock = new();
+    private readonly DispatcherTimer _pixelRgbPreviewTimer = new();
+    private readonly Stopwatch _pixelRgbPreviewClock = new();
     private readonly DispatcherTimer _memoryUsageTimer = new();
     private readonly DispatcherTimer _diagnosticTimer = new();
     private readonly DispatcherTimer _autoProfileTimer = new();
@@ -400,6 +402,15 @@ public partial class MainWindow : Window
                     _screensaverAnimation.Height);
         };
 
+        // PIXEL RGB preview is purely local UI animation. It samples the
+        // same effect math as firmware at ~30 FPS and never sends CDC traffic
+        // on preview ticks.
+        _pixelRgbPreviewTimer.Interval =
+            TimeSpan.FromMilliseconds(33);
+
+        _pixelRgbPreviewTimer.Tick += (_, _) =>
+            RenderPixelRgbPreview();
+
         _memoryUsageTimer.Interval = TimeSpan.FromSeconds(5);
         _memoryUsageTimer.Tick += async (_, _) =>
             await UpdateMemoryUsageAsync();
@@ -461,6 +472,8 @@ public partial class MainWindow : Window
             BuildProductCards();
             UpdateDeviceConfiguratorUi();
             _uiReady = true;
+            _pixelRgbPreviewClock.Restart();
+            _pixelRgbPreviewTimer.Start();
             UpdateSettingsInfo();
             UpdateProductHubUi();
             AddLog("INFO", "APP", "Lumi Macropad started");
@@ -2183,6 +2196,8 @@ public partial class MainWindow : Window
 
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Stop();
+        _pixelRgbPreviewTimer.Stop();
+        _pixelRgbPreviewClock.Stop();
         _autoProfileTimer.Stop();
         _runningAppsTimer.Stop();
         _actionEventTimer.Stop();
@@ -6968,6 +6983,9 @@ try {{
         _rgbEnabled = LedEnabled.IsChecked == true;
         SaveAppSettings();
         _serial.SetEnabled(_rgbEnabled);
+
+        if (IsPixelProActive)
+            RenderPixelRgbPreview();
     }
 
     private void BrightnessSlider_ValueChanged(
@@ -6985,6 +7003,9 @@ try {{
             _rgbBrightness = value;
             SaveAppSettings();
             _serial.SetBrightness(value);
+
+            if (IsPixelProActive)
+                RenderPixelRgbPreview();
         }
     }
 
@@ -7239,6 +7260,538 @@ try {{
                     new Thickness(
                         selectedEffect ? 2 : 1);
             }
+        }
+
+        ResetPixelRgbPreview();
+    }
+
+    private void ResetPixelRgbPreview()
+    {
+        _pixelRgbPreviewClock.Restart();
+        RenderPixelRgbPreview();
+    }
+
+    private int PixelRgbPreviewFrameIntervalMs()
+    {
+        int speed =
+            Math.Clamp(
+                _pixelRgbSpeed,
+                10,
+                100);
+
+        return 180 +
+            (speed - 10) *
+            (24 - 180) /
+            90;
+    }
+
+    private static byte PixelTriangle8(
+        long value)
+    {
+        int phase =
+            (int)(
+                value &
+                0xFF);
+
+        return phase < 128
+            ? (byte)(
+                phase *
+                2)
+            : (byte)(
+                (255 -
+                 phase) *
+                2);
+    }
+
+    private static PixelRgbColor PixelScaleColor(
+        PixelRgbColor color,
+        int scale)
+    {
+        scale =
+            Math.Clamp(
+                scale,
+                0,
+                255);
+
+        return new PixelRgbColor(
+            (byte)(
+                color.R *
+                scale /
+                255),
+            (byte)(
+                color.G *
+                scale /
+                255),
+            (byte)(
+                color.B *
+                scale /
+                255));
+    }
+
+    private static PixelRgbColor PixelMixColor(
+        PixelRgbColor first,
+        PixelRgbColor second,
+        int mix)
+    {
+        mix =
+            Math.Clamp(
+                mix,
+                0,
+                255);
+
+        int inverse =
+            255 -
+            mix;
+
+        return new PixelRgbColor(
+            (byte)(
+                (first.R *
+                     inverse +
+                 second.R *
+                     mix) /
+                255),
+            (byte)(
+                (first.G *
+                     inverse +
+                 second.G *
+                     mix) /
+                255),
+            (byte)(
+                (first.B *
+                     inverse +
+                 second.B *
+                     mix) /
+                255));
+    }
+
+    private static PixelRgbColor PixelHsvColor(
+        double hue,
+        double saturation = 1.0,
+        double value = 1.0)
+    {
+        hue %= 360.0;
+
+        if (hue < 0)
+            hue += 360.0;
+
+        (byte r, byte g, byte b) =
+            HsvToRgb(
+                hue,
+                Math.Clamp(
+                    saturation,
+                    0.0,
+                    1.0),
+                Math.Clamp(
+                    value,
+                    0.0,
+                    1.0));
+
+        return new PixelRgbColor(
+            r,
+            g,
+            b);
+    }
+
+    private PixelRgbColor[] BuildPixelRgbPreviewColors(
+        int profile,
+        int effect,
+        long step)
+    {
+        PixelRgbColor[] baseColors =
+            _pixelRgbProfiles[profile];
+
+        var colors =
+            new PixelRgbColor[8];
+
+        if (effect == 3)
+        {
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                colors[key] =
+                    baseColors[key];
+            }
+
+            return colors;
+        }
+
+        if (effect == 0)
+        {
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                double hue =
+                    ((step *
+                          512L +
+                      key *
+                          (65535L /
+                           8L)) %
+                     65536L) *
+                    360.0 /
+                    65535.0;
+
+                colors[key] =
+                    PixelHsvColor(
+                        hue);
+            }
+
+            return colors;
+        }
+
+        if (effect == 1)
+        {
+            int phase =
+                (int)(
+                    step %
+                    14L);
+
+            int position =
+                phase < 8
+                    ? phase
+                    : 14 -
+                      phase;
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                int distance =
+                    Math.Abs(
+                        key -
+                        position);
+
+                int level =
+                    distance == 0
+                        ? 255
+                        : distance == 1
+                            ? 72
+                            : 12;
+
+                colors[key] =
+                    new PixelRgbColor(
+                        (byte)(
+                            190 *
+                            level /
+                            255),
+                        (byte)(
+                            40 *
+                            level /
+                            255),
+                        (byte)(
+                            255 *
+                            level /
+                            255));
+            }
+
+            return colors;
+        }
+
+        if (effect == 2)
+        {
+            bool on =
+                (step &
+                 1L) == 0;
+
+            PixelRgbColor color =
+                on
+                    ? new PixelRgbColor(
+                        255,
+                        90,
+                        0)
+                    : new PixelRgbColor(
+                        0,
+                        0,
+                        0);
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                colors[key] =
+                    color;
+            }
+
+            return colors;
+        }
+
+        if (effect == 4)
+        {
+            int mix =
+                (int)(
+                    step &
+                    0xFFL);
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                int next =
+                    (key + 1) %
+                    8;
+
+                colors[key] =
+                    PixelMixColor(
+                        baseColors[key],
+                        baseColors[next],
+                        mix);
+            }
+
+            return colors;
+        }
+
+        if (effect == 5)
+        {
+            int head =
+                (int)(
+                    step %
+                    8L);
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                int distance =
+                    (head +
+                     8 -
+                     key) %
+                    8;
+
+                int level =
+                    distance == 0
+                        ? 255
+                        : distance == 1
+                            ? 110
+                            : distance == 2
+                                ? 42
+                                : 6;
+
+                colors[key] =
+                    PixelScaleColor(
+                        baseColors[key],
+                        level);
+            }
+
+            return colors;
+        }
+
+        if (effect == 6)
+        {
+            int level =
+                24 +
+                PixelTriangle8(
+                    step *
+                    3L) *
+                231 /
+                255;
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                colors[key] =
+                    PixelScaleColor(
+                        baseColors[key],
+                        level);
+            }
+
+            return colors;
+        }
+
+        if (effect == 7)
+        {
+            double hue =
+                ((step *
+                      420L) %
+                 65536L) *
+                360.0 /
+                65535.0;
+
+            PixelRgbColor color =
+                PixelHsvColor(
+                    hue);
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                colors[key] =
+                    color;
+            }
+
+            return colors;
+        }
+
+        if (effect == 8)
+        {
+            int drop =
+                (int)(
+                    (step *
+                         5L +
+                     (step >>
+                      2) *
+                         3L) %
+                    8L);
+
+            int second =
+                (drop + 3) %
+                8;
+
+            for (int key = 0;
+                 key < 8;
+                 key++)
+            {
+                int level =
+                    key == drop
+                        ? 255
+                        : key == second
+                            ? 150
+                            : 12 +
+                              (int)(
+                                  (key *
+                                       17L +
+                                   step *
+                                       11L) %
+                                  24L);
+
+                colors[key] =
+                    new PixelRgbColor(
+                        0,
+                        (byte)(
+                            level *
+                            3 /
+                            5),
+                        (byte)level);
+            }
+
+            return colors;
+        }
+
+        // Effect 9: Wave.
+        for (int key = 0;
+             key < 8;
+             key++)
+        {
+            int level =
+                18 +
+                PixelTriangle8(
+                    step *
+                        4L +
+                    key *
+                        28L) *
+                237 /
+                255;
+
+            colors[key] =
+                PixelScaleColor(
+                    baseColors[key],
+                    level);
+        }
+
+        return colors;
+    }
+
+    private void RenderPixelRgbPreview()
+    {
+        if (!_uiReady ||
+            !IsPixelProActive ||
+            !IsVisible ||
+            PixelRgbK1 is null)
+        {
+            return;
+        }
+
+        int profile =
+            Math.Clamp(
+                _pixelSelectedProfile,
+                0,
+                _pixelRgbProfiles.Length - 1);
+
+        int effect =
+            Math.Clamp(
+                _pixelRgbEffects[profile],
+                0,
+                9);
+
+        int frameInterval =
+            Math.Max(
+                1,
+                PixelRgbPreviewFrameIntervalMs());
+
+        long step =
+            _pixelRgbPreviewClock.IsRunning
+                ? _pixelRgbPreviewClock.ElapsedMilliseconds /
+                  frameInterval
+                : 0;
+
+        PixelRgbColor[] colors =
+            BuildPixelRgbPreviewColors(
+                profile,
+                effect,
+                step);
+
+        System.Windows.Controls.Button[] buttons =
+        [
+            PixelRgbK1,
+            PixelRgbK2,
+            PixelRgbK3,
+            PixelRgbK4,
+            PixelRgbK5,
+            PixelRgbK6,
+            PixelRgbK7,
+            PixelRgbK8
+        ];
+
+        int masterScale =
+            _rgbEnabled
+                ? Math.Clamp(
+                    _rgbBrightness,
+                    0,
+                    100) *
+                  255 /
+                  100
+                : 0;
+
+        for (int key = 0;
+             key < 8;
+             key++)
+        {
+            PixelRgbColor display =
+                PixelScaleColor(
+                    colors[key],
+                    masterScale);
+
+            MediaColor media =
+                MediaColor.FromRgb(
+                    display.R,
+                    display.G,
+                    display.B);
+
+            buttons[key].Background =
+                new SolidColorBrush(
+                    media);
+
+            int luminance =
+                display.R *
+                    299 +
+                display.G *
+                    587 +
+                display.B *
+                    114;
+
+            buttons[key].Foreground =
+                new SolidColorBrush(
+                    luminance >
+                        150000
+                        ? MediaColor.FromRgb(
+                            20,
+                            20,
+                            20)
+                        : MediaColor.FromRgb(
+                            245,
+                            245,
+                            245));
         }
     }
 
@@ -7548,6 +8101,8 @@ try {{
                     pixel.SetPixelRgbSpeed(
                         value);
                 }
+
+                ResetPixelRgbPreview();
             }
             else
             {
