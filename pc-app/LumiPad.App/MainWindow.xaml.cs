@@ -139,7 +139,6 @@ public partial class MainWindow : Window
 
     private readonly PixelProMainMenuConfig _pixelMainMenu =
         PixelProMainMenuStore.Load();
-    private int _pixelMenuPageIndex;
     private bool _syncingPixelMenuUi;
     private readonly List<System.Windows.Controls.ComboBox> _pixelMenuActionCombos = [];
     private readonly List<System.Windows.Controls.Image> _pixelMenuEditorIcons = [];
@@ -9720,6 +9719,7 @@ try {{
             false;
 
         RefreshPixelProfileCombo();
+        RefreshPixelMainMenuUi();
         RefreshAutoProfileMappingsUi();
         RefreshAutoProfileDefaultSelectors();
         UpdatePixelRgbUi();
@@ -9802,6 +9802,7 @@ try {{
         UpdatePixelSelectedEditor();
         UpdateRgbReadout();
         UpdatePixelRgbUi();
+        RefreshPixelMainMenuUi();
         SaveAppSettings();
 
         PixelKeymapStatusText.Text =
