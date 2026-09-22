@@ -24,7 +24,7 @@ namespace LumiPad.App;
 
 public partial class MainWindow : Window
 {
-    private ProductDefinition _activeProduct = ProductCatalog.DialDesk;
+    private ProductDefinition _activeProduct = ProductCatalog.RynorOne;
     private IDeviceLink _serial;
     private readonly Dictionary<string, IDeviceLink> _deviceLinks =
         new(StringComparer.OrdinalIgnoreCase);
@@ -729,7 +729,7 @@ public partial class MainWindow : Window
     private UIElement CreateProductPreview(ProductDefinition product)
     {
         if (product.Driver != DeviceDriverKind.PixelProCdc)
-            return CreateDialDeskPreview();
+            return CreateRynorOnePreview();
 
         var root = new Grid();
         var body = new Border
@@ -770,7 +770,7 @@ public partial class MainWindow : Window
         return root;
     }
 
-    private UIElement CreateDialDeskPreview()
+    private UIElement CreateRynorOnePreview()
     {
         var container = new Grid();
 
@@ -4928,7 +4928,7 @@ public partial class MainWindow : Window
         string tempFile =
             IO.Path.Combine(
                 IO.Path.GetTempPath(),
-                $"dial-desk-{Guid.NewGuid():N}.uf2");
+                $"rynor-one-{Guid.NewGuid():N}.uf2");
 
         try
         {
@@ -8855,8 +8855,8 @@ try {{
                     "PIXEL PRO keeps the original GIF file and scales it on-device to the 480×320 ILI9486.",
                     "PIXEL PRO giữ nguyên file GIF gốc và scale trực tiếp trên thiết bị ra ILI9486 480×320.")
                 : L(
-                    "Converted to a lightweight loop for LumiPad.",
-                    "Tự chuyển thành vòng lặp nhẹ cho LumiPad.");
+                    $"Converted to a lightweight loop for {_activeProduct.Name}.",
+                    $"Tự chuyển thành vòng lặp nhẹ cho {_activeProduct.Name}.");
         ScreensaverSendProgress.Value = 0;
         SetScreensaverUploadState(
             L("Not uploaded", "Chưa tải lên"),
