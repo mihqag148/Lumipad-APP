@@ -1122,8 +1122,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · PXQ quality cap up to 2 MiB · minimum 360×240 / RGB565 · Delta + RLE · Windows-style layouts.",
-                        "ILI9486 480×320 · PXQ tối đa 2 MiB · tối thiểu 360×240 / RGB565 · Delta + RLE · kiểu hiển thị như Windows.")
+                        "Choose a GIF or image. Final output specs will appear here after processing.",
+                        "Chọn GIF hoặc ảnh. Thông số đầu ra sau xử lý sẽ hiển thị tại đây.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -8337,8 +8337,8 @@ try {{
 
                     ScreensaverMediaInfo.Text =
                         L(
-                            $"PIXEL image · JPEG quality {jpegInfo.Quality} · output {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}",
-                            $"Ảnh PIXEL · JPEG quality {jpegInfo.Quality} · output {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}");
+                            $"PIXEL image · JPEG · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}",
+                            $"Ảnh PIXEL · JPEG · {jpegInfo.Width}×{jpegInfo.Height} · {jpegInfo.StoredBytes / 1024.0:0.#} KB · {_pixelMediaScaleMode}");
                 }
                 else
                 {
@@ -8369,20 +8369,10 @@ try {{
                     double storedKb =
                         pixelPackedInfo.StoredBytes / 1024.0;
 
-                    double sourceKb =
-                        pixelPackedInfo.SourceBytes / 1024.0;
-
-                    string emergency =
-                        pixelPackedInfo.EmergencyFps
-                            ? L(
-                                " · emergency FPS used to keep the 2 MiB cap without dropping below RGB565 / 360×240",
-                                " · đã hạ FPS khẩn cấp để giữ giới hạn 2 MiB mà không hạ dưới RGB565 / 360×240")
-                            : "";
-
                     pixelGifSummary =
                         L(
-                            $"PIXEL PXQ · {storedKb:0.#} KB (≤2 MiB quality cap) from {sourceKb:0.#} KB · logical 480×320 · stored {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · minimum RGB565 / 360×240 · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}",
-                            $"PIXEL PXQ · {storedKb:0.#} KB (giới hạn chất lượng ≤2 MiB) từ {sourceKb:0.#} KB · logical 480×320 · lưu {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} → 480×320 · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · tối thiểu RGB565 / 360×240 · Delta + RLE · {pixelPackedInfo.ScaleMode}{emergency}");
+                            $"PIXEL GIF · {storedKb:0.#} KB · {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · {pixelPackedInfo.ScaleMode}",
+                            $"GIF PIXEL · {storedKb:0.#} KB · {pixelPackedInfo.StorageWidth}×{pixelPackedInfo.StorageHeight} · {pixelPackedInfo.Fps} FPS · {pixelPackedInfo.ColorMode} · {pixelPackedInfo.ScaleMode}");
                 }
 
                 ScreensaverMediaInfo.Text =
@@ -8415,8 +8405,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE up to 2 MiB, minimum 360×240 / RGB565; images use JPEG quality 100. Display refresh remains 60 Hz.",
-                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE tối đa 2 MiB, tối thiểu 360×240 / RGB565; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
+                        "Ready to upload.",
+                        "Sẵn sàng tải lên.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
