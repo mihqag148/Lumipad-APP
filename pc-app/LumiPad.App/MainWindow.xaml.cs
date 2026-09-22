@@ -731,43 +731,27 @@ public partial class MainWindow : Window
         if (product.Driver != DeviceDriverKind.PixelProCdc)
             return CreateRynorOnePreview();
 
-        var root = new Grid();
-        var body = new Border
-        {
-            Width = 222,
-            Height = 220,
-            CornerRadius = new CornerRadius(24),
-            Background = new SolidColorBrush(MediaColor.FromRgb(12, 12, 14)),
-            BorderBrush = new SolidColorBrush(MediaColor.FromRgb(58, 58, 64)),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
+        // PIXEL PRO uses its actual product render on the product-selection
+        // screen. RYNOR ONE keeps its existing preview unchanged.
+        var image =
+            new System.Windows.Controls.Image
+            {
+                Source = PixelProProductImage.Create(),
+                Width = 256,
+                Height = 256,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment =
+                    System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment =
+                    VerticalAlignment.Center,
+                SnapsToDevicePixels = true
+            };
 
-        var stack = new StackPanel
-        {
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "native USB",
-            Foreground = System.Windows.Media.Brushes.White,
-            FontSize = 34,
-            FontWeight = FontWeights.Bold,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center
-        });
-        stack.Children.Add(new TextBlock
-        {
-            Text = "USB CDC",
-            Foreground = new SolidColorBrush(MediaColor.FromRgb(255, 149, 0)),
-            FontSize = 13,
-            Margin = new Thickness(0, 8, 0, 0),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center
-        });
-        body.Child = stack;
-        root.Children.Add(body);
-        return root;
+        RenderOptions.SetBitmapScalingMode(
+            image,
+            BitmapScalingMode.HighQuality);
+
+        return image;
     }
 
     private UIElement CreateRynorOnePreview()
