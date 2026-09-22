@@ -431,76 +431,43 @@
                                     CornerRadius="10"
                                     Padding="10"
                                     Margin="0,0,0,12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="14"/>
-                                        <ColumnDefinition/>
-                                    </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <ComboBox x:Name="PixelGifFpsCombo"
+                                              Visibility="Collapsed"
+                                              SelectedValuePath="Tag"
+                                              SelectionChanged="PixelMediaSetting_SelectionChanged">
+                                        <ComboBoxItem Content="Auto" Tag="60" IsSelected="True"/>
+                                    </ComboBox>
 
-                                    <StackPanel>
-                                        <TextBlock Text="PIXEL PRO · GIF"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource Accent}"/>
-                                        <TextBlock Text="Quality cap 2 MiB · priority: color depth → FPS → resolution · Delta + RLE"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   TextWrapping="Wrap"
-                                                   Margin="0,3,0,7"/>
-                                        <TextBlock Text="RGB888 → RGB565 minimum · FPS 60 → 50 → 40 → 30 → 25 → 20 → 15… · 480×320 → 360×240 minimum"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   TextWrapping="Wrap"
-                                                   Margin="0,0,0,8"/>
-                                        <ComboBox x:Name="PixelGifFpsCombo"
-                                                  Visibility="Collapsed"
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Layout"
+                                                   Width="72"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="PixelMediaScaleCombo"
+                                                  Width="150"
                                                   SelectedValuePath="Tag"
                                                   SelectionChanged="PixelMediaSetting_SelectionChanged">
-                                            <ComboBoxItem Content="Auto" Tag="60" IsSelected="True"/>
+                                            <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
+                                            <ComboBoxItem Content="Fit" Tag="Fit"/>
+                                            <ComboBoxItem Content="Stretch" Tag="Stretch"/>
+                                            <ComboBoxItem Content="Tile" Tag="Tile"/>
+                                            <ComboBoxItem Content="Center" Tag="Center"/>
+                                            <ComboBoxItem Content="Span" Tag="Span"/>
                                         </ComboBox>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Layout" Width="72" VerticalAlignment="Center"/>
-                                            <ComboBox x:Name="PixelMediaScaleCombo"
-                                                      Width="150"
-                                                      SelectedValuePath="Tag"
-                                                      SelectionChanged="PixelMediaSetting_SelectionChanged">
-                                                <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
-                                                <ComboBoxItem Content="Fit" Tag="Fit"/>
-                                                <ComboBoxItem Content="Stretch" Tag="Stretch"/>
-                                                <ComboBoxItem Content="Tile" Tag="Tile"/>
-                                                <ComboBoxItem Content="Center" Tag="Center"/>
-                                                <ComboBoxItem Content="Span" Tag="Span"/>
-                                            </ComboBox>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal"
-                                                    Margin="0,6,0,0"
-                                                    Visibility="Collapsed">
-                                            <TextBlock Text="Max time" Width="72" VerticalAlignment="Center"/>
-                                            <ComboBox x:Name="PixelGifDurationCombo"
-                                                      Width="110"
-                                                      SelectedValuePath="Tag">
-                                                <ComboBoxItem Content="10 s" Tag="10" IsSelected="True"/>
-                                            </ComboBox>
-                                        </StackPanel>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="PIXEL PRO · IMAGE"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource Accent}"/>
-                                        <TextBlock Text="Auto JPEG · quality 100 · 24-bit source → RGB565 panel"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   TextWrapping="Wrap"
-                                                   Margin="0,3,0,5"/>
-                                        <TextBlock Text="Output 480×320 · uses the same Windows-style Fill / Fit / Stretch / Tile / Center / Span layout selector"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource Muted}"
-                                                   TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="Collapsed">
+                                        <TextBlock Text="Max time"
+                                                   Width="72"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="PixelGifDurationCombo"
+                                                  Width="110"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="10 s" Tag="10" IsSelected="True"/>
+                                        </ComboBox>
                                     </StackPanel>
-                                </Grid>
+                                </StackPanel>
                             </Border>
 
                             <StackPanel x:Name="ScreensaverScalePanel"
