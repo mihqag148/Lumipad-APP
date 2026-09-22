@@ -1122,8 +1122,8 @@ public partial class MainWindow : Window
             ScreensaverMediaInfo.Text =
                 IsPixelProActive
                     ? L(
-                        "ILI9486 480×320 · PXQ hard cap <1 MiB · Delta + RLE · auto resolution/FPS/color depth · Fill/Center.",
-                        "ILI9486 480×320 · PXQ bắt buộc <1 MiB · Delta + RLE · tự chọn độ phân giải/FPS/độ sâu màu · Fill/Center.")
+                        "ILI9486 480×320 · PXQ quality budget up to 1100 KiB · minimum 360×240 / P256 · Delta + RLE · Windows-style layouts.",
+                        "ILI9486 480×320 · PXQ tối đa 1100 KiB · tối thiểu 360×240 / P256 · Delta + RLE · kiểu hiển thị như Windows.")
                     : L(
                         $"Converted to a lightweight loop for {productName}.",
                         $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
@@ -8415,8 +8415,8 @@ try {{
             ScreensaverSendStatus.Text =
                 pixel
                     ? L(
-                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE under 1 MiB; images use JPEG quality 100. Display refresh remains 60 Hz.",
-                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE dưới 1 MiB; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
+                        "Ready. PIXEL GIF is packed as PXQ with Delta + RLE up to 1100 KiB, minimum 360×240 / P256; images use JPEG quality 100. Display refresh remains 60 Hz.",
+                        "Đã sẵn sàng. GIF PIXEL được đóng gói PXQ bằng Delta + RLE tối đa 1100 KiB, tối thiểu 360×240 / P256; ảnh dùng JPEG quality 100. Màn hình vẫn làm tươi 60 Hz.")
                     : L(
                         "Ready. Send once to store the lightweight loop in LumiPad flash.",
                         "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
