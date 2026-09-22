@@ -43,7 +43,7 @@ public partial class MainWindow
                 };
 
             var combo =
-                new ComboBox
+                new System.Windows.Controls.ComboBox
                 {
                     Tag = capturedSlot,
                     MinWidth = 118,
@@ -203,7 +203,7 @@ public partial class MainWindow
 
             for (int slot = 0; slot < 12; slot++)
             {
-                ComboBox combo =
+                System.Windows.Controls.ComboBox combo =
                     _pixelMenuActionCombos[slot];
 
                 combo.Items.Clear();
@@ -435,7 +435,7 @@ public partial class MainWindow
     {
         if (!_uiReady ||
             _syncingPixelMenuUi ||
-            sender is not ComboBox combo ||
+            sender is not System.Windows.Controls.ComboBox combo ||
             combo.Tag is not int slot ||
             combo.SelectedItem is not ComboBoxItem item)
         {
