@@ -681,7 +681,10 @@
                                         ClipToBounds="True">
                                     <Grid>
                                         <Image x:Name="PixelMenuBackgroundPreview"
-                                               Stretch="Fill"/>
+                                               Stretch="UniformToFill"/>
+                                        <Border x:Name="PixelMenuBrightnessOverlay"
+                                                Background="Black"
+                                                Opacity="0.30"/>
                                         <UniformGrid x:Name="PixelMenuPreviewSlots"
                                                      Rows="3"
                                                      Columns="4"
