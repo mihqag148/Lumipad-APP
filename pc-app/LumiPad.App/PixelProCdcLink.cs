@@ -1113,11 +1113,11 @@ public sealed class PixelProCdcLink : IDeviceLink
                 "Invalid PIXEL packed animation payload.");
         }
 
-        if (packedBytes.LongLength >=
-            1024L * 1024L)
+        if (packedBytes.LongLength >
+            PixelProPackedAnimationEncoder.HardTargetBytes)
         {
             LastScreensaverError =
-                "PIXEL packed animation must stay below 1 MiB.";
+                "PIXEL packed animation must stay at or below 1100 KiB.";
 
             return false;
         }
