@@ -173,27 +173,29 @@ public static class PixelProMainMenuMediaService
             Rectangle visible =
                 FindVisibleBounds(source);
 
-            const int padding = 2;
-            int targetWidth =
-                IconWidth - padding * 2;
-            int targetHeight =
-                IconHeight - padding * 2;
-
-            Rectangle fit =
-                FitRect(
+            // Remove transparent / empty outer margins first, then crop the
+            // remaining artwork to a square without changing its aspect ratio.
+            // This makes EXE/custom icons occupy the same visual footprint
+            // instead of adding the old black padding around smaller icons.
+            Rectangle crop =
+                SourceCropRect(
                     visible.Width,
                     visible.Height,
-                    targetWidth,
-                    targetHeight);
+                    IconWidth,
+                    IconHeight);
 
-            fit.Offset(
-                padding,
-                padding);
+            crop.Offset(
+                visible.X,
+                visible.Y);
 
             g.DrawImage(
                 source,
-                fit,
-                visible,
+                new Rectangle(
+                    0,
+                    0,
+                    IconWidth,
+                    IconHeight),
+                crop,
                 GraphicsUnit.Pixel);
         }
 
