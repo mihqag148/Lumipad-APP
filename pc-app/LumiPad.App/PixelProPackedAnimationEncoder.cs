@@ -36,8 +36,10 @@ internal sealed record PixelProPackedAnimationResult(
 ///
 /// The wire format is PIXEL-specific rather than QGF, but follows the same
 /// useful ideas for a small MCU: delta frames, per-run RLE, and selectable
-/// native/palette color depths. New PIXEL PRO media keeps a quality floor of
-/// 360×240 and Palette256 while using up to 1100 KiB when needed.
+/// native/palette color depths. A progressive Smart Delta pass suppresses
+/// visually insignificant temporal noise before reducing resolution/FPS.
+/// New PIXEL PRO media keeps a quality floor of 360×240 and Palette256 while
+/// using up to 1100 KiB when needed.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
 {
@@ -47,6 +49,16 @@ internal static class PixelProPackedAnimationEncoder
     public const int HardTargetBytes = 1100 * 1024;
 
     private const int MaxCanvas = 1024;
+    private const int SmartDeltaBlockSize = 8;
+    private const int DeltaSpanMergeGapPixels = 6;
+
+    private static readonly int[] SmartDeltaLevels =
+    [
+        0,
+        1,
+        2,
+        3,
+    ];
 
     private readonly record struct PlannedFrame(
         int SourceIndex,
@@ -113,32 +125,39 @@ internal static class PixelProPackedAnimationEncoder
 
         foreach ((int width, int height, int fps) in BuildQualityLadder())
         {
-            foreach (PixelProPackedColorMode mode in colorModes)
+            // Try exact delta first, then progressively suppress only tiny
+            // temporal changes. This keeps resolution/FPS/color quality high
+            // before the ladder has to fall back to a lower motion rate.
+            foreach (int smartDeltaLevel in SmartDeltaLevels)
             {
-                Candidate candidate =
-                    EncodeCandidate(
-                        image,
-                        dimension,
-                        sourceDelays,
-                        sourceFrameCount,
-                        width,
-                        height,
-                        fps,
-                        maxDurationMs,
-                        mode,
-                        scaleMode,
-                        HardTargetBytes);
-
-                if (!candidate.ExceededLimit &&
-                    candidate.Bytes is not null &&
-                    candidate.Bytes.Length <=
-                        HardTargetBytes)
+                foreach (PixelProPackedColorMode mode in colorModes)
                 {
-                    return ToResult(
-                        candidate,
-                        scaleMode,
-                        new FileInfo(path).Length,
-                        fps < 15);
+                    Candidate candidate =
+                        EncodeCandidate(
+                            image,
+                            dimension,
+                            sourceDelays,
+                            sourceFrameCount,
+                            width,
+                            height,
+                            fps,
+                            maxDurationMs,
+                            mode,
+                            scaleMode,
+                            smartDeltaLevel,
+                            HardTargetBytes);
+
+                    if (!candidate.ExceededLimit &&
+                        candidate.Bytes is not null &&
+                        candidate.Bytes.Length <=
+                            HardTargetBytes)
+                    {
+                        return ToResult(
+                            candidate,
+                            scaleMode,
+                            new FileInfo(path).Length,
+                            fps < 15);
+                    }
                 }
             }
         }
@@ -220,6 +239,7 @@ internal static class PixelProPackedAnimationEncoder
         int maxDurationMs,
         PixelProPackedColorMode colorMode,
         ScreensaverScaleMode scaleMode,
+        int smartDeltaLevel,
         int abortAfterBytes)
     {
         List<PlannedFrame> plan =
@@ -340,6 +360,15 @@ internal static class PixelProPackedAnimationEncoder
                     colorMode,
                     lookup);
 
+            ApplySmartDeltaFilter(
+                current,
+                previous,
+                storageWidth,
+                storageHeight,
+                colorMode,
+                palette,
+                smartDeltaLevel);
+
             using var frameData =
                 new MemoryStream();
 
@@ -397,6 +426,241 @@ internal static class PixelProPackedAnimationEncoder
             false);
     }
 
+    private static void ApplySmartDeltaFilter(
+        uint[] current,
+        IReadOnlyList<uint> previous,
+        int width,
+        int height,
+        PixelProPackedColorMode mode,
+        IReadOnlyList<Drawing.Color> palette,
+        int level)
+    {
+        if (level <= 0)
+            return;
+
+        int channelThreshold =
+            level switch
+            {
+                1 => 6,
+                2 => 10,
+                _ => 16,
+            };
+
+        int distanceThreshold =
+            channelThreshold *
+            channelThreshold *
+            3;
+
+        for (int i = 0;
+             i < current.Length;
+             i++)
+        {
+            uint oldCode =
+                previous[i];
+
+            if (oldCode == uint.MaxValue ||
+                current[i] == oldCode)
+            {
+                continue;
+            }
+
+            if (CodeColorDistanceSquared(
+                    current[i],
+                    oldCode,
+                    mode,
+                    palette) <=
+                distanceThreshold)
+            {
+                // Keep the already-displayed pixel. This removes tiny palette
+                // flicker/gradient noise without creating a new wire-format.
+                current[i] =
+                    oldCode;
+            }
+        }
+
+        int sparseLimit =
+            level switch
+            {
+                1 => 1,
+                2 => 3,
+                _ => 6,
+            };
+
+        // Remove isolated changes inside 8×8 blocks. Real moving edges survive
+        // because they affect more pixels, while dithering/noise often does not.
+        for (int blockY = 0;
+             blockY < height;
+             blockY += SmartDeltaBlockSize)
+        {
+            int blockHeight =
+                Math.Min(
+                    SmartDeltaBlockSize,
+                    height - blockY);
+
+            for (int blockX = 0;
+                 blockX < width;
+                 blockX += SmartDeltaBlockSize)
+            {
+                int blockWidth =
+                    Math.Min(
+                        SmartDeltaBlockSize,
+                        width - blockX);
+
+                int changed =
+                    0;
+
+                for (int y = 0;
+                     y < blockHeight;
+                     y++)
+                {
+                    int row =
+                        (blockY + y) *
+                        width +
+                        blockX;
+
+                    for (int x = 0;
+                         x < blockWidth;
+                         x++)
+                    {
+                        int index =
+                            row +
+                            x;
+
+                        if (previous[index] != uint.MaxValue &&
+                            current[index] != previous[index])
+                        {
+                            changed++;
+                        }
+                    }
+                }
+
+                if (changed == 0 ||
+                    changed > sparseLimit)
+                {
+                    continue;
+                }
+
+                for (int y = 0;
+                     y < blockHeight;
+                     y++)
+                {
+                    int row =
+                        (blockY + y) *
+                        width +
+                        blockX;
+
+                    for (int x = 0;
+                         x < blockWidth;
+                         x++)
+                    {
+                        int index =
+                            row +
+                            x;
+
+                        if (previous[index] != uint.MaxValue &&
+                            current[index] != previous[index])
+                        {
+                            current[index] =
+                                previous[index];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static int CodeColorDistanceSquared(
+        uint a,
+        uint b,
+        PixelProPackedColorMode mode,
+        IReadOnlyList<Drawing.Color> palette)
+    {
+        (int ar, int ag, int ab) =
+            DecodeCodeColor(
+                a,
+                mode,
+                palette);
+
+        (int br, int bg, int bb) =
+            DecodeCodeColor(
+                b,
+                mode,
+                palette);
+
+        int dr =
+            ar -
+            br;
+
+        int dg =
+            ag -
+            bg;
+
+        int db =
+            ab -
+            bb;
+
+        return
+            dr * dr +
+            dg * dg +
+            db * db;
+    }
+
+    private static (int R, int G, int B) DecodeCodeColor(
+        uint value,
+        PixelProPackedColorMode mode,
+        IReadOnlyList<Drawing.Color> palette)
+    {
+        if (mode ==
+            PixelProPackedColorMode.Rgb888)
+        {
+            return
+            (
+                (int)((value >> 16) & 0xFF),
+                (int)((value >> 8) & 0xFF),
+                (int)(value & 0xFF)
+            );
+        }
+
+        if (mode ==
+            PixelProPackedColorMode.Rgb565)
+        {
+            int r5 =
+                (int)((value >> 11) & 0x1F);
+
+            int g6 =
+                (int)((value >> 5) & 0x3F);
+
+            int b5 =
+                (int)(value & 0x1F);
+
+            return
+            (
+                (r5 << 3) | (r5 >> 2),
+                (g6 << 2) | (g6 >> 4),
+                (b5 << 3) | (b5 >> 2)
+            );
+        }
+
+        if (palette.Count == 0)
+            return (0, 0, 0);
+
+        int index =
+            Math.Clamp(
+                (int)value,
+                0,
+                palette.Count - 1);
+
+        Drawing.Color color =
+            palette[index];
+
+        return
+        (
+            color.R,
+            color.G,
+            color.B
+        );
+    }
+
     private static int EncodeDeltaSpans(
         Stream output,
         IReadOnlyList<uint> current,
@@ -407,10 +671,9 @@ internal static class PixelProPackedAnimationEncoder
     {
         int spans = 0;
 
-        // Keep at most one delta span per source row. A noisy frame can
-        // otherwise create tens of thousands of tiny spans; merging from the
-        // first changed pixel to the last changed pixel keeps the frame header
-        // bounded while RLE still compresses repeated pixels inside the span.
+        // Split sparse rows into several spans instead of serializing the
+        // entire area between the first and last changed pixel. Nearby changes
+        // are still merged so busy rows do not explode into tiny headers.
         for (int y = 0;
              y < height;
              y++)
@@ -419,56 +682,89 @@ internal static class PixelProPackedAnimationEncoder
                 y *
                 width;
 
-            int firstChanged =
-                -1;
+            int x =
+                0;
 
-            int lastChanged =
-                -1;
-
-            for (int x = 0;
-                 x < width;
-                 x++)
+            while (x < width)
             {
-                if (current[row + x] ==
-                    previous[row + x])
+                while (x < width &&
+                       current[row + x] ==
+                           previous[row + x])
                 {
-                    continue;
+                    x++;
                 }
 
-                if (firstChanged < 0)
-                    firstChanged = x;
+                if (x >= width)
+                    break;
 
-                lastChanged = x;
+                int start =
+                    x;
+
+                int lastChanged =
+                    x;
+
+                int scan =
+                    x +
+                    1;
+
+                int gap =
+                    0;
+
+                while (scan < width)
+                {
+                    if (current[row + scan] !=
+                        previous[row + scan])
+                    {
+                        lastChanged =
+                            scan;
+
+                        gap =
+                            0;
+                    }
+                    else
+                    {
+                        gap++;
+
+                        if (gap >
+                            DeltaSpanMergeGapPixels)
+                        {
+                            break;
+                        }
+                    }
+
+                    scan++;
+                }
+
+                int count =
+                    lastChanged -
+                    start +
+                    1;
+
+                WriteU16(
+                    output,
+                    y);
+
+                WriteU16(
+                    output,
+                    start);
+
+                WriteU16(
+                    output,
+                    count);
+
+                EncodeRunRle(
+                    output,
+                    current,
+                    row + start,
+                    count,
+                    mode);
+
+                spans++;
+
+                x =
+                    lastChanged +
+                    1;
             }
-
-            if (firstChanged < 0)
-                continue;
-
-            int count =
-                lastChanged -
-                firstChanged +
-                1;
-
-            WriteU16(
-                output,
-                y);
-
-            WriteU16(
-                output,
-                firstChanged);
-
-            WriteU16(
-                output,
-                count);
-
-            EncodeRunRle(
-                output,
-                current,
-                row + firstChanged,
-                count,
-                mode);
-
-            spans++;
         }
 
         return spans;
