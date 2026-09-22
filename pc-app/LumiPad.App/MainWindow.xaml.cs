@@ -814,7 +814,7 @@ public partial class MainWindow : Window
             return CreateRynorOnePreview();
 
         return CreateProductHubImage(
-            "Assets/Products/pixel-pro.png");
+            "Assets/Products/pixel-pro.jpg");
     }
 
     private UIElement CreateRynorOnePreview()
@@ -822,7 +822,7 @@ public partial class MainWindow : Window
         // Keep the existing RYNOR-only preview path; only the artwork source
         // is upgraded to the requested high-resolution PNG resource.
         return CreateProductHubImage(
-            "Assets/Products/rynor-one.png");
+            "Assets/Products/rynor-one.jpg");
     }
 
     private async void ProductCard_Click(
