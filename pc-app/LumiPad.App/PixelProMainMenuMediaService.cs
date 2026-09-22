@@ -13,12 +13,13 @@ public static class PixelProMainMenuMediaService
     public const int BackgroundHeight = 320;
     public const int BackgroundMaxBytes = 96 * 1024;
 
-    // eezBotFun-style 8-key layout uses substantially larger icons than the
-    // previous 40x40 raw tiles. JPEG keeps flash use reasonable while letting
-    // PIXEL PRO draw a native 96x96 icon without firmware upscaling blur.
+    // eezBotFun-style 8-key layout uses native 96x96 icon canvases. The
+    // custom PXI1 payload stores RGB565 pixels plus a transparent color key,
+    // so aspect-ratio padding shows the wallpaper instead of a black JPEG box.
     public const int IconWidth = 96;
     public const int IconHeight = 96;
     public const int IconMaxBytes = 24 * 1024;
+    public const ushort IconTransparent565 = 0xF81F;
 
     public static byte[] CreateBackgroundJpeg(
         string path,
@@ -152,7 +153,7 @@ public static class PixelProMainMenuMediaService
             "Main-menu background cannot be reduced below 96 KiB.");
     }
 
-    public static byte[] CreateIconJpeg(string path)
+    public static byte[] CreateIconAsset(string path)
     {
         ValidateStaticImage(path);
 
@@ -163,11 +164,11 @@ public static class PixelProMainMenuMediaService
             new Bitmap(
                 IconWidth,
                 IconHeight,
-                PixelFormat.Format24bppRgb);
+                PixelFormat.Format32bppArgb);
 
         using (Graphics g = Graphics.FromImage(output))
         {
-            g.Clear(Color.Black);
+            g.Clear(Color.Transparent);
             ConfigureHighQuality(g);
 
             Rectangle visible =
@@ -197,11 +198,87 @@ public static class PixelProMainMenuMediaService
                 GraphicsUnit.Pixel);
         }
 
-        return EncodeJpegWithinLimit(
-            output,
-            IconMaxBytes,
-            [96, 94, 92, 90, 88, 85],
-            "Main-menu icon cannot be reduced below the 24 KiB icon budget.");
+        using var stream =
+            new MemoryStream(
+                8 +
+                IconWidth *
+                IconHeight *
+                2);
+
+        using var writer =
+            new BinaryWriter(stream);
+
+        writer.Write(
+            new byte[]
+            {
+                (byte)'P',
+                (byte)'X',
+                (byte)'I',
+                (byte)'1'
+            });
+
+        writer.Write(
+            (ushort)IconWidth);
+
+        writer.Write(
+            (ushort)IconHeight);
+
+        for (int y = 0; y < IconHeight; y++)
+        {
+            for (int x = 0; x < IconWidth; x++)
+            {
+                Color pixel =
+                    output.GetPixel(x, y);
+
+                ushort rgb565;
+
+                if (pixel.A <= 16)
+                {
+                    rgb565 =
+                        IconTransparent565;
+                }
+                else
+                {
+                    int r =
+                        (pixel.R * 31 + 127) /
+                        255;
+
+                    int green =
+                        (pixel.G * 63 + 127) /
+                        255;
+
+                    int b =
+                        (pixel.B * 31 + 127) /
+                        255;
+
+                    rgb565 =
+                        (ushort)(
+                            (r << 11) |
+                            (green << 5) |
+                            b);
+
+                    // Reserve magenta as the transparent key. Move a genuine
+                    // source pixel by one blue step if it quantizes to it.
+                    if (rgb565 == IconTransparent565)
+                        rgb565 = 0xF81E;
+                }
+
+                writer.Write(rgb565);
+            }
+        }
+
+        writer.Flush();
+
+        byte[] payload =
+            stream.ToArray();
+
+        if (payload.Length > IconMaxBytes)
+        {
+            throw new InvalidOperationException(
+                "Main-menu icon exceeds the 24 KiB icon budget.");
+        }
+
+        return payload;
     }
 
     private static byte[] EncodeJpegWithinLimit(
