@@ -4275,6 +4275,32 @@ public partial class MainWindow : Window
             : null;
     }
 
+    private static async Task<string?> WaitForPixelProBootPortAsync(
+        ISet<string> portsBefore,
+        int attempts = 48,
+        int delayMs = 250)
+    {
+        for (int i = 0; i < attempts; i++)
+        {
+            await Task.Delay(delayMs);
+
+            string? port =
+                FindPixelProBootPort(
+                    portsBefore);
+
+            if (!string.IsNullOrWhiteSpace(port))
+            {
+                // Windows can expose the new COM name slightly before usbser
+                // finishes opening it. Give the ROM port a short settle time
+                // so esptool can use it on the same update attempt.
+                await Task.Delay(650);
+                return port;
+            }
+        }
+
+        return null;
+    }
+
     private async Task<string> EnsureEspToolAsync(
         string toolRoot)
     {
@@ -4406,72 +4432,97 @@ public partial class MainWindow : Window
 
             _autoReconnectEnabled = false;
 
-            bool automaticBoot =
-                _serial is PixelProCdcLink pixelLink &&
-                await pixelLink.TryEnterRomBootloaderAsync();
+            bool automaticBootStarted = false;
 
-            if (!automaticBoot)
+            if (_serial is PixelProCdcLink pixelLink)
+            {
+                try
+                {
+                    automaticBootStarted =
+                        await pixelLink.TryEnterRomBootloaderAsync();
+                }
+                catch (OperationCanceledException ex)
+                {
+                    // On Windows the normal CDC COM disappears during the
+                    // intentional USB re-enumeration. SerialPort can surface
+                    // that expected transition as "The operation was canceled".
+                    // Do not abort the update: discover the ROM COM and keep
+                    // flashing in this same button press.
+                    automaticBootStarted = true;
+
+                    AddLog(
+                        "INFO",
+                        "UPDATE",
+                        "PIXEL PRO CDC changed to ROM BOOT while the old COM " +
+                        $"operation was being canceled; continuing. {ex.Message}");
+                }
+                catch (IO.IOException ex)
+                {
+                    automaticBootStarted = true;
+
+                    AddLog(
+                        "INFO",
+                        "UPDATE",
+                        "PIXEL PRO CDC disappeared during ROM BOOT transition; " +
+                        $"continuing boot-port discovery. {ex.Message}");
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // A closing SerialPort may also throw InvalidOperationException
+                    // after the ROM BOOT command has already taken effect.
+                    AddLog(
+                        "WARN",
+                        "UPDATE",
+                        "Automatic ROM BOOT serial transition did not finish " +
+                        $"cleanly; checking for the new COM before falling back. {ex.Message}");
+                }
+            }
+
+            // The application CDC handle is no longer useful once ROM BOOT
+            // starts. Disconnecting here also prevents background reconnect
+            // work from racing the bootloader COM discovery.
+            try
             {
                 _serial.Disconnect();
+            }
+            catch
+            {
+            }
 
-                UpdateStatusText.Text =
-                    L(
-                        "Waiting for PIXEL PRO ROM BOOT mode…",
-                        "Đang chờ PIXEL PRO vào ROM BOOT…");
+            UpdateStatusText.Text =
+                automaticBootStarted
+                    ? L(
+                        "PIXEL PRO switched USB mode. Waiting for the ROM BOOT COM…",
+                        "PIXEL PRO đã chuyển chế độ USB. Đang chờ COM ROM BOOT…")
+                    : L(
+                        "Checking for PIXEL PRO ROM BOOT COM…",
+                        "Đang kiểm tra COM ROM BOOT của PIXEL PRO…");
 
+            // Always look for the new ROM COM before asking the user to retry.
+            // This is the key one-click path when Windows changes COM numbers
+            // and reports the old CDC operation as canceled.
+            string? bootPort =
+                await WaitForPixelProBootPortAsync(
+                    portsBefore,
+                    attempts: 32);
+
+            if (string.IsNullOrWhiteSpace(bootPort))
+            {
                 var bootPrompt = System.Windows.MessageBox.Show(
                     L(
-                        "Put PIXEL PRO into ROM BOOT mode now:\n\n1. Hold BOOT.\n2. Press RESET once.\n3. Release RESET.\n4. Release BOOT.\n5. Click OK here.\n\nThe app now detects the ESP32-S2 ROM device itself, even if Windows reuses the same COM number.",
-                        "Đưa PIXEL PRO vào ROM BOOT ngay:\n\n1. Giữ BOOT.\n2. Nhấn RESET một lần.\n3. Thả RESET.\n4. Thả BOOT.\n5. Bấm OK ở đây.\n\nApp sẽ nhận đúng thiết bị ROM ESP32-S2 kể cả khi Windows giữ nguyên số COM."),
-                    "PIXEL PRO · BOOT mode",
+                        "Automatic ROM BOOT did not appear. Put PIXEL PRO into ROM BOOT now:\n\n1. Hold BOOT.\n2. Press RESET once.\n3. Release RESET.\n4. Release BOOT.\n5. Click OK here.\n\nLumiPad will continue this same update attempt.",
+                        "ROM BOOT tự động chưa xuất hiện. Đưa PIXEL PRO vào ROM BOOT ngay:\n\n1. Giữ BOOT.\n2. Nhấn RESET một lần.\n3. Thả RESET.\n4. Thả BOOT.\n5. Bấm OK ở đây.\n\nLumiPad sẽ tiếp tục ngay trong lần cập nhật này."),
+                    "PIXEL PRO · BOOT fallback",
                     MessageBoxButton.OKCancel,
                     MessageBoxImage.Information);
 
                 if (bootPrompt != MessageBoxResult.OK)
                     return;
-            }
-            else
-            {
-                UpdateStatusText.Text =
-                    L(
-                        "PIXEL PRO is entering ROM BOOT automatically…",
-                        "PIXEL PRO đang tự vào ROM BOOT…");
-            }
 
-            string? bootPort = null;
-
-            for (int i = 0; i < 40 && bootPort is null; i++)
-            {
-                await Task.Delay(250);
                 bootPort =
-                    FindPixelProBootPort(
-                        portsBefore);
-            }
-
-            // Firmware 1.3.8 cannot arm the explicit app-only boot command.
-            // If an automatic attempt ever disappears without enumerating,
-            // allow one manual BOOT+RESET fallback in the same update flow.
-            if (string.IsNullOrWhiteSpace(bootPort) &&
-                automaticBoot)
-            {
-                var retryPrompt = System.Windows.MessageBox.Show(
-                    L(
-                        "Automatic ROM BOOT did not enumerate. Hold BOOT, press RESET once, release RESET, release BOOT, then click OK.",
-                        "ROM BOOT tự động chưa hiện cổng. Giữ BOOT, nhấn RESET một lần, thả RESET, thả BOOT rồi bấm OK."),
-                    "PIXEL PRO · BOOT fallback",
-                    MessageBoxButton.OKCancel,
-                    MessageBoxImage.Information);
-
-                if (retryPrompt != MessageBoxResult.OK)
-                    return;
-
-                for (int i = 0; i < 40 && bootPort is null; i++)
-                {
-                    await Task.Delay(250);
-                    bootPort =
-                        FindPixelProBootPort(
-                            portsBefore);
-                }
+                    await WaitForPixelProBootPortAsync(
+                        portsBefore,
+                        attempts: 48);
             }
 
             if (string.IsNullOrWhiteSpace(bootPort))
