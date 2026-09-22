@@ -18,19 +18,89 @@ public static class PixelProMainMenuMediaService
 
     public static byte[] CreateBackgroundJpeg(
         string path,
-        int brightnessPercent,
-        int opacityPercent)
+        int blurPercent,
+        int opacityPercent,
+        ScreensaverScaleMode scaleMode)
     {
         ValidateStaticImage(path);
 
-        brightnessPercent =
-            Math.Clamp(brightnessPercent, 20, 100);
+        blurPercent =
+            Math.Clamp(blurPercent, 0, 100);
 
         opacityPercent =
             Math.Clamp(opacityPercent, 0, 100);
 
+        if (scaleMode is not (
+            ScreensaverScaleMode.Fill or
+            ScreensaverScaleMode.Fit or
+            ScreensaverScaleMode.Stretch))
+        {
+            scaleMode =
+                ScreensaverScaleMode.Fill;
+        }
+
         using var source =
             new Bitmap(path);
+
+        using var composed =
+            new Bitmap(
+                BackgroundWidth,
+                BackgroundHeight,
+                PixelFormat.Format24bppRgb);
+
+        using (Graphics g = Graphics.FromImage(composed))
+        {
+            g.Clear(Color.Black);
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.SmoothingMode = SmoothingMode.HighQuality;
+
+            if (scaleMode == ScreensaverScaleMode.Stretch)
+            {
+                g.DrawImage(
+                    source,
+                    new Rectangle(
+                        0,
+                        0,
+                        BackgroundWidth,
+                        BackgroundHeight));
+            }
+            else if (scaleMode == ScreensaverScaleMode.Fit)
+            {
+                g.DrawImage(
+                    source,
+                    FitRect(
+                        source.Width,
+                        source.Height,
+                        BackgroundWidth,
+                        BackgroundHeight));
+            }
+            else
+            {
+                Rectangle sourceRect =
+                    SourceCropRect(
+                        source.Width,
+                        source.Height,
+                        BackgroundWidth,
+                        BackgroundHeight);
+
+                g.DrawImage(
+                    source,
+                    new Rectangle(
+                        0,
+                        0,
+                        BackgroundWidth,
+                        BackgroundHeight),
+                    sourceRect,
+                    GraphicsUnit.Pixel);
+            }
+        }
+
+        using Bitmap blurred =
+            CreateBlurredBitmap(
+                composed,
+                blurPercent);
 
         using var output =
             new Bitmap(
@@ -41,20 +111,6 @@ public static class PixelProMainMenuMediaService
         using (Graphics g = Graphics.FromImage(output))
         {
             g.Clear(Color.Black);
-            g.CompositingQuality = CompositingQuality.HighQuality;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.SmoothingMode = SmoothingMode.HighQuality;
-
-            Rectangle destination =
-                FillRect(
-                    source.Width,
-                    source.Height,
-                    BackgroundWidth,
-                    BackgroundHeight);
-
-            float multiplier =
-                brightnessPercent / 100f;
 
             float alpha =
                 opacityPercent / 100f;
@@ -62,33 +118,28 @@ public static class PixelProMainMenuMediaService
             using var attributes =
                 new ImageAttributes();
 
-            var matrix =
+            attributes.SetColorMatrix(
                 new ColorMatrix(
-                new[]
-                {
-                    new[] { multiplier, 0f, 0f, 0f, 0f },
-                    new[] { 0f, multiplier, 0f, 0f, 0f },
-                    new[] { 0f, 0f, multiplier, 0f, 0f },
-                    new[] { 0f, 0f, 0f, alpha, 0f },
-                    new[] { 0f, 0f, 0f, 0f, 1f }
-                });
-
-            attributes.SetColorMatrix(matrix);
-
-            Rectangle sourceRect =
-                SourceCropRect(
-                    source.Width,
-                    source.Height,
-                    BackgroundWidth,
-                    BackgroundHeight);
+                    new[]
+                    {
+                        new[] { 1f, 0f, 0f, 0f, 0f },
+                        new[] { 0f, 1f, 0f, 0f, 0f },
+                        new[] { 0f, 0f, 1f, 0f, 0f },
+                        new[] { 0f, 0f, 0f, alpha, 0f },
+                        new[] { 0f, 0f, 0f, 0f, 1f }
+                    }));
 
             g.DrawImage(
-                source,
-                destination,
-                sourceRect.X,
-                sourceRect.Y,
-                sourceRect.Width,
-                sourceRect.Height,
+                blurred,
+                new Rectangle(
+                    0,
+                    0,
+                    BackgroundWidth,
+                    BackgroundHeight),
+                0,
+                0,
+                BackgroundWidth,
+                BackgroundHeight,
                 GraphicsUnit.Pixel,
                 attributes);
         }
@@ -121,6 +172,81 @@ public static class PixelProMainMenuMediaService
 
         throw new InvalidOperationException(
             "Main-menu background cannot be reduced below 96 KiB.");
+    }
+
+    private static Bitmap CreateBlurredBitmap(
+        Bitmap source,
+        int blurPercent)
+    {
+        if (blurPercent <= 0)
+            return new Bitmap(source);
+
+        // Static menu art is prepared on the PC. A progressive downsample /
+        // upsample gives a smooth blur without consuming any ESP32 runtime RAM.
+        double amount =
+            Math.Clamp(
+                blurPercent / 100.0,
+                0.0,
+                1.0);
+
+        int divisor =
+            2 +
+            (int)Math.Round(
+                amount * 14.0);
+
+        int smallWidth =
+            Math.Max(
+                1,
+                source.Width / divisor);
+
+        int smallHeight =
+            Math.Max(
+                1,
+                source.Height / divisor);
+
+        using var small =
+            new Bitmap(
+                smallWidth,
+                smallHeight,
+                PixelFormat.Format24bppRgb);
+
+        using (Graphics g = Graphics.FromImage(small))
+        {
+            g.Clear(Color.Black);
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.DrawImage(
+                source,
+                new Rectangle(
+                    0,
+                    0,
+                    smallWidth,
+                    smallHeight));
+        }
+
+        var result =
+            new Bitmap(
+                source.Width,
+                source.Height,
+                PixelFormat.Format24bppRgb);
+
+        using (Graphics g = Graphics.FromImage(result))
+        {
+            g.Clear(Color.Black);
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.DrawImage(
+                small,
+                new Rectangle(
+                    0,
+                    0,
+                    source.Width,
+                    source.Height));
+        }
+
+        return result;
     }
 
     public static byte[] CreateIconRgb565(string path)
@@ -168,7 +294,6 @@ public static class PixelProMainMenuMediaService
                 Color c =
                     output.GetPixel(x, y);
 
-                // Composite transparent pixels over black, matching the panel.
                 int r = c.R * c.A / 255;
                 int g = c.G * c.A / 255;
                 int b = c.B * c.A / 255;
@@ -179,7 +304,6 @@ public static class PixelProMainMenuMediaService
                         ((g & 0xFC) << 3) |
                         (b >> 3));
 
-                // ESP32 reads the file straight into uint16_t memory.
                 bytes[offset++] = (byte)(rgb565 & 0xFF);
                 bytes[offset++] = (byte)(rgb565 >> 8);
             }
@@ -246,13 +370,6 @@ public static class PixelProMainMenuMediaService
             Math.Min(sourceHeight, cropHeight));
     }
 
-    private static Rectangle FillRect(
-        int sourceWidth,
-        int sourceHeight,
-        int targetWidth,
-        int targetHeight) =>
-        new(0, 0, targetWidth, targetHeight);
-
     private static Rectangle FitRect(
         int sourceWidth,
         int sourceHeight,
@@ -265,10 +382,14 @@ public static class PixelProMainMenuMediaService
                 targetHeight / (double)sourceHeight);
 
         int width =
-            Math.Max(1, (int)Math.Round(sourceWidth * scale));
+            Math.Max(
+                1,
+                (int)Math.Round(sourceWidth * scale));
 
         int height =
-            Math.Max(1, (int)Math.Round(sourceHeight * scale));
+            Math.Max(
+                1,
+                (int)Math.Round(sourceHeight * scale));
 
         return new Rectangle(
             (targetWidth - width) / 2,

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LumiPad.App;
 
@@ -9,8 +10,10 @@ public sealed class PixelProMainMenuSlot
 {
     public int ActionId { get; set; }
     public string? IconPath { get; set; }
+    public string? AppPath { get; set; }
 }
 
+// Legacy v1/v2 shape. Kept only so existing pixel_main_menu.json files migrate.
 public sealed class PixelProMainMenuPage
 {
     public int Layer { get; set; }
@@ -20,19 +23,43 @@ public sealed class PixelProMainMenuPage
             .ToArray();
 }
 
-public sealed class PixelProMainMenuConfig
+public sealed class PixelProMainMenuProfile
 {
     public string? BackgroundPath { get; set; }
-    public int BrightnessPercent { get; set; } = 70;
+    public int BlurPercent { get; set; }
     public int OpacityPercent { get; set; } = 100;
-    public PixelProMainMenuPage[] Pages { get; set; } =
-        Enumerable.Range(0, 4)
-            .Select(i => new PixelProMainMenuPage { Layer = i })
+    public ScreensaverScaleMode ScaleMode { get; set; } =
+        ScreensaverScaleMode.Fill;
+
+    public PixelProMainMenuSlot[] Slots { get; set; } =
+        Enumerable.Range(0, 12)
+            .Select(_ => new PixelProMainMenuSlot())
             .ToArray();
+}
+
+public sealed class PixelProMainMenuConfig
+{
+    public int Version { get; set; } = 3;
+
+    public PixelProMainMenuProfile[] Profiles { get; set; } = [];
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BackgroundPath { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? BrightnessPercent { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? OpacityPercent { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PixelProMainMenuPage[]? Pages { get; set; }
 }
 
 public static class PixelProMainMenuStore
 {
+    public const int ProfileCount = 20;
+
     private static string ConfigPath =>
         Path.Combine(
             Environment.GetFolderPath(
@@ -82,57 +109,132 @@ public static class PixelProMainMenuStore
         }
     }
 
+    private static PixelProMainMenuSlot NormalizeSlot(
+        PixelProMainMenuSlot? slot)
+    {
+        PixelProMainMenuSlot value =
+            slot ?? new PixelProMainMenuSlot();
+
+        value.ActionId =
+            Math.Clamp(value.ActionId, 0, 32);
+
+        if (string.IsNullOrWhiteSpace(value.IconPath))
+            value.IconPath = null;
+
+        if (string.IsNullOrWhiteSpace(value.AppPath))
+            value.AppPath = null;
+
+        return value;
+    }
+
+    private static PixelProMainMenuProfile NormalizeProfile(
+        PixelProMainMenuProfile? profile)
+    {
+        PixelProMainMenuProfile value =
+            profile ?? new PixelProMainMenuProfile();
+
+        value.BlurPercent =
+            Math.Clamp(value.BlurPercent, 0, 100);
+
+        value.OpacityPercent =
+            Math.Clamp(value.OpacityPercent, 0, 100);
+
+        if (!Enum.IsDefined(value.ScaleMode) ||
+            value.ScaleMode is not (
+                ScreensaverScaleMode.Fill or
+                ScreensaverScaleMode.Fit or
+                ScreensaverScaleMode.Stretch))
+        {
+            value.ScaleMode =
+                ScreensaverScaleMode.Fill;
+        }
+
+        if (string.IsNullOrWhiteSpace(value.BackgroundPath))
+            value.BackgroundPath = null;
+
+        PixelProMainMenuSlot[] slots =
+            value.Slots ?? [];
+
+        value.Slots =
+            Enumerable.Range(0, 12)
+                .Select(index =>
+                    NormalizeSlot(
+                        index < slots.Length
+                            ? slots[index]
+                            : null))
+                .ToArray();
+
+        return value;
+    }
+
     private static PixelProMainMenuConfig Normalize(
         PixelProMainMenuConfig config)
     {
-        config.BrightnessPercent =
-            Math.Clamp(config.BrightnessPercent, 20, 100);
+        PixelProMainMenuProfile[] source =
+            config.Profiles ?? [];
 
-        config.OpacityPercent =
-            Math.Clamp(config.OpacityPercent, 0, 100);
+        bool migrateLegacy =
+            source.Length == 0 &&
+            (config.Pages is { Length: > 0 } ||
+             !string.IsNullOrWhiteSpace(config.BackgroundPath) ||
+             config.OpacityPercent.HasValue);
 
-        PixelProMainMenuPage[] source =
-            config.Pages ?? [];
-
-        config.Pages =
-            Enumerable.Range(0, 4)
-                .Select(page =>
-                {
-                    PixelProMainMenuPage value =
-                        page < source.Length &&
-                        source[page] is not null
-                            ? source[page]
-                            : new PixelProMainMenuPage();
-
-                    value.Layer =
-                        Math.Clamp(value.Layer, 0, 3);
-
-                    PixelProMainMenuSlot[] slots =
-                        value.Slots ?? [];
-
-                    value.Slots =
-                        Enumerable.Range(0, 12)
-                            .Select(slot =>
-                            {
-                                PixelProMainMenuSlot item =
-                                    slot < slots.Length &&
-                                    slots[slot] is not null
-                                        ? slots[slot]
-                                        : new PixelProMainMenuSlot();
-
-                                item.ActionId =
-                                    Math.Clamp(item.ActionId, 0, 32);
-
-                                if (string.IsNullOrWhiteSpace(item.IconPath))
-                                    item.IconPath = null;
-
-                                return item;
-                            })
-                            .ToArray();
-
-                    return value;
-                })
+        var profiles =
+            Enumerable.Range(0, ProfileCount)
+                .Select(index =>
+                    index < source.Length
+                        ? NormalizeProfile(source[index])
+                        : new PixelProMainMenuProfile())
                 .ToArray();
+
+        if (migrateLegacy)
+        {
+            string? background =
+                string.IsNullOrWhiteSpace(config.BackgroundPath)
+                    ? null
+                    : config.BackgroundPath;
+
+            int opacity =
+                Math.Clamp(
+                    config.OpacityPercent ?? 100,
+                    0,
+                    100);
+
+            foreach (PixelProMainMenuProfile profile in profiles)
+            {
+                profile.BackgroundPath = background;
+                profile.OpacityPercent = opacity;
+            }
+
+            PixelProMainMenuPage[] oldPages =
+                config.Pages ?? [];
+
+            for (int profile = 0;
+                 profile < Math.Min(4, oldPages.Length);
+                 profile++)
+            {
+                PixelProMainMenuSlot[] oldSlots =
+                    oldPages[profile]?.Slots ?? [];
+
+                profiles[profile].Slots =
+                    Enumerable.Range(0, 12)
+                        .Select(slot =>
+                            NormalizeSlot(
+                                slot < oldSlots.Length
+                                    ? oldSlots[slot]
+                                    : null))
+                        .ToArray();
+            }
+        }
+
+        config.Version = 3;
+        config.Profiles = profiles;
+
+        // Drop the old layer-based fields after migration.
+        config.BackgroundPath = null;
+        config.BrightnessPercent = null;
+        config.OpacityPercent = null;
+        config.Pages = null;
 
         return config;
     }

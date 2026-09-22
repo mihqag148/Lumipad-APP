@@ -1,17 +1,30 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Drawing = System.Drawing;
+using DrawingImaging = System.Drawing.Imaging;
 using IO = System.IO;
 
 namespace LumiPad.App;
 
 public partial class MainWindow
 {
+    private int PixelMenuProfileIndex =>
+        Math.Clamp(
+            _pixelSelectedProfile,
+            0,
+            PixelProMainMenuStore.ProfileCount - 1);
+
+    private PixelProMainMenuProfile PixelMenuProfile =>
+        _pixelMainMenu.Profiles[PixelMenuProfileIndex];
+
     private void SetPixelHomePreviewMode(bool mainMenu)
     {
         if (!IsPixelProActive)
@@ -69,31 +82,48 @@ public partial class MainWindow
             var editorIcon =
                 new System.Windows.Controls.Image
                 {
-                    Width = 42,
-                    Height = 42,
+                    Width = 28,
+                    Height = 28,
                     Stretch = Stretch.Uniform,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 2, 0, 5)
+                    HorizontalAlignment =
+                        System.Windows.HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 3)
                 };
 
             var combo =
                 new System.Windows.Controls.ComboBox
                 {
                     Tag = capturedSlot,
-                    MinWidth = 118,
-                    Margin = new Thickness(0, 0, 0, 5)
+                    MinWidth = 88,
+                    FontSize = 10,
+                    Height = 24,
+                    Margin = new Thickness(0, 0, 0, 3)
                 };
 
             combo.SelectionChanged +=
                 PixelMenuSlotAction_SelectionChanged;
+
+            var appButton =
+                new System.Windows.Controls.Button
+                {
+                    Content = "App",
+                    Tag = capturedSlot,
+                    FontSize = 9,
+                    Padding = new Thickness(4, 2, 4, 2),
+                    Margin = new Thickness(0, 0, 3, 0)
+                };
+
+            appButton.Click +=
+                PixelMenuChooseApp_Click;
 
             var chooseButton =
                 new System.Windows.Controls.Button
                 {
                     Content = "Icon",
                     Tag = capturedSlot,
-                    Padding = new Thickness(7, 4, 7, 4),
-                    Margin = new Thickness(0, 0, 4, 0)
+                    FontSize = 9,
+                    Padding = new Thickness(4, 2, 4, 2),
+                    Margin = new Thickness(0, 0, 3, 0)
                 };
 
             chooseButton.Click +=
@@ -104,7 +134,9 @@ public partial class MainWindow
                 {
                     Content = "×",
                     Tag = capturedSlot,
-                    Width = 30,
+                    Width = 23,
+                    Height = 23,
+                    FontSize = 11,
                     Padding = new Thickness(0)
                 };
 
@@ -114,10 +146,13 @@ public partial class MainWindow
             var buttons =
                 new StackPanel
                 {
-                    Orientation = System.Windows.Controls.Orientation.Horizontal,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center
+                    Orientation =
+                        System.Windows.Controls.Orientation.Horizontal,
+                    HorizontalAlignment =
+                        System.Windows.HorizontalAlignment.Center
                 };
 
+            buttons.Children.Add(appButton);
             buttons.Children.Add(chooseButton);
             buttons.Children.Add(clearButton);
 
@@ -127,67 +162,70 @@ public partial class MainWindow
             editorStack.Children.Add(
                 new TextBlock
                 {
-                    Text = $"Slot {slot + 1}",
-                    FontSize = 10,
+                    Text = $"{slot + 1}",
+                    FontSize = 9,
                     Foreground =
-                        TryFindResource("Muted") as System.Windows.Media.Brush,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 0, 0, 2)
+                        TryFindResource("Muted") as
+                        System.Windows.Media.Brush,
+                    HorizontalAlignment =
+                        System.Windows.HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 1)
                 });
 
             editorStack.Children.Add(editorIcon);
             editorStack.Children.Add(combo);
             editorStack.Children.Add(buttons);
 
-            var editorBorder =
+            PixelMenuSlotsEditor.Children.Add(
                 new Border
                 {
                     Child = editorStack,
-                    Margin = new Thickness(3),
-                    Padding = new Thickness(6),
-                    CornerRadius = new CornerRadius(9),
+                    Margin = new Thickness(2),
+                    Padding = new Thickness(3),
+                    CornerRadius = new CornerRadius(7),
                     BorderBrush =
-                        TryFindResource("Line") as System.Windows.Media.Brush,
+                        TryFindResource("Line") as
+                        System.Windows.Media.Brush,
                     BorderThickness = new Thickness(1),
                     Background =
-                        TryFindResource("ControlBg") as System.Windows.Media.Brush
-                };
-
-            PixelMenuSlotsEditor.Children.Add(
-                editorBorder);
+                        TryFindResource("ControlBg") as
+                        System.Windows.Media.Brush
+                });
 
             var previewIcon =
                 new System.Windows.Controls.Image
                 {
                     Stretch = Stretch.Uniform,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
-                    VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
-                    Margin = new Thickness(9)
+                    HorizontalAlignment =
+                        System.Windows.HorizontalAlignment.Stretch,
+                    VerticalAlignment =
+                        System.Windows.VerticalAlignment.Stretch,
+                    Margin = new Thickness(3)
                 };
 
             var previewLabel =
                 new TextBlock
                 {
-                    Text = "--",
+                    Text = "",
                     FontSize = 11,
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = System.Windows.Media.Brushes.White,
+                    Foreground =
+                        System.Windows.Media.Brushes.White,
                     TextAlignment = TextAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
-                    MaxWidth = 92,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
-                    Margin = new Thickness(7)
+                    MaxWidth = 96,
+                    HorizontalAlignment =
+                        System.Windows.HorizontalAlignment.Center,
+                    VerticalAlignment =
+                        System.Windows.VerticalAlignment.Center,
+                    Margin = new Thickness(5)
                 };
 
             var previewGrid =
                 new Grid();
 
-            previewGrid.Children.Add(
-                previewIcon);
-
-            previewGrid.Children.Add(
-                previewLabel);
+            previewGrid.Children.Add(previewIcon);
+            previewGrid.Children.Add(previewLabel);
 
             PixelMenuPreviewSlots.Children.Add(
                 new Border
@@ -221,19 +259,19 @@ public partial class MainWindow
 
     private void RefreshPixelMainMenuActionChoices()
     {
-        if (_pixelMenuActionCombos.Count != 12)
+        if (_pixelMenuActionCombos.Count != 12 ||
+            _pixelMainMenu.Profiles.Length <
+                PixelProMainMenuStore.ProfileCount)
+        {
             return;
+        }
 
         _syncingPixelMenuUi = true;
 
         try
         {
-            PixelProMainMenuPage page =
-                _pixelMainMenu.Pages[
-                    Math.Clamp(
-                        _pixelMenuPageIndex,
-                        0,
-                        3)];
+            PixelProMainMenuProfile profile =
+                PixelMenuProfile;
 
             for (int slot = 0; slot < 12; slot++)
             {
@@ -251,7 +289,10 @@ public partial class MainWindow
 
                 foreach (ActionScriptDefinition action in
                          _actionScripts
-                             .Where(x => x.ActionId is >= 1 and <= 32)
+                             .Where(
+                                 x =>
+                                     x.ActionId is
+                                         >= 1 and <= 32)
                              .OrderBy(x => x.ActionId))
                 {
                     combo.Items.Add(
@@ -264,7 +305,7 @@ public partial class MainWindow
                 }
 
                 int desired =
-                    page.Slots[slot].ActionId;
+                    profile.Slots[slot].ActionId;
 
                 ComboBoxItem? selected =
                     combo.Items
@@ -288,80 +329,113 @@ public partial class MainWindow
         }
     }
 
+    private void RefreshPixelMenuProfileChoices()
+    {
+        if (PixelMenuProfileCombo is null)
+            return;
+
+        _pixelProfileCatalog.Normalize();
+
+        PixelMenuProfileCombo.Items.Clear();
+
+        for (int profile = 0;
+             profile < PixelProMainMenuStore.ProfileCount;
+             profile++)
+        {
+            string name =
+                profile < _pixelProfileCatalog.Count
+                    ? _pixelProfileCatalog.Names[profile]
+                    : $"Profile {profile + 1}";
+
+            PixelMenuProfileCombo.Items.Add(
+                new ComboBoxItem
+                {
+                    Content =
+                        $"{profile + 1:00} · {name}",
+                    Tag = profile
+                });
+        }
+
+        PixelMenuProfileCombo.SelectedIndex =
+            PixelMenuProfileIndex;
+    }
+
     private void RefreshPixelMainMenuUi()
     {
-        if (PixelMenuPageCombo is null ||
-            PixelMenuLayerCombo is null)
+        if (PixelMenuProfileCombo is null ||
+            PixelMenuBlurSlider is null ||
+            PixelMenuScaleCombo is null ||
+            _pixelMainMenu.Profiles.Length <
+                PixelProMainMenuStore.ProfileCount)
         {
             return;
         }
 
         BuildPixelMainMenuEditor();
 
-        int pageIndex =
-            Math.Clamp(
-                _pixelMenuPageIndex,
-                0,
-                3);
+        int profileIndex =
+            PixelMenuProfileIndex;
 
-        PixelProMainMenuPage page =
-            _pixelMainMenu.Pages[pageIndex];
+        PixelProMainMenuProfile profile =
+            _pixelMainMenu.Profiles[profileIndex];
 
         _syncingPixelMenuUi = true;
 
         try
         {
-            SelectComboTag(
-                PixelMenuPageCombo,
-                pageIndex.ToString());
+            RefreshPixelMenuProfileChoices();
 
-            SelectComboTag(
-                PixelMenuLayerCombo,
-                page.Layer.ToString());
+            PixelMenuBlurSlider.Value =
+                profile.BlurPercent;
 
-            PixelMenuBrightnessSlider.Value =
-                _pixelMainMenu.BrightnessPercent;
-
-            PixelMenuBrightnessText.Text =
-                $"{_pixelMainMenu.BrightnessPercent}%";
+            PixelMenuBlurText.Text =
+                $"{profile.BlurPercent}%";
 
             PixelMenuOpacitySlider.Value =
-                _pixelMainMenu.OpacityPercent;
+                profile.OpacityPercent;
 
             PixelMenuOpacityText.Text =
-                $"{_pixelMainMenu.OpacityPercent}%";
+                $"{profile.OpacityPercent}%";
 
-            PixelMenuBrightnessOverlay.Opacity =
-                1.0 -
-                _pixelMainMenu.BrightnessPercent /
-                100.0;
+            PixelMenuScaleCombo.SelectedValue =
+                profile.ScaleMode.ToString();
 
-            PixelMenuBackgroundPreview.Opacity =
-                _pixelMainMenu.OpacityPercent /
-                100.0;
+            string profileName =
+                PixelProfileName(profileIndex);
 
             PixelMenuPreviewLayerText.Text =
-                $"Menu {pageIndex + 1} · Layer {page.Layer}";
+                $"Profile {profileIndex + 1:00} · {profileName}";
 
             if (PixelMenuEditorLayerText is not null)
+            {
                 PixelMenuEditorLayerText.Text =
-                    $"Menu {pageIndex + 1} · Layer {page.Layer}";
+                    $"Profile {profileIndex + 1:00}";
+            }
 
             string? background =
-                _pixelMainMenu.BackgroundPath;
+                profile.BackgroundPath;
 
             PixelMenuBackgroundName.Text =
                 string.IsNullOrWhiteSpace(background)
-                    ? L("No background", "Chưa có ảnh nền")
+                    ? L(
+                        "No background",
+                        "Chưa có ảnh nền")
                     : IO.Path.GetFileName(background);
 
             PixelMenuBackgroundPreview.Source =
-                LoadLocalImageSource(background);
+                LoadPixelMenuBackgroundPreview(
+                    profile);
+
+            PixelMenuBackgroundPreview.Opacity =
+                1.0;
+
+            PixelMenuBackgroundPreview.Stretch =
+                Stretch.Fill;
 
             for (int slot = 0; slot < 12; slot++)
             {
                 string? icon =
-                    page.Slots[slot].IconPath;
+                    profile.Slots[slot].IconPath;
 
                 ImageSource? source =
                     LoadLocalImageSource(icon);
@@ -373,7 +447,7 @@ public partial class MainWindow
                     source;
 
                 int actionId =
-                    page.Slots[slot].ActionId;
+                    profile.Slots[slot].ActionId;
 
                 ActionScriptDefinition? action =
                     _actionScripts.FirstOrDefault(
@@ -408,20 +482,11 @@ public partial class MainWindow
         RefreshPixelMainMenuActionChoices();
     }
 
-    private static ImageSource? LoadLocalImageSource(
-        string? path)
+    private static ImageSource? LoadImageSource(
+        byte[] bytes)
     {
-        if (string.IsNullOrWhiteSpace(path) ||
-            !IO.File.Exists(path))
-        {
-            return null;
-        }
-
         try
         {
-            byte[] bytes =
-                IO.File.ReadAllBytes(path);
-
             using var stream =
                 new IO.MemoryStream(bytes);
 
@@ -444,51 +509,90 @@ public partial class MainWindow
         }
     }
 
-    private void PixelMenuPageCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
+    private static ImageSource? LoadLocalImageSource(
+        string? path)
     {
-        if (!_uiReady ||
-            _syncingPixelMenuUi ||
-            PixelMenuPageCombo.SelectedValue is not string text ||
-            !int.TryParse(text, out int page))
+        if (string.IsNullOrWhiteSpace(path) ||
+            !IO.File.Exists(path))
         {
-            return;
+            return null;
         }
 
-        _pixelMenuPageIndex =
-            Math.Clamp(page, 0, 3);
-
-        SetPixelHomePreviewMode(true);
-        RefreshPixelMainMenuUi();
+        try
+        {
+            return LoadImageSource(
+                IO.File.ReadAllBytes(path));
+        }
+        catch
+        {
+            return null;
+        }
     }
 
-    private void PixelMenuLayerCombo_SelectionChanged(
+    private static ImageSource? LoadPixelMenuBackgroundPreview(
+        PixelProMainMenuProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile.BackgroundPath) ||
+            !IO.File.Exists(profile.BackgroundPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            byte[] jpeg =
+                PixelProMainMenuMediaService
+                    .CreateBackgroundJpeg(
+                        profile.BackgroundPath,
+                        profile.BlurPercent,
+                        profile.OpacityPercent,
+                        profile.ScaleMode);
+
+            return LoadImageSource(jpeg);
+        }
+        catch
+        {
+            return LoadLocalImageSource(
+                profile.BackgroundPath);
+        }
+    }
+
+    private void PixelMenuProfileCombo_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
     {
         if (!_uiReady ||
             _syncingPixelMenuUi ||
-            PixelMenuLayerCombo.SelectedValue is not string text ||
-            !int.TryParse(text, out int layer))
+            PixelMenuProfileCombo?.SelectedItem is not
+                ComboBoxItem item)
         {
             return;
         }
 
-        PixelProMainMenuPage page =
-            _pixelMainMenu.Pages[
-                Math.Clamp(
-                    _pixelMenuPageIndex,
-                    0,
-                    3)];
+        int profile =
+            Math.Clamp(
+                Convert.ToInt32(item.Tag ?? 0),
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
 
-        page.Layer =
-            Math.Clamp(layer, 0, 3);
+        _pixelSelectedProfile =
+            profile;
 
         SetPixelHomePreviewMode(true);
 
-        PixelProMainMenuStore.Save(
-            _pixelMainMenu);
+        if (PixelProfileCombo is not null &&
+            PixelProfileCombo.SelectedIndex != profile)
+        {
+            PixelProfileCombo.SelectedIndex =
+                profile;
+        }
+        else if (_serial is PixelProCdcLink pixel &&
+                 pixel.IsConnected)
+        {
+            pixel.SetProfileLayer(
+                profile,
+                _pixelSelectedLayer);
+        }
 
         RefreshPixelMainMenuUi();
     }
@@ -499,22 +603,26 @@ public partial class MainWindow
     {
         if (!_uiReady ||
             _syncingPixelMenuUi ||
-            sender is not System.Windows.Controls.ComboBox combo ||
+            sender is not
+                System.Windows.Controls.ComboBox combo ||
             combo.Tag is not int slot ||
             combo.SelectedItem is not ComboBoxItem item)
         {
             return;
         }
 
-        int actionId =
-            Convert.ToInt32(
-                item.Tag ?? 0);
+        PixelProMainMenuSlot target =
+            PixelMenuProfile
+                .Slots[Math.Clamp(slot, 0, 11)];
 
-        _pixelMainMenu
-            .Pages[Math.Clamp(_pixelMenuPageIndex, 0, 3)]
-            .Slots[Math.Clamp(slot, 0, 11)]
-            .ActionId =
-                Math.Clamp(actionId, 0, 32);
+        target.ActionId =
+            Math.Clamp(
+                Convert.ToInt32(
+                    item.Tag ?? 0),
+                0,
+                32);
+
+        target.AppPath = null;
 
         SetPixelHomePreviewMode(true);
 
@@ -550,7 +658,7 @@ public partial class MainWindow
                 .ValidateStaticImage(
                     dialog.FileName);
 
-            _pixelMainMenu.BackgroundPath =
+            PixelMenuProfile.BackgroundPath =
                 dialog.FileName;
 
             SetPixelHomePreviewMode(true);
@@ -573,7 +681,7 @@ public partial class MainWindow
         object sender,
         RoutedEventArgs e)
     {
-        _pixelMainMenu.BackgroundPath =
+        PixelMenuProfile.BackgroundPath =
             null;
 
         SetPixelHomePreviewMode(true);
@@ -584,7 +692,7 @@ public partial class MainWindow
         RefreshPixelMainMenuUi();
     }
 
-    private void PixelMenuBrightnessSlider_ValueChanged(
+    private void PixelMenuBlurSlider_ValueChanged(
         object sender,
         RoutedPropertyChangedEventArgs<double> e)
     {
@@ -594,10 +702,10 @@ public partial class MainWindow
             return;
         }
 
-        _pixelMainMenu.BrightnessPercent =
+        PixelMenuProfile.BlurPercent =
             Math.Clamp(
                 (int)Math.Round(e.NewValue),
-                20,
+                0,
                 100);
 
         SetPixelHomePreviewMode(true);
@@ -605,15 +713,18 @@ public partial class MainWindow
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
 
-        if (PixelMenuBrightnessText is not null)
-            PixelMenuBrightnessText.Text =
-                $"{_pixelMainMenu.BrightnessPercent}%";
+        if (PixelMenuBlurText is not null)
+        {
+            PixelMenuBlurText.Text =
+                $"{PixelMenuProfile.BlurPercent}%";
+        }
 
-        if (PixelMenuBrightnessOverlay is not null)
-            PixelMenuBrightnessOverlay.Opacity =
-                1.0 -
-                _pixelMainMenu.BrightnessPercent /
-                100.0;
+        if (PixelMenuBackgroundPreview is not null)
+        {
+            PixelMenuBackgroundPreview.Source =
+                LoadPixelMenuBackgroundPreview(
+                    PixelMenuProfile);
+        }
     }
 
     private void PixelMenuOpacitySlider_ValueChanged(
@@ -626,7 +737,7 @@ public partial class MainWindow
             return;
         }
 
-        _pixelMainMenu.OpacityPercent =
+        PixelMenuProfile.OpacityPercent =
             Math.Clamp(
                 (int)Math.Round(e.NewValue),
                 0,
@@ -638,20 +749,241 @@ public partial class MainWindow
             _pixelMainMenu);
 
         if (PixelMenuOpacityText is not null)
+        {
             PixelMenuOpacityText.Text =
-                $"{_pixelMainMenu.OpacityPercent}%";
+                $"{PixelMenuProfile.OpacityPercent}%";
+        }
 
         if (PixelMenuBackgroundPreview is not null)
-            PixelMenuBackgroundPreview.Opacity =
-                _pixelMainMenu.OpacityPercent /
-                100.0;
+        {
+            PixelMenuBackgroundPreview.Source =
+                LoadPixelMenuBackgroundPreview(
+                    PixelMenuProfile);
+        }
+    }
+
+    private void PixelMenuScaleCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPixelMenuUi ||
+            PixelMenuScaleCombo?.SelectedValue is not
+                string value ||
+            !Enum.TryParse(
+                value,
+                true,
+                out ScreensaverScaleMode scaleMode))
+        {
+            return;
+        }
+
+        if (scaleMode is not (
+            ScreensaverScaleMode.Fill or
+            ScreensaverScaleMode.Fit or
+            ScreensaverScaleMode.Stretch))
+        {
+            scaleMode =
+                ScreensaverScaleMode.Fill;
+        }
+
+        PixelMenuProfile.ScaleMode =
+            scaleMode;
+
+        SetPixelHomePreviewMode(true);
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
+        if (PixelMenuBackgroundPreview is not null)
+        {
+            PixelMenuBackgroundPreview.Source =
+                LoadPixelMenuBackgroundPreview(
+                    PixelMenuProfile);
+        }
+    }
+
+    private static string? ExtractPixelMenuAppIcon(
+        string appPath)
+    {
+        if (!IO.File.Exists(appPath) ||
+            !string.Equals(
+                IO.Path.GetExtension(appPath),
+                ".exe",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        try
+        {
+            using Drawing.Icon? icon =
+                Drawing.Icon.ExtractAssociatedIcon(
+                    appPath);
+
+            if (icon is null)
+                return null;
+
+            string folder =
+                IO.Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.ApplicationData),
+                    "LumiPad",
+                    "pixel_menu_icons");
+
+            IO.Directory.CreateDirectory(folder);
+
+            string hash =
+                Convert.ToHexString(
+                    SHA256.HashData(
+                        Encoding.UTF8.GetBytes(
+                            appPath.ToUpperInvariant())))
+                    .Substring(0, 16);
+
+            string cachePath =
+                IO.Path.Combine(
+                    folder,
+                    $"{hash}.png");
+
+            using Drawing.Bitmap bitmap =
+                icon.ToBitmap();
+
+            bitmap.Save(
+                cachePath,
+                DrawingImaging.ImageFormat.Png);
+
+            return cachePath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void PixelMenuChooseApp_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not
+                System.Windows.Controls.Button button ||
+            button.Tag is not int slot)
+        {
+            return;
+        }
+
+        var dialog =
+            new Microsoft.Win32.OpenFileDialog
+            {
+                Title =
+                    L(
+                        $"Choose app for slot {slot + 1}",
+                        $"Chọn app cho ô {slot + 1}"),
+                Filter =
+                    "Applications|*.exe;*.lnk|Executable|*.exe|Shortcut|*.lnk",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        string appPath =
+            dialog.FileName;
+
+        ActionScriptDefinition? action =
+            _actionScripts.FirstOrDefault(
+                script =>
+                    script.Steps.Count == 1 &&
+                    script.Steps[0].Type.Equals(
+                        "Run",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        script.Steps[0].Value,
+                        appPath,
+                        StringComparison.OrdinalIgnoreCase));
+
+        if (action is null)
+        {
+            int actionId =
+                ActionScriptStore
+                    .NextAvailableActionId(
+                        _actionScripts);
+
+            if (actionId == 0)
+            {
+                PixelMenuStatusText.Text =
+                    L(
+                        "All 32 Lumi Action slots are already used.",
+                        "Đã dùng hết 32 Lumi Action.");
+                return;
+            }
+
+            action =
+                new ActionScriptDefinition
+                {
+                    ActionId = actionId,
+                    Name =
+                        IO.Path.GetFileNameWithoutExtension(
+                            appPath),
+                    Steps =
+                    [
+                        new ActionScriptStep
+                        {
+                            Type = "Run",
+                            Value = appPath
+                        }
+                    ]
+                };
+
+            _actionScripts.Add(action);
+            ActionScriptStore.Save(
+                _actionScripts);
+        }
+
+        PixelProMainMenuSlot target =
+            PixelMenuProfile
+                .Slots[Math.Clamp(slot, 0, 11)];
+
+        target.ActionId =
+            action.ActionId;
+
+        target.AppPath =
+            appPath;
+
+        string? extractedIcon =
+            ExtractPixelMenuAppIcon(
+                appPath);
+
+        if (!string.IsNullOrWhiteSpace(
+                extractedIcon))
+        {
+            target.IconPath =
+                extractedIcon;
+        }
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
+        SetPixelHomePreviewMode(true);
+        RefreshActionScriptsUi(action.Id);
+        RefreshPixelMainMenuUi();
+
+        PixelMenuStatusText.Text =
+            string.IsNullOrWhiteSpace(extractedIcon)
+                ? L(
+                    $"Assigned {action.Name}. No EXE icon was available, so the action name will be shown.",
+                    $"Đã gán {action.Name}. Không lấy được icon EXE nên màn hình sẽ hiện tên action.")
+                : L(
+                    $"Assigned {action.Name} with its app icon.",
+                    $"Đã gán {action.Name} kèm icon của app.");
     }
 
     private void PixelMenuChooseIcon_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is not System.Windows.Controls.Button button ||
+        if (sender is not
+                System.Windows.Controls.Button button ||
             button.Tag is not int slot)
         {
             return;
@@ -679,8 +1011,7 @@ public partial class MainWindow
                 .ValidateStaticImage(
                     dialog.FileName);
 
-            _pixelMainMenu
-                .Pages[Math.Clamp(_pixelMenuPageIndex, 0, 3)]
+            PixelMenuProfile
                 .Slots[Math.Clamp(slot, 0, 11)]
                 .IconPath =
                     dialog.FileName;
@@ -705,14 +1036,14 @@ public partial class MainWindow
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is not System.Windows.Controls.Button button ||
+        if (sender is not
+                System.Windows.Controls.Button button ||
             button.Tag is not int slot)
         {
             return;
         }
 
-        _pixelMainMenu
-            .Pages[Math.Clamp(_pixelMenuPageIndex, 0, 3)]
+        PixelMenuProfile
             .Slots[Math.Clamp(slot, 0, 11)]
             .IconPath =
                 null;
@@ -742,24 +1073,35 @@ public partial class MainWindow
 
         SetPixelHomePreviewMode(true);
 
-        PixelMenuSaveButton.IsEnabled = false;
-        PixelMenuUploadProgress.Value = 0;
+        PixelMenuSaveButton.IsEnabled =
+            false;
+
+        PixelMenuUploadProgress.Value =
+            0;
+
+        int profileIndex =
+            PixelMenuProfileIndex;
+
+        PixelProMainMenuProfile profile =
+            PixelMenuProfile;
 
         try
         {
             PixelMenuStatusText.Text =
                 L(
-                    "Preparing main-menu artwork…",
-                    "Đang xử lý ảnh Main Menu…");
+                    $"Preparing Main Menu for Keymap Profile {profileIndex + 1:00}…",
+                    $"Đang xử lý Main Menu cho Keymap Profile {profileIndex + 1:00}…");
 
             const int TotalOperations =
-                1 + 4 + (4 * 12) + 1;
+                15;
 
-            int completed = 0;
+            int completed =
+                0;
 
             void ReportOperation()
             {
                 completed++;
+
                 PixelMenuUploadProgress.Value =
                     Math.Clamp(
                         completed * 100.0 /
@@ -769,28 +1111,66 @@ public partial class MainWindow
             }
 
             if (!string.IsNullOrWhiteSpace(
-                    _pixelMainMenu.BackgroundPath))
+                    profile.BackgroundPath) &&
+                IO.File.Exists(
+                    profile.BackgroundPath))
             {
                 byte[] background =
                     await Task.Run(
                         () =>
                             PixelProMainMenuMediaService
                                 .CreateBackgroundJpeg(
-                                    _pixelMainMenu.BackgroundPath!,
-                                    _pixelMainMenu.BrightnessPercent,
-                                    _pixelMainMenu.OpacityPercent));
+                                    profile.BackgroundPath,
+                                    profile.BlurPercent,
+                                    profile.OpacityPercent,
+                                    profile.ScaleMode));
 
-                if (!await pixel.UploadMainMenuBackgroundAsync(
-                        background))
+                if (!await pixel
+                        .UploadMainMenuBackgroundAsync(
+                            profileIndex,
+                            background))
                 {
                     throw new InvalidOperationException(
-                        "PIXEL PRO rejected the main-menu background.");
+                        "PIXEL PRO rejected the profile background.");
                 }
             }
-            else if (!await pixel.ClearMainMenuBackgroundAsync())
+            else if (!await pixel
+                         .ClearMainMenuBackgroundAsync(
+                             profileIndex))
             {
                 throw new InvalidOperationException(
-                    "PIXEL PRO could not clear the main-menu background.");
+                    "PIXEL PRO could not clear the profile background.");
+            }
+
+            ReportOperation();
+
+            string[] labels =
+                profile.Slots
+                    .Select(slot =>
+                    {
+                        ActionScriptDefinition? action =
+                            _actionScripts.FirstOrDefault(
+                                item =>
+                                    item.ActionId ==
+                                    slot.ActionId);
+
+                        return action?.Name ??
+                               (slot.ActionId > 0
+                                   ? $"A{slot.ActionId:00}"
+                                   : "");
+                    })
+                    .ToArray();
+
+            if (!await pixel
+                    .SetMainMenuProfileAsync(
+                        profileIndex,
+                        profile.Slots
+                            .Select(x => x.ActionId)
+                            .ToArray(),
+                        labels))
+            {
+                throw new InvalidOperationException(
+                    $"PIXEL PRO rejected Main Menu Profile {profileIndex + 1:00}.");
             }
 
             ReportOperation();
@@ -799,83 +1179,56 @@ public partial class MainWindow
                 new Dictionary<string, byte[]>(
                     StringComparer.OrdinalIgnoreCase);
 
-            for (int page = 0; page < 4; page++)
+            for (int slot = 0;
+                 slot < 12;
+                 slot++)
             {
-                PixelProMainMenuPage menu =
-                    _pixelMainMenu.Pages[page];
+                string? iconPath =
+                    profile.Slots[slot].IconPath;
 
-                string[] labels =
-                    menu.Slots
-                        .Select(slot =>
-                        {
-                            ActionScriptDefinition? action =
-                                _actionScripts.FirstOrDefault(
-                                    item =>
-                                        item.ActionId ==
-                                        slot.ActionId);
+                if (!string.IsNullOrWhiteSpace(iconPath) &&
+                    IO.File.Exists(iconPath))
+                {
+                    if (!iconCache.TryGetValue(
+                            iconPath,
+                            out byte[]? iconBytes))
+                    {
+                        iconBytes =
+                            await Task.Run(
+                                () =>
+                                    PixelProMainMenuMediaService
+                                        .CreateIconRgb565(
+                                            iconPath));
 
-                            return action?.Name ??
-                                   (slot.ActionId > 0
-                                       ? $"A{slot.ActionId:00}"
-                                       : "");
-                        })
-                        .ToArray();
+                        iconCache[iconPath] =
+                            iconBytes;
+                    }
 
-                if (!await pixel.SetMainMenuPageAsync(
-                        page,
-                        menu.Layer,
-                        menu.Slots.Select(x => x.ActionId).ToArray(),
-                        labels))
+                    if (!await pixel
+                            .UploadMainMenuIconAsync(
+                                profileIndex,
+                                slot,
+                                iconBytes))
+                    {
+                        throw new InvalidOperationException(
+                            $"PIXEL PRO rejected icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
+                    }
+                }
+                else if (!await pixel
+                             .ClearMainMenuIconAsync(
+                                 profileIndex,
+                                 slot))
                 {
                     throw new InvalidOperationException(
-                        $"PIXEL PRO rejected Menu {page + 1} config.");
+                        $"PIXEL PRO could not clear icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
                 }
 
                 ReportOperation();
-
-                for (int slot = 0; slot < 12; slot++)
-                {
-                    string? iconPath =
-                        menu.Slots[slot].IconPath;
-
-                    if (!string.IsNullOrWhiteSpace(iconPath) &&
-                        IO.File.Exists(iconPath))
-                    {
-                        if (!iconCache.TryGetValue(
-                                iconPath,
-                                out byte[]? iconBytes))
-                        {
-                            iconBytes =
-                                await Task.Run(
-                                    () =>
-                                        PixelProMainMenuMediaService
-                                            .CreateIconRgb565(
-                                                iconPath));
-
-                            iconCache[iconPath] =
-                                iconBytes;
-                        }
-
-                        if (!await pixel.UploadMainMenuIconAsync(
-                                page,
-                                slot,
-                                iconBytes))
-                        {
-                            throw new InvalidOperationException(
-                                $"PIXEL PRO rejected icon Menu {page + 1} / Slot {slot + 1}.");
-                        }
-                    }
-                    else if (!await pixel.ClearMainMenuIconAsync(
-                                 page,
-                                 slot))
-                    {
-                        throw new InvalidOperationException(
-                            $"PIXEL PRO could not clear icon Menu {page + 1} / Slot {slot + 1}.");
-                    }
-
-                    ReportOperation();
-                }
             }
+
+            pixel.SetProfileLayer(
+                profileIndex,
+                _pixelSelectedLayer);
 
             if (!await pixel.ShowMainMenuAsync())
             {
@@ -888,11 +1241,13 @@ public partial class MainWindow
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
-            PixelMenuUploadProgress.Value = 100;
+            PixelMenuUploadProgress.Value =
+                100;
+
             PixelMenuStatusText.Text =
                 L(
-                    "Main menu saved to PIXEL PRO flash.",
-                    "Đã lưu Main Menu vào flash PIXEL PRO.");
+                    $"Main Menu saved for Keymap Profile {profileIndex + 1:00}.",
+                    $"Đã lưu Main Menu cho Keymap Profile {profileIndex + 1:00}.");
 
             await UpdateMemoryUsageAsync();
         }
@@ -931,14 +1286,18 @@ public partial class MainWindow
 
         SetPixelHomePreviewMode(true);
 
+        pixel.SetProfileLayer(
+            PixelMenuProfileIndex,
+            _pixelSelectedLayer);
+
         bool ok =
             await pixel.ShowMainMenuAsync();
 
         PixelMenuStatusText.Text =
             ok
                 ? L(
-                    "Showing PIXEL PRO main menu.",
-                    "Đang hiển thị Main Menu PIXEL PRO.")
+                    $"Showing Main Menu for Keymap Profile {PixelMenuProfileIndex + 1:00}.",
+                    $"Đang hiển thị Main Menu của Keymap Profile {PixelMenuProfileIndex + 1:00}.")
                 : L(
                     "PIXEL PRO did not confirm the main menu.",
                     "PIXEL PRO chưa xác nhận Main Menu.");

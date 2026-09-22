@@ -1834,14 +1834,24 @@ public sealed class PixelProCdcLink : IDeviceLink
     }
 
     public Task<bool> UploadMainMenuBackgroundAsync(
+        int profile,
         byte[] jpegBytes,
         IProgress<int>? progress = null)
     {
-        if (jpegBytes.Length > PixelProMainMenuMediaService.BackgroundMaxBytes)
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        if (jpegBytes.Length >
+            PixelProMainMenuMediaService.BackgroundMaxBytes)
+        {
             return Task.FromResult(false);
+        }
 
         return UploadMainMenuAssetAsync(
-            $"MENUBGBEGIN|{jpegBytes.Length}",
+            $"MENUBGBEGIN|{profile}|{jpegBytes.Length}",
             "OK|MENUBGBEGIN",
             "MENUBGDATA",
             "OK|MENUBGDATA",
@@ -1852,19 +1862,31 @@ public sealed class PixelProCdcLink : IDeviceLink
     }
 
     public Task<bool> UploadMainMenuIconAsync(
-        int page,
+        int profile,
         int slot,
         byte[] iconBytes,
         IProgress<int>? progress = null)
     {
-        page = Math.Clamp(page, 0, 3);
-        slot = Math.Clamp(slot, 0, 11);
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
 
-        if (iconBytes.Length != PixelProMainMenuMediaService.IconBytes)
+        slot =
+            Math.Clamp(
+                slot,
+                0,
+                11);
+
+        if (iconBytes.Length !=
+            PixelProMainMenuMediaService.IconBytes)
+        {
             return Task.FromResult(false);
+        }
 
         return UploadMainMenuAssetAsync(
-            $"MENUICONBEGIN|{page}|{slot}|{iconBytes.Length}",
+            $"MENUICONBEGIN|{profile}|{slot}|{iconBytes.Length}",
             "OK|MENUICONBEGIN",
             "MENUICONDATA",
             "OK|MENUICONDATA",
@@ -1874,11 +1896,18 @@ public sealed class PixelProCdcLink : IDeviceLink
             progress);
     }
 
-    public async Task<bool> ClearMainMenuBackgroundAsync()
+    public async Task<bool> ClearMainMenuBackgroundAsync(
+        int profile)
     {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
         string? line =
             await RequestLineAsync(
-                "MENUBGCLEAR",
+                $"MENUBGCLEAR|{profile}",
                 "OK|MENUBGCLEAR");
 
         return string.Equals(
@@ -1888,15 +1917,24 @@ public sealed class PixelProCdcLink : IDeviceLink
     }
 
     public async Task<bool> ClearMainMenuIconAsync(
-        int page,
+        int profile,
         int slot)
     {
-        page = Math.Clamp(page, 0, 3);
-        slot = Math.Clamp(slot, 0, 11);
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        slot =
+            Math.Clamp(
+                slot,
+                0,
+                11);
 
         string? line =
             await RequestLineAsync(
-                $"MENUICONCLEAR|{page}|{slot}",
+                $"MENUICONCLEAR|{profile}|{slot}",
                 "OK|MENUICONCLEAR");
 
         return string.Equals(
@@ -1925,9 +1963,8 @@ public sealed class PixelProCdcLink : IDeviceLink
         return ascii.Trim();
     }
 
-    public async Task<bool> SetMainMenuPageAsync(
-        int page,
-        int layer,
+    public async Task<bool> SetMainMenuProfileAsync(
+        int profile,
         IReadOnlyList<int> actions,
         IReadOnlyList<string> labels)
     {
@@ -1937,14 +1974,21 @@ public sealed class PixelProCdcLink : IDeviceLink
             return false;
         }
 
-        page = Math.Clamp(page, 0, 3);
-        layer = Math.Clamp(layer, 0, 3);
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
 
         string actionPayload =
             string.Join(
                 ",",
                 actions.Select(
-                    id => Math.Clamp(id, 0, 32)));
+                    id =>
+                        Math.Clamp(
+                            id,
+                            0,
+                            32)));
 
         string labelPayload =
             string.Join(
@@ -1954,7 +1998,7 @@ public sealed class PixelProCdcLink : IDeviceLink
 
         string? line =
             await RequestLineAsync(
-                $"MENUCFG|{page}|{layer}|{actionPayload}|{labelPayload}",
+                $"MENUCFG|{profile}|{actionPayload}|{labelPayload}",
                 "OK|MENUCFG");
 
         return string.Equals(
