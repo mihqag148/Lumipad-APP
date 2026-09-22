@@ -487,6 +487,8 @@ public partial class MainWindow : Window
             BuildProductCards();
             UpdateDeviceConfiguratorUi();
             _uiReady = true;
+            BuildPixelMainMenuEditor();
+            RefreshPixelMainMenuUi();
             _pixelRgbPreviewClock.Restart();
             _pixelRgbPreviewTimer.Start();
             UpdateSettingsInfo();
@@ -494,12 +496,6 @@ public partial class MainWindow : Window
             AddLog("INFO", "APP", "Lumi Macropad started");
             BuildColorWheel();
             SetDeviceControlsEnabled(false);
-
-            if (!string.IsNullOrWhiteSpace(_screensaverMediaPath) &&
-                System.IO.File.Exists(_screensaverMediaPath))
-            {
-                await PrepareScreensaverMediaAsync();
-            }
 
             _nowPlaying.Updated += data =>
                 Dispatcher.Invoke(() => ApplyNowPlaying(data));
@@ -1868,6 +1864,7 @@ public partial class MainWindow : Window
         public int RgbIdleDelaySeconds { get; set; } = 60;
         public int DeepSleepDelaySeconds { get; set; } = 0;
         public string? ScreensaverMediaPath { get; set; }
+        public string? PixelScreensaverMediaPath { get; set; }
         public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
         public bool PcMonitorEnabled { get; set; } = true;
         public int PcMonitorIntervalMs { get; set; } = 1000;
@@ -1968,7 +1965,20 @@ public partial class MainWindow : Window
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
             _deepSleepDelaySeconds = Math.Max(0, settings.DeepSleepDelaySeconds);
-            _screensaverMediaPath = settings.ScreensaverMediaPath;
+            _rynorScreensaverMediaPath =
+                settings.ScreensaverMediaPath;
+
+            // One-time migration for builds that shared a single media path.
+            // Keeping the legacy path available to both products lets PIXEL
+            // reprocess it with the correct 480×320 service after selection.
+            _pixelScreensaverMediaPath =
+                string.IsNullOrWhiteSpace(settings.PixelScreensaverMediaPath)
+                    ? settings.ScreensaverMediaPath
+                    : settings.PixelScreensaverMediaPath;
+
+            _screensaverMediaPath =
+                _rynorScreensaverMediaPath;
+
             _screensaverScaleMode = settings.ScreensaverScaleMode;
             _screensaverSource =
                 string.Equals(settings.ScreensaverSource, "PcMonitor", StringComparison.Ordinal)
@@ -2042,7 +2052,8 @@ public partial class MainWindow : Window
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
                 DeepSleepDelaySeconds = _deepSleepDelaySeconds,
-                ScreensaverMediaPath = _screensaverMediaPath,
+                ScreensaverMediaPath = _rynorScreensaverMediaPath,
+                PixelScreensaverMediaPath = _pixelScreensaverMediaPath,
                 // Preserve RYNOR's scale even while PIXEL PRO is active.
                 ScreensaverScaleMode = _screensaverScaleMode,
                 PcMonitorEnabled = _pcMonitorEnabled,
