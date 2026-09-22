@@ -760,50 +760,49 @@ public partial class MainWindow : Window
         }
     }
 
-    private UIElement CreateProductPreview(ProductDefinition product)
+    private static ImageSource LoadProductHubImage(
+        string resourcePath)
     {
-        if (product.Driver != DeviceDriverKind.PixelProCdc)
-            return CreateRynorOnePreview();
+        var bitmap =
+            new BitmapImage();
 
-        // PIXEL PRO uses its actual product render on the product-selection
-        // screen. RYNOR ONE keeps its existing preview unchanged.
-        var image =
-            new System.Windows.Controls.Image
-            {
-                Source = PixelProProductImage.Create(),
-                Width = 256,
-                Height = 256,
-                Stretch = Stretch.Uniform,
-                HorizontalAlignment =
-                    System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment =
-                    VerticalAlignment.Center,
-                SnapsToDevicePixels = true
-            };
+        bitmap.BeginInit();
+        bitmap.CacheOption =
+            BitmapCacheOption.OnLoad;
+        bitmap.CreateOptions =
+            BitmapCreateOptions.PreservePixelFormat;
+        bitmap.UriSource =
+            new Uri(
+                $"pack://application:,,,/{resourcePath}",
+                UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
 
-        RenderOptions.SetBitmapScalingMode(
-            image,
-            BitmapScalingMode.HighQuality);
-
-        return image;
+        return bitmap;
     }
 
-    private UIElement CreateRynorOnePreview()
+    private UIElement CreateProductPreview(ProductDefinition product)
     {
-        // RYNOR ONE-only product card image.
-        // PIXEL PRO keeps its own independent preview path above.
+        string resourcePath =
+            product.Driver == DeviceDriverKind.PixelProCdc
+                ? "Assets/Products/pixel-pro.png"
+                : "Assets/Products/rynor-one.png";
+
         var image =
             new System.Windows.Controls.Image
             {
-                Source = RynorOneProductImage.Create(),
-                Width = 256,
-                Height = 256,
+                Source =
+                    LoadProductHubImage(
+                        resourcePath),
+                Width = 292,
+                Height = 276,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment =
                     System.Windows.HorizontalAlignment.Center,
                 VerticalAlignment =
                     VerticalAlignment.Center,
-                SnapsToDevicePixels = true
+                SnapsToDevicePixels = true,
+                UseLayoutRounding = true
             };
 
         RenderOptions.SetBitmapScalingMode(
