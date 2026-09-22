@@ -343,6 +343,10 @@ public partial class MainWindow
             PixelMenuPreviewLayerText.Text =
                 $"Menu {pageIndex + 1} · Layer {page.Layer}";
 
+            if (PixelMenuEditorLayerText is not null)
+                PixelMenuEditorLayerText.Text =
+                    $"Menu {pageIndex + 1} · Layer {page.Layer}";
+
             string? background =
                 _pixelMainMenu.BackgroundPath;
 
