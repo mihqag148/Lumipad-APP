@@ -25,8 +25,8 @@
     <FileVersion>1.23.6.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
-    <Resource Include="Assets\Products\pixel-pro.png" />
-    <Resource Include="Assets\Products\rynor-one.png" />
+    <Resource Include="Assets\Products\pixel-pro.jpg" />
+    <Resource Include="Assets\Products\rynor-one.jpg" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.3" />
