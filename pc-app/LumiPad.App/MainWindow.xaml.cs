@@ -913,6 +913,15 @@ public partial class MainWindow : Window
             await SwitchActiveProductAsync(product);
         }
 
+        if (product.Driver == DeviceDriverKind.RynorSerial)
+        {
+            // RYNOR ONE can already be the active product on startup, so opening
+            // its card must still reapply RYNOR-specific text and panel state.
+            // Keep this guard RYNOR-only so PIXEL PRO behavior is untouched.
+            UpdateDeviceConfiguratorUi();
+            UpdateProductSpecificText();
+        }
+
         WorkspaceProductTitle.Text = product.Name;
         ProductHub.Visibility = Visibility.Collapsed;
         DeviceWorkspace.Visibility = Visibility.Visible;
