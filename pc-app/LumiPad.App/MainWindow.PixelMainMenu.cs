@@ -422,12 +422,6 @@ public partial class MainWindow
             PixelMenuScaleCombo.SelectedValue =
                 profile.ScaleMode.ToString();
 
-            string profileName =
-                PixelProfileName(profileIndex);
-
-            PixelMenuPreviewLayerText.Text =
-                $"Profile {profileIndex + 1:00} · {profileName}";
-
             if (PixelMenuEditorLayerText is not null)
             {
                 PixelMenuEditorLayerText.Text =
