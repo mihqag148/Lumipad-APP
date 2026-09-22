@@ -24,6 +24,7 @@ public sealed class PixelProMainMenuConfig
 {
     public string? BackgroundPath { get; set; }
     public int BrightnessPercent { get; set; } = 70;
+    public int OpacityPercent { get; set; } = 100;
     public PixelProMainMenuPage[] Pages { get; set; } =
         Enumerable.Range(0, 4)
             .Select(i => new PixelProMainMenuPage { Layer = i })
@@ -86,6 +87,9 @@ public static class PixelProMainMenuStore
     {
         config.BrightnessPercent =
             Math.Clamp(config.BrightnessPercent, 20, 100);
+
+        config.OpacityPercent =
+            Math.Clamp(config.OpacityPercent, 0, 100);
 
         PixelProMainMenuPage[] source =
             config.Pages ?? [];

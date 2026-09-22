@@ -1211,12 +1211,6 @@ public partial class MainWindow : Window
     {
         bool pixel = IsPixelProActive;
 
-        if (PixelMainMenuTab is not null)
-            PixelMainMenuTab.Visibility =
-                pixel
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-
         // PIXEL PRO Home uses a compact media card beside a dedicated
         // 480×320 display preview. Screensaver controls move to the full-width
         // row below. RYNOR ONE keeps the original two-column Home layout.
@@ -1232,6 +1226,19 @@ public partial class MainWindow : Window
                 pixel
                     ? new GridLength(1, GridUnitType.Star)
                     : GridLength.Auto;
+
+            if (HomeDashboardGrid.ColumnDefinitions.Count >= 3)
+            {
+                HomeDashboardGrid.ColumnDefinitions[0].Width =
+                    pixel
+                        ? new GridLength(1, GridUnitType.Star)
+                        : new GridLength(1.18, GridUnitType.Star);
+
+                HomeDashboardGrid.ColumnDefinitions[2].Width =
+                    pixel
+                        ? new GridLength(1, GridUnitType.Star)
+                        : new GridLength(0.82, GridUnitType.Star);
+            }
         }
 
         if (HomeMediaCard is not null)
@@ -1287,12 +1294,28 @@ public partial class MainWindow : Window
 
             Grid.SetColumnSpan(
                 HomeScreensaverCard,
-                pixel ? 3 : 1);
+                1);
 
             HomeScreensaverCard.Padding =
                 pixel
                     ? new Thickness(18)
                     : new Thickness(22);
+        }
+
+        if (HomeMainMenuCard is not null)
+        {
+            HomeMainMenuCard.Visibility =
+                pixel
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+            Grid.SetRow(
+                HomeMainMenuCard,
+                2);
+
+            Grid.SetColumn(
+                HomeMainMenuCard,
+                2);
         }
 
         if (ScreensaverPreviewBorder is not null)
@@ -3613,6 +3636,9 @@ public partial class MainWindow : Window
             string.Equals(item.Tag?.ToString(), "PcMonitor", StringComparison.Ordinal)
                 ? "PcMonitor"
                 : "Media";
+
+        if (IsPixelProActive)
+            SetPixelHomePreviewMode(false);
 
         UpdateScreensaverSourceUi();
 
@@ -8405,6 +8431,9 @@ try {{
         if (dialog.ShowDialog() != true)
             return;
 
+        if (IsPixelProActive)
+            SetPixelHomePreviewMode(false);
+
         _screensaverMediaPath = dialog.FileName;
 
         if (IsPixelProActive)
@@ -8472,6 +8501,8 @@ try {{
             return;
         }
 
+        SetPixelHomePreviewMode(false);
+
         if (PixelGifFpsCombo?.SelectedValue is string fpsText &&
             int.TryParse(fpsText, out int fps))
         {
@@ -8507,6 +8538,9 @@ try {{
     {
         if (string.IsNullOrWhiteSpace(_screensaverMediaPath))
             return;
+
+        if (IsPixelProActive)
+            SetPixelHomePreviewMode(false);
 
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
@@ -11929,13 +11963,6 @@ try {{
         Dispatcher.BeginInvoke(new Action(ApplyLanguage));
         SetDeviceControlsEnabled(_serial.IsConnected);
         UpdateDeviceConfiguratorUi();
-
-        if (PixelMainMenuTab is not null &&
-            PixelMainMenuTab.IsSelected &&
-            IsPixelProActive)
-        {
-            RefreshPixelMainMenuUi();
-        }
 
         if (ConfiguratorTab.IsSelected)
         {

@@ -359,7 +359,8 @@
                                            FontSize="12"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="480 × 320"
+                                <TextBlock x:Name="PixelHomePreviewModeText"
+                                           Text="SCREENSAVER"
                                            HorizontalAlignment="Right"
                                            FontSize="11"
                                            Foreground="{DynamicResource Muted}"/>
@@ -379,14 +380,38 @@
                                     <Grid Width="480"
                                           Height="320"
                                           Background="#050505">
-                                        <Image x:Name="PixelHomePreviewImage"
-                                               Source="{Binding ElementName=ScreensaverPreviewImage, Path=Source}"
-                                               Stretch="Fill"/>
-                                        <TextBlock x:Name="PixelHomePreviewHint"
-                                                   Text="Preview"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource Muted}"/>
+                                        <Grid x:Name="PixelHomeScreensaverPreviewPanel">
+                                            <Image x:Name="PixelHomePreviewImage"
+                                                   Source="{Binding ElementName=ScreensaverPreviewImage, Path=Source}"
+                                                   Stretch="Fill"/>
+                                            <TextBlock x:Name="PixelHomePreviewHint"
+                                                       Text="480 × 320 · Screensaver preview"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource Muted}"/>
+                                        </Grid>
+
+                                        <Grid x:Name="PixelHomeMenuPreviewPanel"
+                                              Visibility="Collapsed">
+                                            <Image x:Name="PixelMenuBackgroundPreview"
+                                                   Stretch="UniformToFill"/>
+                                            <Border x:Name="PixelMenuBrightnessOverlay"
+                                                    Background="Black"
+                                                    Opacity="0.30"/>
+                                            <UniformGrid x:Name="PixelMenuPreviewSlots"
+                                                         Rows="3"
+                                                         Columns="4"
+                                                         Margin="12,10"/>
+                                            <TextBlock x:Name="PixelMenuPreviewLayerText"
+                                                       Text="Menu 1 · Layer 0"
+                                                       HorizontalAlignment="Right"
+                                                       VerticalAlignment="Top"
+                                                       Margin="0,6,8,0"
+                                                       FontSize="10"
+                                                       Foreground="#CCFFFFFF"
+                                                       Background="#55000000"
+                                                       Padding="5,2"/>
+                                        </Grid>
                                     </Grid>
                                 </Viewbox>
                             </Border>
@@ -394,332 +419,273 @@
                     </Border>
 
                     <Border x:Name="HomeScreensaverCard"
-                            Grid.Column="2"
+                            Grid.Row="2"
+                            Grid.Column="0"
                             Background="{DynamicResource Card}"
-                            BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                            CornerRadius="28" Padding="22">
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="28"
+                            Padding="20"
+                            PreviewMouseDown="ScreensaverEditor_PreviewMouseDown">
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel Margin="0,0,6,0">
-                            <Grid Margin="0,0,0,12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
 
-                                <StackPanel>
-                                    <TextBlock Text="SCREENSAVER MEDIA"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource Muted}"
-                                               FontWeight="SemiBold"/>
-                                    <TextBlock Text="GIF / Image local"
-                                               FontSize="22"
-                                               FontWeight="SemiBold"
-                                               Margin="0,7,0,0"/>
-                                </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="SCREENSAVER MEDIA"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="GIF / Image local"
+                                                   FontSize="20"
+                                                   FontWeight="SemiBold"
+                                                   Margin="0,5,0,0"/>
+                                    </StackPanel>
 
-                                <StackPanel Grid.Column="1"
-                                            HorizontalAlignment="Right">
-                                    <TextBlock Text="Source"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource Muted}"
-                                               HorizontalAlignment="Right"
-                                               Margin="0,0,0,5"/>
-                                    <ComboBox x:Name="ScreensaverSourceCombo"
-                                              Width="170"
-                                              SelectedValuePath="Tag"
-                                              SelectionChanged="ScreensaverSourceCombo_SelectionChanged">
-                                        <ComboBoxItem Content="GIF / Image" Tag="Media" IsSelected="True"/>
-                                        <ComboBoxItem Content="PC Monitor" Tag="PcMonitor"/>
-                                    </ComboBox>
-                                    <TextBlock x:Name="ScreensaverSourceHint"
-                                               Text="Uploaded media"
-                                               Foreground="{DynamicResource Muted}"
-                                               FontSize="10"
-                                               HorizontalAlignment="Right"
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <!-- RYNOR ONE remains 320x172. PIXEL PRO switches this
-                                 named preview to the ILI9486 landscape 480x320 3:2
-                                 aspect ratio at runtime. -->
-                            <Border x:Name="ScreensaverPreviewBorder"
-                                    Width="360"
-                                    Height="193.5"
-                                    HorizontalAlignment="Center"
-                                    Background="#050505"
-                                    BorderBrush="{DynamicResource Line}"
-                                    BorderThickness="1"
-                                    CornerRadius="16"
-                                    ClipToBounds="True">
-                                <Grid x:Name="ScreensaverPreviewSurface"
-                                      Width="320"
-                                      Height="172">
-                                    <Image x:Name="ScreensaverPreviewImage"
-                                           Stretch="Fill"
-                                           Visibility="Collapsed"/>
-                                    <TextBlock x:Name="ScreensaverPreviewHint"
-                                               Text="320 × 172 · Choose a GIF or image"
-                                               Foreground="{DynamicResource Muted}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                </Grid>
-                            </Border>
-
-                            <TextBlock x:Name="ScreensaverFileName"
-                                       Text="No file selected"
-                                       TextTrimming="CharacterEllipsis"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,10,0,0"/>
-
-                            <TextBlock x:Name="ScreensaverMediaInfo"
-                                       Text="Converted to a lightweight loop for RYNOR ONE."
-                                       FontSize="11"
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,4,0,10"/>
-
-                            <Border x:Name="PixelMediaSettingsPanel"
-                                    Visibility="Collapsed"
-                                    Background="{DynamicResource ControlBg}"
-                                    BorderBrush="{DynamicResource Line}"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="10"
-                                    Margin="0,0,0,12">
-                                <StackPanel>
-                                    <ComboBox x:Name="PixelGifFpsCombo"
-                                              Visibility="Collapsed"
-                                              SelectedValuePath="Tag"
-                                              SelectionChanged="PixelMediaSetting_SelectionChanged">
-                                        <ComboBoxItem Content="Auto" Tag="60" IsSelected="True"/>
-                                    </ComboBox>
-
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="Layout"
-                                                   Width="72"
-                                                   VerticalAlignment="Center"/>
-                                        <ComboBox x:Name="PixelMediaScaleCombo"
+                                    <StackPanel Grid.Column="1"
+                                                HorizontalAlignment="Right">
+                                        <ComboBox x:Name="ScreensaverSourceCombo"
                                                   Width="150"
                                                   SelectedValuePath="Tag"
-                                                  SelectionChanged="PixelMediaSetting_SelectionChanged">
-                                            <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
-                                            <ComboBoxItem Content="Fit" Tag="Fit"/>
-                                            <ComboBoxItem Content="Stretch" Tag="Stretch"/>
-                                            <ComboBoxItem Content="Tile" Tag="Tile"/>
-                                            <ComboBoxItem Content="Center" Tag="Center"/>
-                                            <ComboBoxItem Content="Span" Tag="Span"/>
+                                                  SelectionChanged="ScreensaverSourceCombo_SelectionChanged">
+                                            <ComboBoxItem Content="GIF / Image" Tag="Media" IsSelected="True"/>
+                                            <ComboBoxItem Content="PC Monitor" Tag="PcMonitor"/>
                                         </ComboBox>
+                                        <TextBlock x:Name="ScreensaverSourceHint"
+                                                   Text="Uploaded media"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="10"
+                                                   HorizontalAlignment="Right"
+                                                   Margin="0,4,0,0"/>
                                     </StackPanel>
+                                </Grid>
 
-                                    <StackPanel Orientation="Horizontal"
-                                                Visibility="Collapsed">
-                                        <TextBlock Text="Max time"
-                                                   Width="72"
+                                <Border x:Name="ScreensaverPreviewBorder"
+                                        Width="360"
+                                        Height="193.5"
+                                        HorizontalAlignment="Center"
+                                        Background="#050505"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1"
+                                        CornerRadius="16"
+                                        ClipToBounds="True">
+                                    <Grid x:Name="ScreensaverPreviewSurface"
+                                          Width="320"
+                                          Height="172">
+                                        <Image x:Name="ScreensaverPreviewImage"
+                                               Stretch="Fill"
+                                               Visibility="Collapsed"/>
+                                        <TextBlock x:Name="ScreensaverPreviewHint"
+                                                   Text="320 × 172 · Choose a GIF or image"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"/>
-                                        <ComboBox x:Name="PixelGifDurationCombo"
-                                                  Width="110"
-                                                  SelectedValuePath="Tag">
-                                            <ComboBoxItem Content="10 s" Tag="10" IsSelected="True"/>
+                                    </Grid>
+                                </Border>
+
+                                <TextBlock x:Name="ScreensaverFileName"
+                                           Text="No file selected"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource Muted}"
+                                           Margin="0,8,0,0"/>
+
+                                <TextBlock x:Name="ScreensaverMediaInfo"
+                                           Text="Converted to a lightweight loop for RYNOR ONE."
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Muted}"
+                                           Margin="0,3,0,8"/>
+
+                                <Border x:Name="PixelMediaSettingsPanel"
+                                        Visibility="Collapsed"
+                                        Background="{DynamicResource ControlBg}"
+                                        BorderBrush="{DynamicResource Line}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="8"
+                                        Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <ComboBox x:Name="PixelGifFpsCombo"
+                                                  Visibility="Collapsed"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="PixelMediaSetting_SelectionChanged">
+                                            <ComboBoxItem Content="Auto" Tag="60" IsSelected="True"/>
+                                        </ComboBox>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Layout"
+                                                       Width="62"
+                                                       VerticalAlignment="Center"/>
+                                            <ComboBox x:Name="PixelMediaScaleCombo"
+                                                      Width="145"
+                                                      SelectedValuePath="Tag"
+                                                      SelectionChanged="PixelMediaSetting_SelectionChanged">
+                                                <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
+                                                <ComboBoxItem Content="Fit" Tag="Fit"/>
+                                                <ComboBoxItem Content="Stretch" Tag="Stretch"/>
+                                                <ComboBoxItem Content="Tile" Tag="Tile"/>
+                                                <ComboBoxItem Content="Center" Tag="Center"/>
+                                                <ComboBoxItem Content="Span" Tag="Span"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal"
+                                                    Visibility="Collapsed">
+                                            <TextBlock Text="Max time" Width="72" VerticalAlignment="Center"/>
+                                            <ComboBox x:Name="PixelGifDurationCombo"
+                                                      Width="110"
+                                                      SelectedValuePath="Tag">
+                                                <ComboBoxItem Content="10 s" Tag="10" IsSelected="True"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel x:Name="ScreensaverScalePanel"
+                                            Orientation="Horizontal"
+                                            Margin="0,0,0,10">
+                                    <TextBlock Text="Scale"
+                                               Width="52"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <ComboBox x:Name="ScreensaverScaleCombo"
+                                              Width="150"
+                                              SelectionChanged="ScreensaverScaleCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
+                                        <ComboBoxItem Content="Fit" Tag="Fit"/>
+                                        <ComboBoxItem Content="Stretch" Tag="Stretch"/>
+                                        <ComboBoxItem Content="Tile" Tag="Tile"/>
+                                        <ComboBoxItem Content="Center" Tag="Center"/>
+                                        <ComboBoxItem Content="Span" Tag="Span"/>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <WrapPanel>
+                                    <Button Content="Choose GIF / Image"
+                                            Click="ChooseScreensaverMedia_Click"/>
+                                    <Button x:Name="SendScreensaverButton"
+                                            Content="Send to RYNOR ONE"
+                                            Click="SendScreensaverMedia_Click"
+                                            IsEnabled="False"/>
+                                    <Button x:Name="ShowScreensaverNowButton"
+                                            Content="Show now"
+                                            Click="ShowScreensaverNow_Click"
+                                            IsEnabled="False"/>
+                                    <Button Content="Clear"
+                                            Click="ClearScreensaverMedia_Click"
+                                            Margin="0"/>
+                                </WrapPanel>
+
+                                <ProgressBar x:Name="ScreensaverSendProgress"
+                                             Minimum="0" Maximum="100" Value="0"
+                                             Height="5" Margin="0,10,0,0"/>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                                    <Ellipse x:Name="ScreensaverUploadDot"
+                                             Width="9" Height="9"
+                                             Fill="#66666A"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,7,0"/>
+                                    <TextBlock x:Name="ScreensaverUploadState"
+                                               Text="Not uploaded"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="ScreensaverSendStatus"
+                                           Text="The file stays local. Only reduced animation frames are sent."
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Muted}"
+                                           Margin="0,6,0,0"/>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,10,0,10"/>
+
+                                <Grid x:Name="DeviceTimingPanel" IsEnabled="True">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel>
+                                        <TextBlock Text="Screensaver after"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="ScreensaverDelayCombo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="ScreensaverDelayCombo_SelectionChanged">
+                                            <ComboBoxItem Content="15 seconds" Tag="15"/>
+                                            <ComboBoxItem Content="30 seconds" Tag="30"/>
+                                            <ComboBoxItem Content="1 minute" Tag="60"/>
+                                            <ComboBoxItem Content="2 minutes" Tag="120"/>
+                                            <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                            <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                            <ComboBoxItem Content="Never" Tag="0"/>
                                         </ComboBox>
                                     </StackPanel>
-                                </StackPanel>
-                            </Border>
 
-                            <StackPanel x:Name="ScreensaverScalePanel"
-                                        Orientation="Horizontal"
-                                        Margin="0,0,0,12">
-                                <TextBlock Text="Scale"
-                                           Width="52"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <ComboBox x:Name="ScreensaverScaleCombo"
-                                          Width="150"
-                                          SelectionChanged="ScreensaverScaleCombo_SelectionChanged">
-                                    <ComboBoxItem Content="Fill" Tag="Fill" IsSelected="True"/>
-                                    <ComboBoxItem Content="Fit" Tag="Fit"/>
-                                    <ComboBoxItem Content="Stretch" Tag="Stretch"/>
-                                    <ComboBoxItem Content="Tile" Tag="Tile"/>
-                                    <ComboBoxItem Content="Center" Tag="Center"/>
-                                    <ComboBoxItem Content="Span" Tag="Span"/>
-                                </ComboBox>
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Choose GIF / Image"
-                                        Click="ChooseScreensaverMedia_Click"/>
-                                <Button x:Name="SendScreensaverButton"
-                                        Content="Send to RYNOR ONE"
-                                        Click="SendScreensaverMedia_Click"
-                                        IsEnabled="False"/>
-                                <Button x:Name="ShowScreensaverNowButton"
-                                        Content="Show now"
-                                        Click="ShowScreensaverNow_Click"
-                                        IsEnabled="False"/>
-                                <Button Content="Clear"
-                                        Click="ClearScreensaverMedia_Click"
-                                        Margin="0"/>
-                            </StackPanel>
-
-                            <ProgressBar x:Name="ScreensaverSendProgress"
-                                         Minimum="0" Maximum="100" Value="0"
-                                         Height="5" Margin="0,14,0,0"/>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
-                                <Ellipse x:Name="ScreensaverUploadDot"
-                                         Width="9" Height="9"
-                                         Fill="#66666A"
-                                         VerticalAlignment="Center"
-                                         Margin="0,0,7,0"/>
-                                <TextBlock x:Name="ScreensaverUploadState"
-                                           Text="Not uploaded"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-
-                            <TextBlock x:Name="ScreensaverSendStatus"
-                                       Text="The file stays local. Only reduced animation frames are sent."
-                                       FontSize="11"
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource Muted}"
-                                       Margin="0,8,0,0"/>
-
-                            <Border Height="1"
-                                    Background="{DynamicResource Line}"
-                                    Margin="0,14,0,12"/>
-
-                            <Grid x:Name="DeviceTimingPanel" IsEnabled="True">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition/>
-                                    <ColumnDefinition Width="14"/>
-                                    <ColumnDefinition/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel>
-                                    <TextBlock Text="Screensaver after"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,0,0,6"/>
-                                    <ComboBox x:Name="ScreensaverDelayCombo"
-                                              SelectedValuePath="Tag"
-                                              SelectionChanged="ScreensaverDelayCombo_SelectionChanged">
-                                        <ComboBoxItem Content="15 seconds" Tag="15"/>
-                                        <ComboBoxItem Content="30 seconds" Tag="30"/>
-                                        <ComboBoxItem Content="1 minute" Tag="60"/>
-                                        <ComboBoxItem Content="2 minutes" Tag="120"/>
-                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
-                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
-                                        <ComboBoxItem Content="Never" Tag="0"/>
-                                    </ComboBox>
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="2">
-                                    <TextBlock Text="Sleep after"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,0,0,6"/>
-                                    <ComboBox x:Name="SleepDelayCombo"
-                                              SelectedValuePath="Tag"
-                                              SelectionChanged="SleepDelayCombo_SelectionChanged">
-                                        <ComboBoxItem Content="1 minute" Tag="60"/>
-                                        <ComboBoxItem Content="2 minutes" Tag="120"/>
-                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
-                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
-                                        <ComboBoxItem Content="15 minutes" Tag="900"/>
-                                        <ComboBoxItem Content="30 minutes" Tag="1800"/>
-                                        <ComboBoxItem Content="Never" Tag="0"/>
-                                    </ComboBox>
-                                </StackPanel>
-                            </Grid>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Sleep after"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,0,0,5"/>
+                                        <ComboBox x:Name="SleepDelayCombo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="SleepDelayCombo_SelectionChanged">
+                                            <ComboBoxItem Content="1 minute" Tag="60"/>
+                                            <ComboBoxItem Content="2 minutes" Tag="120"/>
+                                            <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                            <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                            <ComboBoxItem Content="15 minutes" Tag="900"/>
+                                            <ComboBoxItem Content="30 minutes" Tag="1800"/>
+                                            <ComboBoxItem Content="Never" Tag="0"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </ScrollViewer>
                     </Border>
 
-
-
-                </Grid>
-            </TabItem>
-
-            <TabItem x:Name="PixelMainMenuTab"
-                     Header="Main Menu"
-                     Visibility="Collapsed">
-                <ScrollViewer Margin="0,14,0,0"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <Grid Margin="0,0,8,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="520"/>
-                            <ColumnDefinition Width="18"/>
-                            <ColumnDefinition/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="24"
-                                Padding="18">
+                    <Border x:Name="HomeMainMenuCard"
+                            Grid.Row="2"
+                            Grid.Column="2"
+                            Visibility="Collapsed"
+                            Background="{DynamicResource Card}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="1"
+                            CornerRadius="28"
+                            Padding="18"
+                            PreviewMouseDown="MainMenuEditor_PreviewMouseDown">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
-                                <Grid Margin="0,0,0,12">
-                                    <TextBlock Text="MAIN MENU PREVIEW"
+                                <Grid Margin="0,0,0,10">
+                                    <TextBlock Text="MAIN MENU"
                                                FontSize="12"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Muted}"/>
-                                    <TextBlock x:Name="PixelMenuPreviewLayerText"
+                                    <TextBlock x:Name="PixelMenuEditorLayerText"
                                                Text="Menu 1 · Layer 0"
                                                HorizontalAlignment="Right"
                                                FontSize="11"
                                                Foreground="{DynamicResource Muted}"/>
                                 </Grid>
 
-                                <Border Width="480"
-                                        Height="320"
-                                        HorizontalAlignment="Center"
-                                        Background="#050505"
-                                        BorderBrush="{DynamicResource Line}"
-                                        BorderThickness="1"
-                                        CornerRadius="14"
-                                        ClipToBounds="True">
-                                    <Grid>
-                                        <Image x:Name="PixelMenuBackgroundPreview"
-                                               Stretch="UniformToFill"/>
-                                        <Border x:Name="PixelMenuBrightnessOverlay"
-                                                Background="Black"
-                                                Opacity="0.30"/>
-                                        <UniformGrid x:Name="PixelMenuPreviewSlots"
-                                                     Rows="3"
-                                                     Columns="4"
-                                                     Margin="12,10"/>
-                                    </Grid>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="2"
-                                Background="{DynamicResource Card}"
-                                BorderBrush="{DynamicResource Line}"
-                                BorderThickness="1"
-                                CornerRadius="24"
-                                Padding="20">
-                            <StackPanel>
-                                <TextBlock Text="PIXEL PRO MAIN MENU"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Muted}"/>
-                                <TextBlock Text="Static background + 4 × 3 action icons"
-                                           FontSize="22"
-                                           FontWeight="SemiBold"
-                                           Margin="0,7,0,16"/>
-
-                                <Grid Margin="0,0,0,12">
+                                <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition/>
-                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="10"/>
                                         <ColumnDefinition/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Menu"
                                                    Foreground="{DynamicResource Muted}"
-                                                   Margin="0,0,0,5"/>
+                                                   Margin="0,0,0,4"/>
                                         <ComboBox x:Name="PixelMenuPageCombo"
                                                   SelectedValuePath="Tag"
                                                   SelectionChanged="PixelMenuPageCombo_SelectionChanged">
@@ -732,7 +698,7 @@
                                     <StackPanel Grid.Column="2">
                                         <TextBlock Text="Layer"
                                                    Foreground="{DynamicResource Muted}"
-                                                   Margin="0,0,0,5"/>
+                                                   Margin="0,0,0,4"/>
                                         <ComboBox x:Name="PixelMenuLayerCombo"
                                                   SelectedValuePath="Tag"
                                                   SelectionChanged="PixelMenuLayerCombo_SelectionChanged">
@@ -744,12 +710,9 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <TextBlock Text="Background"
-                                           Foreground="{DynamicResource Muted}"
-                                           Margin="0,0,0,5"/>
                                 <StackPanel Orientation="Horizontal"
-                                            Margin="0,0,0,10">
-                                    <Button Content="Choose static image"
+                                            Margin="0,0,0,8">
+                                    <Button Content="Background"
                                             Click="PixelMenuChooseBackground_Click"/>
                                     <Button Content="Clear"
                                             Click="PixelMenuClearBackground_Click"/>
@@ -757,21 +720,20 @@
                                                Text="No background"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
-                                               MaxWidth="220"
+                                               MaxWidth="200"
                                                Foreground="{DynamicResource Muted}"
-                                               Margin="8,0,0,0"/>
+                                               Margin="7,0,0,0"/>
                                 </StackPanel>
 
-                                <Grid Margin="0,0,0,14">
+                                <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="78"/>
                                         <ColumnDefinition/>
-                                        <ColumnDefinition Width="55"/>
+                                        <ColumnDefinition Width="48"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Brightness"
                                                VerticalAlignment="Center"
-                                               Foreground="{DynamicResource Muted}"
-                                               Margin="0,0,10,0"/>
+                                               Foreground="{DynamicResource Muted}"/>
                                     <Slider x:Name="PixelMenuBrightnessSlider"
                                             Grid.Column="1"
                                             Minimum="20"
@@ -786,36 +748,55 @@
                                                VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <TextBlock Text="12 action slots"
-                                           FontWeight="SemiBold"
-                                           Margin="0,0,0,8"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="78"/>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="48"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Opacity"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Muted}"/>
+                                    <Slider x:Name="PixelMenuOpacitySlider"
+                                            Grid.Column="1"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            Value="100"
+                                            IsMoveToPointEnabled="True"
+                                            ValueChanged="PixelMenuOpacitySlider_ValueChanged"/>
+                                    <TextBlock x:Name="PixelMenuOpacityText"
+                                               Grid.Column="2"
+                                               Text="100%"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
                                 <UniformGrid x:Name="PixelMenuSlotsEditor"
                                              Rows="3"
                                              Columns="4"/>
 
-                                <StackPanel Orientation="Horizontal"
-                                            Margin="0,16,0,0">
+                                <WrapPanel Margin="0,12,0,0">
                                     <Button x:Name="PixelMenuSaveButton"
                                             Content="Save to PIXEL PRO"
                                             Click="PixelMenuSave_Click"/>
                                     <Button Content="Show now"
                                             Click="PixelMenuShowNow_Click"/>
-                                </StackPanel>
+                                </WrapPanel>
 
                                 <ProgressBar x:Name="PixelMenuUploadProgress"
                                              Minimum="0"
                                              Maximum="100"
                                              Height="5"
-                                             Margin="0,12,0,0"/>
+                                             Margin="0,9,0,0"/>
                                 <TextBlock x:Name="PixelMenuStatusText"
                                            Text="Configure a menu and save it to PIXEL PRO."
                                            Foreground="{DynamicResource Muted}"
                                            TextWrapping="Wrap"
-                                           Margin="0,7,0,0"/>
+                                           Margin="0,6,0,0"/>
                             </StackPanel>
-                        </Border>
-                    </Grid>
-                </ScrollViewer>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
             </TabItem>
 
             <TabItem x:Name="ConfiguratorTab" Header="Device Config">

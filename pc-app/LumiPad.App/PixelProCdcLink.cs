@@ -1905,26 +1905,56 @@ public sealed class PixelProCdcLink : IDeviceLink
             StringComparison.Ordinal);
     }
 
+    private static string SanitizeMainMenuLabel(
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        string ascii =
+            new(
+                value
+                    .Where(
+                        ch =>
+                            ch is >= ' ' and <= '~' &&
+                            ch != '|' &&
+                            ch != ',')
+                    .Take(16)
+                    .ToArray());
+
+        return ascii.Trim();
+    }
+
     public async Task<bool> SetMainMenuPageAsync(
         int page,
         int layer,
-        IReadOnlyList<int> actions)
+        IReadOnlyList<int> actions,
+        IReadOnlyList<string> labels)
     {
-        if (actions.Count != 12)
+        if (actions.Count != 12 ||
+            labels.Count != 12)
+        {
             return false;
+        }
 
         page = Math.Clamp(page, 0, 3);
         layer = Math.Clamp(layer, 0, 3);
 
-        string payload =
+        string actionPayload =
             string.Join(
                 ",",
                 actions.Select(
                     id => Math.Clamp(id, 0, 32)));
 
+        string labelPayload =
+            string.Join(
+                ",",
+                labels.Select(
+                    SanitizeMainMenuLabel));
+
         string? line =
             await RequestLineAsync(
-                $"MENUCFG|{page}|{layer}|{payload}",
+                $"MENUCFG|{page}|{layer}|{actionPayload}|{labelPayload}",
                 "OK|MENUCFG");
 
         return string.Equals(
