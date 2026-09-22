@@ -38,7 +38,7 @@ public partial class MainWindow
                     Width = 42,
                     Height = 42,
                     Stretch = Stretch.Uniform,
-                    HorizontalAlignment = HorizontalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                     Margin = new Thickness(0, 2, 0, 5)
                 };
 
@@ -54,7 +54,7 @@ public partial class MainWindow
                 PixelMenuSlotAction_SelectionChanged;
 
             var chooseButton =
-                new Button
+                new System.Windows.Controls.Button
                 {
                     Content = "Icon",
                     Tag = capturedSlot,
@@ -66,7 +66,7 @@ public partial class MainWindow
                 PixelMenuChooseIcon_Click;
 
             var clearButton =
-                new Button
+                new System.Windows.Controls.Button
                 {
                     Content = "×",
                     Tag = capturedSlot,
@@ -80,8 +80,8 @@ public partial class MainWindow
             var buttons =
                 new StackPanel
                 {
-                    Orientation = Orientation.Horizontal,
-                    HorizontalAlignment = HorizontalAlignment.Center
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center
                 };
 
             buttons.Children.Add(chooseButton);
@@ -96,8 +96,8 @@ public partial class MainWindow
                     Text = $"Slot {slot + 1}",
                     FontSize = 10,
                     Foreground =
-                        TryFindResource("Muted") as Brush,
-                    HorizontalAlignment = HorizontalAlignment.Center,
+                        TryFindResource("Muted") as System.Windows.Media.Brush,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                     Margin = new Thickness(0, 0, 0, 2)
                 });
 
@@ -113,10 +113,10 @@ public partial class MainWindow
                     Padding = new Thickness(6),
                     CornerRadius = new CornerRadius(9),
                     BorderBrush =
-                        TryFindResource("Line") as Brush,
+                        TryFindResource("Line") as System.Windows.Media.Brush,
                     BorderThickness = new Thickness(1),
                     Background =
-                        TryFindResource("ControlBg") as Brush
+                        TryFindResource("ControlBg") as System.Windows.Media.Brush
                 };
 
             PixelMenuSlotsEditor.Children.Add(
@@ -128,8 +128,8 @@ public partial class MainWindow
                     Width = 40,
                     Height = 40,
                     Stretch = Stretch.Uniform,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 0, 13)
                 };
 
@@ -139,10 +139,10 @@ public partial class MainWindow
                     Text = "--",
                     FontSize = 10,
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = Brushes.White,
+                    Foreground = System.Windows.Media.Brushes.White,
                     TextTrimming = TextTrimming.CharacterEllipsis,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Bottom,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Bottom,
                     Margin = new Thickness(5, 0, 5, 8)
                 };
 
@@ -163,7 +163,7 @@ public partial class MainWindow
                     CornerRadius = new CornerRadius(9),
                     BorderBrush =
                         new SolidColorBrush(
-                            Color.FromArgb(
+                            System.Windows.Media.Color.FromArgb(
                                 150,
                                 180,
                                 180,
@@ -171,7 +171,7 @@ public partial class MainWindow
                     BorderThickness = new Thickness(1),
                     Background =
                         new SolidColorBrush(
-                            MediaColor.FromArgb(
+                            MediaSystem.Windows.Media.Color.FromArgb(
                                 35,
                                 0,
                                 0,
@@ -548,7 +548,7 @@ public partial class MainWindow
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is not Button button ||
+        if (sender is not System.Windows.Controls.Button button ||
             button.Tag is not int slot)
         {
             return;
@@ -600,7 +600,7 @@ public partial class MainWindow
         object sender,
         RoutedEventArgs e)
     {
-        if (sender is not Button button ||
+        if (sender is not System.Windows.Controls.Button button ||
             button.Tag is not int slot)
         {
             return;
