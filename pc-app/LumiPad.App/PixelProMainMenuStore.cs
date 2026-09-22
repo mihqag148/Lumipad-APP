@@ -11,6 +11,7 @@ public sealed class PixelProMainMenuSlot
     public int ActionId { get; set; }
     public string? IconPath { get; set; }
     public string? AppPath { get; set; }
+    public bool AutoIcon { get; set; }
 }
 
 // Legacy v1/v2 shape. Kept only so existing pixel_main_menu.json files migrate.
@@ -31,15 +32,16 @@ public sealed class PixelProMainMenuProfile
     public ScreensaverScaleMode ScaleMode { get; set; } =
         ScreensaverScaleMode.Fill;
 
+    // PIXEL PRO has eight physical keys. The LCD mirrors them as 2 x 4 icons.
     public PixelProMainMenuSlot[] Slots { get; set; } =
-        Enumerable.Range(0, 12)
+        Enumerable.Range(0, PixelProMainMenuStore.SlotCount)
             .Select(_ => new PixelProMainMenuSlot())
             .ToArray();
 }
 
 public sealed class PixelProMainMenuConfig
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
 
     public PixelProMainMenuProfile[] Profiles { get; set; } = [];
 
@@ -59,6 +61,7 @@ public sealed class PixelProMainMenuConfig
 public static class PixelProMainMenuStore
 {
     public const int ProfileCount = 20;
+    public const int SlotCount = 8;
 
     private static string ConfigPath =>
         Path.Combine(
@@ -124,6 +127,9 @@ public static class PixelProMainMenuStore
         if (string.IsNullOrWhiteSpace(value.AppPath))
             value.AppPath = null;
 
+        if (value.IconPath is null)
+            value.AutoIcon = false;
+
         return value;
     }
 
@@ -155,8 +161,10 @@ public static class PixelProMainMenuStore
         PixelProMainMenuSlot[] slots =
             value.Slots ?? [];
 
+        // v1.22 stored 12 visual slots. Preserve the first eight key-aligned
+        // slots and discard the old third row when migrating to v1.23.
         value.Slots =
-            Enumerable.Range(0, 12)
+            Enumerable.Range(0, SlotCount)
                 .Select(index =>
                     NormalizeSlot(
                         index < slots.Length
@@ -184,7 +192,8 @@ public static class PixelProMainMenuStore
                 .Select(index =>
                     index < source.Length
                         ? NormalizeProfile(source[index])
-                        : new PixelProMainMenuProfile())
+                        : NormalizeProfile(
+                            new PixelProMainMenuProfile()))
                 .ToArray();
 
         if (migrateLegacy)
@@ -217,7 +226,7 @@ public static class PixelProMainMenuStore
                     oldPages[profile]?.Slots ?? [];
 
                 profiles[profile].Slots =
-                    Enumerable.Range(0, 12)
+                    Enumerable.Range(0, SlotCount)
                         .Select(slot =>
                             NormalizeSlot(
                                 slot < oldSlots.Length
@@ -227,10 +236,9 @@ public static class PixelProMainMenuStore
             }
         }
 
-        config.Version = 3;
+        config.Version = 4;
         config.Profiles = profiles;
 
-        // Drop the old layer-based fields after migration.
         config.BackgroundPath = null;
         config.BrightnessPercent = null;
         config.OpacityPercent = null;

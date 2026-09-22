@@ -54,7 +54,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     public bool SupportsActions => false;
     public bool SupportsVariableArtwork => false;
     public bool SupportsBatteryInfo => false;
-    public bool SupportsPcMonitor => false;
+    public bool SupportsPcMonitor => true;
 
     private void Log(string level, string message) =>
         Diagnostic?.Invoke(level, message);
@@ -1877,10 +1877,11 @@ public sealed class PixelProCdcLink : IDeviceLink
             Math.Clamp(
                 slot,
                 0,
-                11);
+                PixelProMainMenuStore.SlotCount - 1);
 
-        if (iconBytes.Length !=
-            PixelProMainMenuMediaService.IconBytes)
+        if (iconBytes.Length < 4 ||
+            iconBytes.Length >
+                PixelProMainMenuMediaService.IconMaxBytes)
         {
             return Task.FromResult(false);
         }
@@ -1930,7 +1931,7 @@ public sealed class PixelProCdcLink : IDeviceLink
             Math.Clamp(
                 slot,
                 0,
-                11);
+                PixelProMainMenuStore.SlotCount - 1);
 
         string? line =
             await RequestLineAsync(
@@ -1968,8 +1969,8 @@ public sealed class PixelProCdcLink : IDeviceLink
         IReadOnlyList<int> actions,
         IReadOnlyList<string> labels)
     {
-        if (actions.Count != 12 ||
-            labels.Count != 12)
+        if (actions.Count != PixelProMainMenuStore.SlotCount ||
+            labels.Count != PixelProMainMenuStore.SlotCount)
         {
             return false;
         }
@@ -2445,18 +2446,75 @@ public sealed class PixelProCdcLink : IDeviceLink
     public Task SleepKeyboardAsync() => Task.CompletedTask;
     public Task WakeKeyboardAsync() => Task.CompletedTask;
 
+    private async Task<bool> SendPixelRealtimeLineAsync(
+        string line)
+    {
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port = _port;
+            if (port?.IsOpen != true)
+                return false;
+
+            try
+            {
+                port.WriteTimeout = 1000;
+                port.WriteLine(line);
+                Log("TX", line);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log(
+                    "WARN",
+                    $"PIXEL PRO realtime CDC write failed: {ex.Message}");
+                return false;
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
     public Task<bool> SendPcMonitorConfigAsync(
         string name,
-        IReadOnlyList<int>? metricSlots = null) =>
-        Task.FromResult(false);
+        IReadOnlyList<int>? metricSlots = null)
+    {
+        // The PIXEL main-menu status strip has a fixed eezBotFun-style
+        // Profile / time / CPU / GPU layout, so no six-slot layout config is
+        // needed. Returning the connection state keeps the shared monitor loop
+        // happy without changing any RYNOR behavior.
+        return Task.FromResult(IsConnected);
+    }
 
     public Task<bool> SendPcMonitorAsync(
         PcMonitorSnapshot data,
-        IReadOnlyList<int>? metricSlots = null) =>
-        Task.FromResult(false);
+        IReadOnlyList<int>? metricSlots = null)
+    {
+        static int I(double value) =>
+            (int)Math.Round(value);
+
+        static int N(double? value) =>
+            value.HasValue
+                ? (int)Math.Round(value.Value)
+                : -1;
+
+        DateTime now =
+            DateTime.Now;
+
+        string line =
+            $"PCMON|{I(data.CpuLoad)}|{N(data.CpuTemperature)}|" +
+            $"{N(data.GpuLoad)}|{N(data.GpuTemperature)}|" +
+            $"{now.Month}|{now.Day}|{now.Hour}|{now.Minute}";
+
+        return SendPixelRealtimeLineAsync(
+            line);
+    }
 
     public Task<bool> ClearPcMonitorAsync() =>
-        Task.FromResult(false);
+        SendPixelRealtimeLineAsync(
+            "PCCLEAR");
 
     public void Dispose()
     {
