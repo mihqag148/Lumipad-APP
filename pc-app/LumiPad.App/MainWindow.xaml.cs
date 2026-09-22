@@ -8539,6 +8539,9 @@ try {{
         if (string.IsNullOrWhiteSpace(_screensaverMediaPath))
             return;
 
+        if (IsPixelProActive)
+            SetPixelHomePreviewMode(false);
+
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
         ScreensaverSendStatus.Text = L("Preparing local media…", "Đang xử lý media trên máy…");
