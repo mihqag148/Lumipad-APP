@@ -39,14 +39,14 @@ internal sealed record PixelProPackedAnimationResult(
 /// native/palette color depths. A progressive Smart Delta pass suppresses
 /// visually insignificant temporal noise before reducing resolution/FPS.
 /// New PIXEL PRO media keeps a quality floor of 360×240 and RGB565 while
-/// using up to 1100 KiB when needed.
+/// using up to 2 MiB when needed.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
 {
     public const int DisplayWidth = 480;
     public const int DisplayHeight = 320;
     public const int PreferredMinBytes = 800 * 1024;
-    public const int HardTargetBytes = 1100 * 1024;
+    public const int HardTargetBytes = 2 * 1024 * 1024;
 
     private const int MaxCanvas = 1024;
     private const int SmartDeltaBlockSize = 8;
@@ -115,72 +115,55 @@ internal static class PixelProPackedAnimationEncoder
             maxDurationSeconds *
             1000;
 
-        // Keep full RGB888 when an easy 480×320 / 60 FPS source already fits.
-        // This probe aborts at the 1100 KiB ceiling, so complex GIFs move on
-        // quickly to the RGB565 search instead of spending time on RGB888.
-        Candidate rgb888Probe =
-            EncodeCandidate(
-                image,
-                dimension,
-                sourceDelays,
-                sourceFrameCount,
-                480,
-                320,
-                60,
-                maxDurationMs,
-                PixelProPackedColorMode.Rgb888,
-                scaleMode,
-                0,
-                HardTargetBytes);
+        PixelProPackedColorMode[] colorPriority =
+        [
+            PixelProPackedColorMode.Rgb888,
+            PixelProPackedColorMode.Rgb565,
+        ];
 
-        if (!rgb888Probe.ExceededLimit &&
-            rgb888Probe.Bytes is not null &&
-            rgb888Probe.Bytes.Length <= HardTargetBytes)
+        // Quality priority is strict and lexicographic:
+        // 1) color depth, 2) FPS, 3) storage resolution.
+        // This means all RGB888 candidates are considered before RGB565.
+        // Within a color mode, a higher FPS is preferred even if that means
+        // using 360×240 instead of 480×320 at that FPS.
+        foreach (PixelProPackedColorMode colorMode in colorPriority)
         {
-            return ToResult(
-                rgb888Probe,
-                scaleMode,
-                new FileInfo(path).Length,
-                false);
-        }
-
-        // RGB565 is now the hard color-quality floor. Never generate P256,
-        // P16, P4 or P2 for new PIXEL PRO GIF uploads.
-        foreach ((int width, int height, int fps) in BuildQualityLadder())
-        {
-            foreach (int smartDeltaLevel in SmartDeltaLevels)
+            foreach ((int width, int height, int fps) in BuildQualityLadder())
             {
-                Candidate candidate =
-                    EncodeCandidate(
-                        image,
-                        dimension,
-                        sourceDelays,
-                        sourceFrameCount,
-                        width,
-                        height,
-                        fps,
-                        maxDurationMs,
-                        PixelProPackedColorMode.Rgb565,
-                        scaleMode,
-                        smartDeltaLevel,
-                        HardTargetBytes);
-
-                if (!candidate.ExceededLimit &&
-                    candidate.Bytes is not null &&
-                    candidate.Bytes.Length <=
-                        HardTargetBytes)
+                foreach (int smartDeltaLevel in SmartDeltaLevels)
                 {
-                    return ToResult(
-                        candidate,
-                        scaleMode,
-                        new FileInfo(path).Length,
-                        fps < 15);
+                    Candidate candidate =
+                        EncodeCandidate(
+                            image,
+                            dimension,
+                            sourceDelays,
+                            sourceFrameCount,
+                            width,
+                            height,
+                            fps,
+                            maxDurationMs,
+                            colorMode,
+                            scaleMode,
+                            smartDeltaLevel,
+                            HardTargetBytes);
+
+                    if (!candidate.ExceededLimit &&
+                        candidate.Bytes is not null &&
+                        candidate.Bytes.Length <=
+                            HardTargetBytes)
+                    {
+                        return ToResult(
+                            candidate,
+                            scaleMode,
+                            new FileInfo(path).Length,
+                            fps < 15);
+                    }
                 }
             }
         }
 
         throw new InvalidOperationException(
-            "PIXEL PRO could not keep this GIF within 1100 KiB while preserving at least 360×240 and RGB565. Shorten or simplify the GIF.");
+            "PIXEL PRO could not keep this GIF within 2 MiB while preserving at least 360×240 and RGB565. Shorten or simplify the GIF.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -220,27 +203,13 @@ internal static class PixelProPackedAnimationEncoder
                 result.Add(item);
         }
 
-        // Preserve native panel resolution whenever practical, then trade
-        // spatial detail for motion. Never go below 360×240.
-        foreach (int fps in new[] { 60, 50, 40, 30 })
+        // FPS outranks resolution: for each FPS level, try native 480×320
+        // first and then 360×240. Never go below 360×240.
+        foreach (int fps in new[] { 60, 50, 40, 30, 25, 20, 15, 12, 10, 8, 6, 5 })
+        {
             Add(480, 320, fps);
-
-        foreach (int fps in new[] { 60, 50, 40, 30 })
             Add(360, 240, fps);
-
-        foreach (int fps in new[] { 25, 20 })
-            Add(480, 320, fps);
-
-        foreach (int fps in new[] { 25, 20 })
-            Add(360, 240, fps);
-
-        Add(480, 320, 15);
-        Add(360, 240, 15);
-
-        // Emergency temporal reduction keeps the requested resolution/color
-        // floor instead of falling back to 240×160 or palette color modes.
-        foreach (int fps in new[] { 12, 10, 8, 6, 5 })
-            Add(360, 240, fps);
+        }
 
         return result;
     }
