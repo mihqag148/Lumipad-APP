@@ -207,64 +207,36 @@ public partial class MainWindow
             var previewIcon =
                 new System.Windows.Controls.Image
                 {
-                    Width = 82,
-                    Height = 82,
+                    Width = 92,
+                    Height = 92,
                     Stretch = Stretch.Uniform,
                     HorizontalAlignment =
                         System.Windows.HorizontalAlignment.Center,
                     VerticalAlignment =
                         System.Windows.VerticalAlignment.Center,
-                    Margin = new Thickness(0, 1, 0, 0),
-                    SnapsToDevicePixels = true
+                    Margin = new Thickness(2),
+                    SnapsToDevicePixels = true,
+                    UseLayoutRounding = true
                 };
 
             RenderOptions.SetBitmapScalingMode(
                 previewIcon,
                 BitmapScalingMode.HighQuality);
 
+            // Keep a hidden label object so older UI code paths stay stable,
+            // but PIXEL PRO display preview is icon-only.
             var previewLabel =
                 new TextBlock
                 {
                     Text = "",
-                    FontSize = 9,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground =
-                        System.Windows.Media.Brushes.White,
-                    TextAlignment = TextAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxWidth = 104,
-                    HorizontalAlignment =
-                        System.Windows.HorizontalAlignment.Center,
-                    VerticalAlignment =
-                        System.Windows.VerticalAlignment.Center,
-                    Margin = new Thickness(2, 0, 2, 0)
+                    Visibility = Visibility.Collapsed
                 };
 
             var previewGrid =
                 new Grid
                 {
-                    Margin = new Thickness(2, 1, 2, 1)
+                    Margin = new Thickness(2)
                 };
-
-            previewGrid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = new GridLength(1, GridUnitType.Star)
-                });
-
-            previewGrid.RowDefinitions.Add(
-                new RowDefinition
-                {
-                    Height = new GridLength(18)
-                });
-
-            Grid.SetRow(
-                previewIcon,
-                0);
-
-            Grid.SetRow(
-                previewLabel,
-                1);
 
             previewGrid.Children.Add(previewIcon);
             previewGrid.Children.Add(previewLabel);
@@ -462,13 +434,6 @@ public partial class MainWindow
                 _pixelMenuPreviewIcons[slot].Source =
                     source;
 
-                int actionId =
-                    profile.Slots[slot].ActionId;
-
-                ActionScriptDefinition? action =
-                    _actionScripts.FirstOrDefault(
-                        x => x.ActionId == actionId);
-
                 bool hasIcon =
                     source is not null;
 
@@ -478,16 +443,10 @@ public partial class MainWindow
                         : Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Visibility =
-                    actionId > 0
-                        ? Visibility.Visible
-                        : Visibility.Collapsed;
+                    Visibility.Collapsed;
 
                 _pixelMenuPreviewLabels[slot].Text =
-                    actionId <= 0
-                        ? ""
-                        : action is null
-                            ? $"A{actionId:00}"
-                            : action.Name;
+                    "";
             }
         }
         finally
@@ -499,60 +458,43 @@ public partial class MainWindow
         RefreshPixelMenuStatusPreview();
     }
 
+    private static string PixelMenuHostOsCode()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return "MAC";
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return "LINUX";
+
+        return "WIN";
+    }
+
     private void RefreshPixelMenuStatusPreview()
     {
-        if (PixelMenuPreviewProfileStatus is null ||
-            PixelMenuPreviewTimeStatus is null ||
-            PixelMenuPreviewCpuStatus is null ||
-            PixelMenuPreviewGpuStatus is null)
+        if (PixelMenuPreviewDock0 is null ||
+            PixelMenuPreviewDock1 is null ||
+            PixelMenuPreviewDock2 is null ||
+            PixelMenuPreviewDock3 is null ||
+            PixelMenuPreviewDock4 is null)
         {
             return;
         }
 
-        int profileIndex =
-            PixelMenuProfileIndex;
+        string os =
+            PixelMenuHostOsCode();
 
-        PixelMenuPreviewProfileStatus.Text =
-            $"Profile {profileIndex + 1:00}/{PixelProMainMenuStore.ProfileCount:00}";
+        PixelMenuPreviewDock0.Text =
+            os switch
+            {
+                "MAC" => "●",
+                "LINUX" => "L",
+                _ => "⊞"
+            };
 
-        DateTime now =
-            DateTime.Now;
-
-        PixelMenuPreviewTimeStatus.Text =
-            $"{now:MM-dd  HH:mm}";
-
-        PcMonitorSnapshot? snapshot =
-            _lastPcMonitorSnapshot;
-
-        if (snapshot is null)
-        {
-            PixelMenuPreviewCpuStatus.Text =
-                "CPU --%  --C";
-            PixelMenuPreviewGpuStatus.Text =
-                "GPU --%  --C";
-            return;
-        }
-
-        string cpuTemp =
-            snapshot.CpuTemperature.HasValue
-                ? $"{Math.Round(snapshot.CpuTemperature.Value):0}C"
-                : "--C";
-
-        string gpuLoad =
-            snapshot.GpuLoad.HasValue
-                ? $"{Math.Round(snapshot.GpuLoad.Value):0}%"
-                : "--%";
-
-        string gpuTemp =
-            snapshot.GpuTemperature.HasValue
-                ? $"{Math.Round(snapshot.GpuTemperature.Value):0}C"
-                : "--C";
-
-        PixelMenuPreviewCpuStatus.Text =
-            $"CPU {Math.Round(snapshot.CpuLoad):0}%  {cpuTemp}";
-
-        PixelMenuPreviewGpuStatus.Text =
-            $"GPU {gpuLoad}  {gpuTemp}";
+        PixelMenuPreviewDock1.Text = "▰";
+        PixelMenuPreviewDock2.Text = "◎";
+        PixelMenuPreviewDock3.Text = ">_";
+        PixelMenuPreviewDock4.Text = "⚙";
     }
 
     private static ImageSource? LoadImageSource(
@@ -615,7 +557,7 @@ public partial class MainWindow
         {
             return LoadImageSource(
                 PixelProMainMenuMediaService
-                    .CreateIconJpeg(path));
+                    .CreateIconPreviewPng(path));
         }
         catch
         {
@@ -1417,7 +1359,7 @@ public partial class MainWindow
                             await Task.Run(
                                 () =>
                                     PixelProMainMenuMediaService
-                                        .CreateIconJpeg(
+                                        .CreateIconBinary(
                                             iconPath));
 
                         iconCache[iconPath] =
