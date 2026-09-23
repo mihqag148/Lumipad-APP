@@ -532,6 +532,7 @@ public partial class MainWindow : Window
                 "Parallel auto-connect enabled for RYNOR ONE and PIXEL PRO");
 
             await ConnectAllProductsAsync();
+            await PollRynorProfileAsync(force: true);
             await CheckForUpdatesAsync(silent: true);
             _updateCheckTimer.Start();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
@@ -5744,6 +5745,157 @@ try {{
             SaveAppSettings();
     }
 
+    private async Task PollRynorProfileAsync(bool force = false)
+    {
+        if (_rynorProfilePollBusy ||
+            IsPixelProActive ||
+            _serial is not SerialLink rynor ||
+            !rynor.IsConnected)
+        {
+            return;
+        }
+
+        _rynorProfilePollBusy = true;
+        try
+        {
+            var state = await rynor.ReadActiveProfileAsync();
+            if (state is null)
+                return;
+
+            int index = Math.Clamp(state.Value.Index, 0, 7);
+            string name = string.IsNullOrWhiteSpace(state.Value.Name)
+                ? ProfileName(index)
+                : state.Value.Name.Trim();
+
+            if (!force &&
+                index == _rynorActiveProfile &&
+                string.Equals(
+                    name,
+                    _rynorActiveProfileName,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            ApplyRynorActiveProfile(index, name);
+        }
+        finally
+        {
+            _rynorProfilePollBusy = false;
+        }
+    }
+
+    private void ApplyRynorActiveProfile(int index, string name)
+    {
+        index = Math.Clamp(index, 0, 7);
+        _rynorActiveProfile = index;
+        _rynorActiveProfileName =
+            string.IsNullOrWhiteSpace(name)
+                ? ProfileName(index)
+                : name.Trim();
+
+        _rgbProfileIndex =
+            Math.Clamp(index, 0, _rgbProfiles.Length - 1);
+
+        _syncingRynorProfileUi = true;
+        try
+        {
+            if (RgbProfileCombo is not null)
+                SelectComboTag(
+                    RgbProfileCombo,
+                    _rgbProfileIndex.ToString());
+        }
+        finally
+        {
+            _syncingRynorProfileUi = false;
+        }
+
+        RgbProfileSetting profile =
+            _rgbProfiles[_rgbProfileIndex];
+
+        _rgbEffect =
+            Math.Clamp(profile.Effect, 0, 4);
+        _r = profile.R;
+        _g = profile.G;
+        _b = profile.B;
+        _rgbAuto = true;
+
+        if (RgbProfileTitle is not null)
+        {
+            RgbProfileTitle.Text =
+                $"RGB Profile · P{index + 1} · {_rynorActiveProfileName}";
+        }
+
+        if (ActionActiveProfileText is not null)
+        {
+            ActionActiveProfileText.Text =
+                $"ZMK Profile P{index + 1} · {_rynorActiveProfileName}";
+        }
+
+        if (RgbStaticPresets is not null)
+            RgbStaticPresets.Visibility =
+                _rgbEffect == 3
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (RgbDynamicPresets is not null)
+            RgbDynamicPresets.Visibility =
+                _rgbEffect is >= 0 and <= 2
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        if (RgbReactivePresets is not null)
+            RgbReactivePresets.Visibility =
+                _rgbEffect == 4
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+        UpdateRgbReadout();
+    }
+
+    private void SaveCurrentRynorRgbProfile(bool sendToDevice)
+    {
+        int index =
+            Math.Clamp(
+                _rynorActiveProfile >= 0
+                    ? _rynorActiveProfile
+                    : _rgbProfileIndex,
+                0,
+                _rgbProfiles.Length - 1);
+
+        _rgbProfileIndex = index;
+        _rgbAuto = true;
+
+        _rgbProfiles[index] =
+            new RgbProfileSetting
+            {
+                Effect = Math.Clamp(_rgbEffect, 0, 4),
+                R = _r,
+                G = _g,
+                B = _b
+            };
+
+        SaveAppSettings();
+
+        if (sendToDevice &&
+            !IsPixelProActive &&
+            _serial.IsConnected)
+        {
+            RgbProfileSetting profile =
+                _rgbProfiles[index];
+
+            _serial.SetRgbProfile(
+                index,
+                profile.Effect,
+                profile.R,
+                profile.G,
+                profile.B);
+
+            // ZMK's active layer remains the source of truth.
+            _serial.SetAutoLayer();
+        }
+    }
+
     private static string ProfileName(int index) =>
         index switch
         {
@@ -7072,8 +7224,11 @@ try {{
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (IsPixelProActive)
+        if (IsPixelProActive ||
+            _syncingRynorProfileUi)
+        {
             return;
+        }
 
         if (e.AddedItems.Count == 0 ||
             e.AddedItems[0] is not ComboBoxItem item ||
@@ -7082,15 +7237,23 @@ try {{
             return;
         }
 
-        _rgbProfileIndex = Math.Clamp(index, 0, _rgbProfiles.Length - 1);
-        var profile = _rgbProfiles[_rgbProfileIndex];
+        index = Math.Clamp(index, 0, _rgbProfiles.Length - 1);
+        _rgbProfileIndex = index;
 
-        _rgbEffect = profile.Effect;
-        _r = profile.R;
-        _g = profile.G;
-        _b = profile.B;
+        if (_uiReady &&
+            _serial.IsConnected &&
+            index != _rynorActiveProfile)
+        {
+            _rynorActiveProfile = index;
+            _rynorActiveProfileName = ProfileName(index);
+            _serial.SetActiveProfile(index);
+        }
 
-        UpdateRgbReadout();
+        ApplyRynorActiveProfile(
+            index,
+            _rynorActiveProfile == index
+                ? _rynorActiveProfileName
+                : ProfileName(index));
     }
 
     private void RgbSaveProfile_Click(object sender, RoutedEventArgs e)
@@ -7154,30 +7317,19 @@ try {{
             return;
         }
 
-        int index = Math.Clamp(_rgbProfileIndex, 0, _rgbProfiles.Length - 1);
-        _rgbProfiles[index] = new RgbProfileSetting
-        {
-            Effect = Math.Clamp(_rgbEffect, 0, 4),
-            R = _r,
-            G = _g,
-            B = _b
-        };
+        int index =
+            Math.Clamp(
+                _rynorActiveProfile >= 0
+                    ? _rynorActiveProfile
+                    : _rgbProfileIndex,
+                0,
+                _rgbProfiles.Length - 1);
 
-        SaveAppSettings();
-
-        if (_serial.IsConnected)
-        {
-            _serial.SetRgbProfile(
-                index,
-                _rgbProfiles[index].Effect,
-                _rgbProfiles[index].R,
-                _rgbProfiles[index].G,
-                _rgbProfiles[index].B);
-        }
+        SaveCurrentRynorRgbProfile(sendToDevice: true);
 
         BottomStatus.Text = L(
-            $"RGB profile {index + 1} saved.",
-            $"Đã lưu RGB cho profile {index + 1}.");
+            $"RGB saved to ZMK Profile {index + 1} · {ProfileName(index)}.",
+            $"Đã lưu RGB vào ZMK Profile {index + 1} · {ProfileName(index)}.");
     }
 
     private void LedEnabled_Changed(object sender, RoutedEventArgs e)
@@ -8112,10 +8264,8 @@ try {{
             return;
         }
 
-        _rgbAuto = false;
         _rgbEffect = 3;
-        SaveAppSettings();
-        _serial.SetSolid(_r, _g, _b);
+        SaveCurrentRynorRgbProfile(sendToDevice: true);
     }
 
     private void RgbSwatch_Click(object sender, RoutedEventArgs e)
@@ -8244,18 +8394,14 @@ try {{
 
         if (mode == "Static")
         {
-            _rgbAuto = false;
             _rgbEffect = 3;
-            _serial.SetSolid(_r, _g, _b);
+            SaveCurrentRynorRgbProfile(sendToDevice: true);
         }
         else if (mode == "Reactive")
         {
-            _rgbAuto = false;
             _rgbEffect = 4;
-            _serial.SetEffect(4);
+            SaveCurrentRynorRgbProfile(sendToDevice: true);
         }
-
-        SaveAppSettings();
     }
 
     private void RgbPreset_Click(object sender, RoutedEventArgs e)
@@ -8273,15 +8419,8 @@ try {{
         if (!int.TryParse(tag, out int effect))
             return;
 
-        _rgbAuto = false;
-        _rgbEffect = effect;
-
-        SaveAppSettings();
-
-        if (effect == 3)
-            _serial.SetSolid(_r, _g, _b);
-        else
-            _serial.SetEffect(effect);
+        _rgbEffect = Math.Clamp(effect, 0, 4);
+        SaveCurrentRynorRgbProfile(sendToDevice: true);
     }
 
     private void RgbSpeedSlider_ValueChanged(
@@ -8374,12 +8513,8 @@ try {{
         _serial.SetBrightness(_rgbBrightness);
         _serial.SetSpeed(_rgbSpeed);
 
-        if (_rgbAuto)
-            _serial.SetAutoLayer();
-        else if (_rgbEffect == 3)
-            _serial.SetSolid(_r, _g, _b);
-        else
-            _serial.SetEffect(_rgbEffect);
+        _rgbAuto = true;
+        _serial.SetAutoLayer();
     }
 
     private void SetScreensaverUploadState(
