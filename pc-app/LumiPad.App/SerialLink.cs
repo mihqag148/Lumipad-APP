@@ -1787,6 +1787,82 @@ public sealed class SerialLink : IDeviceLink
     public void SetDeepSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|DEEPSLEEP|{Math.Max(0, seconds)}");
 
+    public async Task<(int Index, string Name)?> ReadActiveProfileAsync()
+    {
+        if (!IsConnected || !SupportsProfileSwitch)
+            return null;
+
+        string response;
+
+        if (!_mediaGate.Wait(0))
+            return null;
+
+        await _writeGate.WaitAsync();
+        try
+        {
+            if (_port?.IsOpen == true)
+            {
+                _port.ReadTimeout = 500;
+                _port.DiscardInBuffer();
+                byte[] data = Encoding.UTF8.GetBytes("PROFILE\n");
+                _port.Write(data, 0, data.Length);
+                response = await Task.Run(() => _port.ReadLine().Trim());
+            }
+            else if (_bleCharacteristic is not null)
+            {
+                var characteristic = _bleCharacteristic;
+                byte[] data = Encoding.UTF8.GetBytes("PROFILE\n");
+
+                using var writer = new DataWriter();
+                writer.WriteBytes(data);
+
+                var status = await characteristic.WriteValueAsync(
+                    writer.DetachBuffer(),
+                    GattWriteOption.WriteWithResponse);
+
+                if (status != GattCommunicationStatus.Success)
+                    return null;
+
+                await Task.Delay(25);
+                response = await ReadBleStatusAsync();
+            }
+            else
+            {
+                return null;
+            }
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log("WARN", $"Read active profile failed: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            _writeGate.Release();
+            _mediaGate.Release();
+        }
+
+        string[] parts = response.Split('|', 3);
+        if (parts.Length < 2 ||
+            !string.Equals(parts[0], "PROFILE", StringComparison.Ordinal) ||
+            !int.TryParse(parts[1], out int index))
+        {
+            return null;
+        }
+
+        index = Math.Clamp(index, 0, 7);
+        string name =
+            parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])
+                ? parts[2].Trim()
+                : $"PROFILE {index + 1}";
+
+        return (index, name);
+    }
+
     public void SetActiveProfile(int profile)
     {
         if (!SupportsProfileSwitch)
