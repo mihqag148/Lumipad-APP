@@ -412,54 +412,51 @@
                                                         Height="46"
                                                         HorizontalAlignment="Center"
                                                         VerticalAlignment="Center"
-                                                        Background="#B01A1A1E"
+                                                        Background="#B018181C"
                                                         CornerRadius="13"
                                                         Padding="7,5">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="54"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-
-                                                        <Border Grid.Column="0"
-                                                                Margin="2,0,5,0"
-                                                                Background="#26FFFFFF"
-                                                                CornerRadius="8">
-                                                            <TextBlock x:Name="PixelMenuHostOsBadge"
-                                                                       Text="WIN"
-                                                                       FontSize="9"
-                                                                       FontWeight="Bold"
-                                                                       Foreground="White"
-                                                                       HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"/>
-                                                        </Border>
-
-                                                        <Border Grid.Column="1"
+                                                    <UniformGrid Rows="1"
+                                                                 Columns="5">
+                                                        <Border x:Name="PixelMenuDockTile1"
                                                                 Width="42"
                                                                 Height="36"
                                                                 Margin="2,0"
-                                                                Background="#2B74D6"
+                                                                Background="#2563EB"
                                                                 CornerRadius="9"
                                                                 HorizontalAlignment="Center">
                                                             <TextBlock x:Name="PixelMenuDockGlyph1"
-                                                                       Text="▰"
-                                                                       FontSize="19"
+                                                                       Text="⊞"
+                                                                       FontFamily="Segoe UI Symbol"
+                                                                       FontSize="22"
+                                                                       FontWeight="SemiBold"
                                                                        Foreground="White"
                                                                        HorizontalAlignment="Center"
                                                                        VerticalAlignment="Center"/>
                                                         </Border>
 
-                                                        <Border Grid.Column="2"
+                                                        <Border x:Name="PixelMenuDockTile2"
                                                                 Width="42"
                                                                 Height="36"
                                                                 Margin="2,0"
-                                                                Background="#1489B8"
+                                                                Background="#E5A900"
                                                                 CornerRadius="9"
                                                                 HorizontalAlignment="Center">
                                                             <TextBlock x:Name="PixelMenuDockGlyph2"
+                                                                       Text="▰"
+                                                                       FontSize="18"
+                                                                       Foreground="White"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"/>
+                                                        </Border>
+
+                                                        <Border x:Name="PixelMenuDockTile3"
+                                                                Width="42"
+                                                                Height="36"
+                                                                Margin="2,0"
+                                                                Background="#0EA5E9"
+                                                                CornerRadius="9"
+                                                                HorizontalAlignment="Center">
+                                                            <TextBlock x:Name="PixelMenuDockGlyph3"
                                                                        Text="◉"
                                                                        FontSize="20"
                                                                        Foreground="White"
@@ -467,14 +464,14 @@
                                                                        VerticalAlignment="Center"/>
                                                         </Border>
 
-                                                        <Border Grid.Column="3"
+                                                        <Border x:Name="PixelMenuDockTile4"
                                                                 Width="42"
                                                                 Height="36"
                                                                 Margin="2,0"
-                                                                Background="#393A40"
+                                                                Background="#303238"
                                                                 CornerRadius="9"
                                                                 HorizontalAlignment="Center">
-                                                            <TextBlock x:Name="PixelMenuDockGlyph3"
+                                                            <TextBlock x:Name="PixelMenuDockGlyph4"
                                                                        Text="&gt;_"
                                                                        FontSize="12"
                                                                        FontWeight="Bold"
@@ -483,21 +480,21 @@
                                                                        VerticalAlignment="Center"/>
                                                         </Border>
 
-                                                        <Border Grid.Column="4"
+                                                        <Border x:Name="PixelMenuDockTile5"
                                                                 Width="42"
                                                                 Height="36"
                                                                 Margin="2,0"
-                                                                Background="#686B73"
+                                                                Background="#62656D"
                                                                 CornerRadius="9"
                                                                 HorizontalAlignment="Center">
-                                                            <TextBlock x:Name="PixelMenuDockGlyph4"
+                                                            <TextBlock x:Name="PixelMenuDockGlyph5"
                                                                        Text="⚙"
                                                                        FontSize="19"
                                                                        Foreground="White"
                                                                        HorizontalAlignment="Center"
                                                                        VerticalAlignment="Center"/>
                                                         </Border>
-                                                    </Grid>
+                                                    </UniformGrid>
                                                 </Border>
                                             </Grid>
                                         </Grid>
