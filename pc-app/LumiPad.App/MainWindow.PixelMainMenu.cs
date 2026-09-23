@@ -562,7 +562,7 @@ public partial class MainWindow
         {
             var brush =
                 new SolidColorBrush(
-                    Color.FromRgb(
+                    System.Windows.Media.Color.FromRgb(
                         r,
                         g,
                         b));
