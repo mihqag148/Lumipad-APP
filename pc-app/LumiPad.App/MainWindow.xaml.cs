@@ -760,54 +760,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private static ImageSource LoadProductHubImage(
-        string resourcePath)
-    {
-        Uri resourceUri =
-            new(
-                resourcePath,
-                UriKind.Relative);
-
-        var streamInfo =
-            System.Windows.Application.GetResourceStream(
-                resourceUri);
-
-        if (streamInfo is null)
-        {
-            throw new InvalidOperationException(
-                $"Embedded product image was not found: {resourcePath}");
-        }
-
-        using IO.Stream resourceStream =
-            streamInfo.Stream;
-
-        var bitmap =
-            new BitmapImage();
-
-        bitmap.BeginInit();
-        bitmap.CacheOption =
-            BitmapCacheOption.OnLoad;
-        bitmap.CreateOptions =
-            BitmapCreateOptions.PreservePixelFormat;
-        bitmap.StreamSource =
-            resourceStream;
-        bitmap.EndInit();
-        bitmap.Freeze();
-
-        return bitmap;
-    }
-
     private static System.Windows.Controls.Image CreateProductHubImage(
-        string resourcePath)
+        ImageSource source)
     {
         var image =
             new System.Windows.Controls.Image
             {
-                Source =
-                    LoadProductHubImage(
-                        resourcePath),
-                Width = 292,
-                Height = 276,
+                Source = source,
+                Width = 276,
+                Height = 252,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment =
                     System.Windows.HorizontalAlignment.Center,
@@ -826,19 +787,23 @@ public partial class MainWindow : Window
 
     private UIElement CreateProductPreview(ProductDefinition product)
     {
-        if (product.Driver != DeviceDriverKind.PixelProCdc)
-            return CreateRynorOnePreview();
+        // The two PNG blobs previously embedded in Assets/Products are
+        // truncated/corrupt. Use the already embedded, validated product
+        // artwork providers instead so single-file publishing cannot damage
+        // or partially decode the product-selection previews.
+        if (product.Driver == DeviceDriverKind.PixelProCdc)
+        {
+            return CreateProductHubImage(
+                PixelProProductImage.Create());
+        }
 
-        return CreateProductHubImage(
-            "Assets/Products/pixel-pro.png");
+        return CreateRynorOnePreview();
     }
 
     private UIElement CreateRynorOnePreview()
     {
-        // Keep the existing RYNOR-only preview path; only the artwork source
-        // is upgraded to the requested high-resolution PNG resource.
         return CreateProductHubImage(
-            "Assets/Products/rynor-one.png");
+            RynorOneProductImage.Create());
     }
 
     private async void ProductCard_Click(
