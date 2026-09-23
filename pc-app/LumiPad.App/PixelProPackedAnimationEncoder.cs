@@ -38,15 +38,16 @@ internal sealed record PixelProPackedAnimationResult(
 /// useful ideas for a small MCU: delta frames, per-run RLE, and selectable
 /// native/palette color depths. A progressive Smart Delta pass suppresses
 /// visually insignificant temporal noise before reducing resolution/FPS.
-/// New PIXEL PRO media keeps a quality floor of 360×240 and RGB565 while
-/// using up to 2 MiB when needed.
+/// New PIXEL PRO media keeps a quality floor of 360×240 and RGB565.
+/// The preferred storage window is about 1800–2000 KiB; simpler GIFs can
+/// naturally encode smaller without padding.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
 {
     public const int DisplayWidth = 480;
     public const int DisplayHeight = 320;
-    public const int PreferredMinBytes = 800 * 1024;
-    public const int HardTargetBytes = 2 * 1024 * 1024;
+    public const int PreferredMinBytes = 1800 * 1024;
+    public const int HardTargetBytes = 2000 * 1024;
 
     private const int MaxCanvas = 1024;
     private const int SmartDeltaBlockSize = 8;
@@ -163,7 +164,7 @@ internal static class PixelProPackedAnimationEncoder
         }
 
         throw new InvalidOperationException(
-            "PIXEL PRO could not keep this GIF within 2 MiB while preserving at least RGB565, 15 FPS, and 360×240. Shorten or simplify the GIF.");
+            "PIXEL PRO could not keep this GIF within 2000 KiB while preserving at least RGB565, 15 FPS, and 360×240. Shorten or simplify the GIF.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
