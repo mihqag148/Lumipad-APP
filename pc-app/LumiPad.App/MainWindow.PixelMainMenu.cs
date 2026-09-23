@@ -544,82 +544,46 @@ public partial class MainWindow
 
     private void RefreshPixelMenuStatusPreview()
     {
-        if (PixelMenuDockTile1 is null ||
-            PixelMenuDockTile2 is null ||
-            PixelMenuDockTile3 is null ||
-            PixelMenuDockTile4 is null ||
-            PixelMenuDockTile5 is null ||
-            PixelMenuDockGlyph1 is null ||
+        if (PixelMenuDockGlyph1 is null ||
             PixelMenuDockGlyph2 is null ||
             PixelMenuDockGlyph3 is null ||
-            PixelMenuDockGlyph4 is null ||
-            PixelMenuDockGlyph5 is null)
+            PixelMenuDockGlyph4 is null)
         {
             return;
         }
 
-        static SolidColorBrush Brush(
-            byte r,
-            byte g,
-            byte b)
-        {
-            var brush =
-                new SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(
-                        r,
-                        g,
-                        b));
-
-            brush.Freeze();
-
-            return brush;
-        }
-
-        // Match the firmware dock: five icon-only system/app shortcuts.
-        // The first three icons deliberately change identity and palette per
-        // host OS; terminal + settings remain familiar on all three hosts.
+        // Four clean OS-aware dock glyphs, intentionally frameless.
+        // Keep the order launcher/files/browser/settings on every platform so
+        // the layout feels stable while the icon identity follows the host OS.
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             PixelMenuDockGlyph1.Text = "◈";   // Launchpad
             PixelMenuDockGlyph2.Text = "◐";   // Finder
             PixelMenuDockGlyph3.Text = "⌖";   // Safari
-            PixelMenuDockGlyph4.Text = ">_";
-            PixelMenuDockGlyph5.Text = "⚙";
-
-            PixelMenuDockTile1.Background = Brush(92, 99, 112);
-            PixelMenuDockTile2.Background = Brush(66, 168, 245);
-            PixelMenuDockTile3.Background = Brush(36, 161, 255);
-            PixelMenuDockTile4.Background = Brush(49, 50, 56);
-            PixelMenuDockTile5.Background = Brush(104, 107, 115);
+            PixelMenuDockGlyph4.Text = "⚙";
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             PixelMenuDockGlyph1.Text = "⠿";   // Applications
             PixelMenuDockGlyph2.Text = "▰";   // Files
             PixelMenuDockGlyph3.Text = "◉";   // Browser
-            PixelMenuDockGlyph4.Text = ">_";
-            PixelMenuDockGlyph5.Text = "⚙";
-
-            PixelMenuDockTile1.Background = Brush(225, 76, 100);
-            PixelMenuDockTile2.Background = Brush(225, 144, 0);
-            PixelMenuDockTile3.Background = Brush(239, 88, 46);
-            PixelMenuDockTile4.Background = Brush(47, 51, 57);
-            PixelMenuDockTile5.Background = Brush(91, 96, 105);
+            PixelMenuDockGlyph4.Text = "⚙";
         }
         else
         {
             PixelMenuDockGlyph1.Text = "⊞";   // Start
             PixelMenuDockGlyph2.Text = "▰";   // Explorer
             PixelMenuDockGlyph3.Text = "◉";   // Edge / browser
-            PixelMenuDockGlyph4.Text = ">_";
-            PixelMenuDockGlyph5.Text = "⚙";
-
-            PixelMenuDockTile1.Background = Brush(37, 99, 235);
-            PixelMenuDockTile2.Background = Brush(229, 169, 0);
-            PixelMenuDockTile3.Background = Brush(14, 165, 233);
-            PixelMenuDockTile4.Background = Brush(48, 50, 56);
-            PixelMenuDockTile5.Background = Brush(98, 101, 109);
+            PixelMenuDockGlyph4.Text = "⚙";
         }
+
+        System.Windows.Media.Brush foreground =
+            System.Windows.Media.Brushes.White;
+
+        PixelMenuDockGlyph1.Foreground = foreground;
+        PixelMenuDockGlyph2.Foreground = foreground;
+        PixelMenuDockGlyph3.Foreground = foreground;
+        PixelMenuDockGlyph4.Foreground = foreground;
     }
 
     private static ImageSource? LoadImageSource(
