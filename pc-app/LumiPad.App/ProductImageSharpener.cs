@@ -1,3 +1,4 @@
+using System.IO;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -52,7 +53,7 @@ internal static class ProductImageSharpener
             new Drawing.Bitmap(
                 width,
                 height,
-                PixelFormat.Format32bppArgb);
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
 
         using (Drawing.Graphics g =
                Drawing.Graphics.FromImage(scaled))
@@ -126,7 +127,7 @@ internal static class ProductImageSharpener
             bitmap.LockBits(
                 rect,
                 ImageLockMode.ReadWrite,
-                PixelFormat.Format32bppArgb);
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
 
         try
         {
