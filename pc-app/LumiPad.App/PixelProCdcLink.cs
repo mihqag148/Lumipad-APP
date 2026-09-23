@@ -902,11 +902,19 @@ public sealed class PixelProCdcLink : IDeviceLink
                 animation,
                 out byte[] packedAnimation))
         {
-            return await Task.Run(
-                    () => SendPackedAnimationAsync(
-                        packedAnimation,
-                        progress))
-                .ConfigureAwait(false);
+            bool sent =
+                await Task.Run(
+                        () => SendPackedAnimationAsync(
+                            packedAnimation,
+                            progress))
+                    .ConfigureAwait(false);
+
+            if (sent)
+                await PersistStoredScreensaverIdentityAsync(
+                        animation)
+                    .ConfigureAwait(false);
+
+            return sent;
         }
 
         if (PixelProScreensaverMediaService.TryGetEncodedGif(
@@ -914,12 +922,20 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out byte[] encodedGif,
                 out ScreensaverScaleMode scaleMode))
         {
-            return await Task.Run(
-                    () => SendEncodedGifAsync(
-                        encodedGif,
-                        scaleMode,
-                        progress))
-                .ConfigureAwait(false);
+            bool sent =
+                await Task.Run(
+                        () => SendEncodedGifAsync(
+                            encodedGif,
+                            scaleMode,
+                            progress))
+                    .ConfigureAwait(false);
+
+            if (sent)
+                await PersistStoredScreensaverIdentityAsync(
+                        animation)
+                    .ConfigureAwait(false);
+
+            return sent;
         }
 
         if (PixelProScreensaverMediaService.TryGetEncodedJpeg(
@@ -928,13 +944,21 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out int jpegWidth,
                 out int jpegHeight))
         {
-            return await Task.Run(
-                    () => SendEncodedJpegAsync(
-                        encodedJpeg,
-                        jpegWidth,
-                        jpegHeight,
-                        progress))
-                .ConfigureAwait(false);
+            bool sent =
+                await Task.Run(
+                        () => SendEncodedJpegAsync(
+                            encodedJpeg,
+                            jpegWidth,
+                            jpegHeight,
+                            progress))
+                    .ConfigureAwait(false);
+
+            if (sent)
+                await PersistStoredScreensaverIdentityAsync(
+                        animation)
+                    .ConfigureAwait(false);
+
+            return sent;
         }
 
         bool staticImage =
