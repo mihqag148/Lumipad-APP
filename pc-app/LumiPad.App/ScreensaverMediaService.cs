@@ -50,10 +50,19 @@ public static class ScreensaverMediaService
 
     internal static bool TryGetPackedAnimation(
         ScreensaverAnimation animation,
-        out RynorPackedAnimationResult result) =>
-        PackedAnimations.TryGetValue(
-            animation,
-            out result!);
+        out RynorPackedAnimationResult result)
+    {
+        if (PackedAnimations.TryGetValue(
+                animation,
+                out RynorPackedAnimationResult? packed))
+        {
+            result = packed;
+            return true;
+        }
+
+        result = null!;
+        return false;
+    }
 
     public static async Task<ScreensaverAnimation> LoadAsync(
         string path,
