@@ -153,50 +153,155 @@ public static class PixelProMainMenuMediaService
             "Main-menu background cannot be reduced below 96 KiB.");
     }
 
-    public static byte[] CreateIconAsset(string path)
+    private static GraphicsPath RoundedRectPath(
+        Rectangle bounds,
+        int radius)
+    {
+        int diameter =
+            Math.Max(
+                2,
+                radius * 2);
+
+        var path =
+            new GraphicsPath();
+
+        path.AddArc(
+            bounds.Left,
+            bounds.Top,
+            diameter,
+            diameter,
+            180,
+            90);
+
+        path.AddArc(
+            bounds.Right - diameter,
+            bounds.Top,
+            diameter,
+            diameter,
+            270,
+            90);
+
+        path.AddArc(
+            bounds.Right - diameter,
+            bounds.Bottom - diameter,
+            diameter,
+            diameter,
+            0,
+            90);
+
+        path.AddArc(
+            bounds.Left,
+            bounds.Bottom - diameter,
+            diameter,
+            diameter,
+            90,
+            90);
+
+        path.CloseFigure();
+
+        return path;
+    }
+
+    private static Bitmap CreateNormalizedAppIcon(
+        string path)
     {
         ValidateStaticImage(path);
 
         using var source =
             new Bitmap(path);
 
-        using var output =
+        var output =
             new Bitmap(
                 IconWidth,
                 IconHeight,
                 PixelFormat.Format32bppArgb);
 
-        using (Graphics g = Graphics.FromImage(output))
-        {
-            g.Clear(Color.Transparent);
-            ConfigureHighQuality(g);
+        using Graphics g =
+            Graphics.FromImage(
+                output);
 
-            Rectangle visible =
-                FindVisibleBounds(source);
+        g.Clear(
+            Color.Transparent);
 
-            const int padding = 2;
-            int targetWidth =
-                IconWidth - padding * 2;
-            int targetHeight =
-                IconHeight - padding * 2;
+        ConfigureHighQuality(g);
 
-            Rectangle fit =
-                FitRect(
-                    visible.Width,
-                    visible.Height,
-                    targetWidth,
-                    targetHeight);
+        Rectangle visible =
+            FindVisibleBounds(
+                source);
 
-            fit.Offset(
-                padding,
-                padding);
+        // iOS/macOS-style normalization: every app is optically centered
+        // inside the same 80x80 rounded-square envelope. We do not add a
+        // black frame or force a background; transparent source artwork stays
+        // transparent while oversized square icons get softly rounded corners.
+        const int visualSize = 80;
+        const int inset =
+            (IconWidth -
+             visualSize) /
+            2;
 
-            g.DrawImage(
-                source,
-                fit,
-                visible,
-                GraphicsUnit.Pixel);
-        }
+        Rectangle envelope =
+            new(
+                inset,
+                inset,
+                visualSize,
+                visualSize);
+
+        Rectangle fit =
+            FitRect(
+                visible.Width,
+                visible.Height,
+                visualSize,
+                visualSize);
+
+        fit.Offset(
+            inset,
+            inset);
+
+        using GraphicsPath clip =
+            RoundedRectPath(
+                envelope,
+                18);
+
+        GraphicsState state =
+            g.Save();
+
+        g.SetClip(
+            clip);
+
+        g.DrawImage(
+            source,
+            fit,
+            visible,
+            GraphicsUnit.Pixel);
+
+        g.Restore(
+            state);
+
+        return output;
+    }
+
+    public static byte[] CreateIconPreviewPng(
+        string path)
+    {
+        using Bitmap normalized =
+            CreateNormalizedAppIcon(
+                path);
+
+        using var output =
+            new MemoryStream();
+
+        normalized.Save(
+            output,
+            ImageFormat.Png);
+
+        return output.ToArray();
+    }
+
+    public static byte[] CreateIconAsset(string path)
+    {
+        using Bitmap output =
+            CreateNormalizedAppIcon(
+                path);
 
         using var stream =
             new MemoryStream(
@@ -257,28 +362,16 @@ public static class PixelProMainMenuMediaService
                             (green << 5) |
                             b);
 
-                    // Reserve magenta as the transparent key. Move a genuine
-                    // source pixel by one blue step if it quantizes to it.
                     if (rgb565 == IconTransparent565)
                         rgb565 = 0xF81E;
                 }
 
-                writer.Write(rgb565);
+                writer.Write(
+                    rgb565);
             }
         }
 
-        writer.Flush();
-
-        byte[] payload =
-            stream.ToArray();
-
-        if (payload.Length > IconMaxBytes)
-        {
-            throw new InvalidOperationException(
-                "Main-menu icon exceeds the 24 KiB icon budget.");
-        }
-
-        return payload;
+        return stream.ToArray();
     }
 
     private static byte[] EncodeJpegWithinLimit(
