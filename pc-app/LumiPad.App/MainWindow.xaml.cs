@@ -1412,10 +1412,20 @@ public partial class MainWindow : Window
                     : Visibility.Collapsed;
 
         if (RgbProfileTitle is not null)
+        {
+            int rynorProfile =
+                Math.Clamp(
+                    _rynorActiveProfile >= 0
+                        ? _rynorActiveProfile
+                        : _rgbProfileIndex,
+                    0,
+                    7);
+
             RgbProfileTitle.Text =
                 pixel
                     ? L("Keymap RGB", "RGB theo keymap")
-                    : "RGB Profile";
+                    : $"RGB Profile · P{rynorProfile + 1} · {RynorProfileName(rynorProfile)}";
+        }
 
         if (RgbSaveProfileButton is not null)
             RgbSaveProfileButton.Content =
