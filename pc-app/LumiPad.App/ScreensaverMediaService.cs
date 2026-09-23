@@ -1,5 +1,6 @@
 using System.IO;
 using System.Drawing.Imaging;
+using System.Runtime.CompilerServices;
 using Windows.Media.Editing;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -42,6 +43,17 @@ public static class ScreensaverMediaService
     public const int MaxFrames = 25;
     public const int MaxPlaybackFps = 25;
     public const int MinFrameIntervalMs = 1000 / MaxPlaybackFps;
+
+    private static readonly ConditionalWeakTable<
+        ScreensaverAnimation,
+        RynorPackedAnimationResult> PackedAnimations = new();
+
+    internal static bool TryGetPackedAnimation(
+        ScreensaverAnimation animation,
+        out RynorPackedAnimationResult result) =>
+        PackedAnimations.TryGetValue(
+            animation,
+            out result!);
 
     public static async Task<ScreensaverAnimation> LoadAsync(
         string path,
@@ -170,14 +182,39 @@ public static class ScreensaverMediaService
             MinFrameIntervalMs,
             (int)Math.Round(frameDurations.Average()));
 
-        return new ScreensaverAnimation(
-            Path.GetFileName(path),
-            Width,
-            Height,
-            ScreensaverPixelFormat.Rgb332,
-            averageDelayMs,
-            frameDurations,
-            frames);
+        var animation =
+            new ScreensaverAnimation(
+                Path.GetFileName(path),
+                Width,
+                Height,
+                ScreensaverPixelFormat.Rgb332,
+                averageDelayMs,
+                frameDurations,
+                frames);
+
+        // RYNOR-specific smart path. PIXEL PRO uses its own media service and
+        // encoder; nothing in the PIXEL pipeline is touched here.
+        try
+        {
+            RynorPackedAnimationResult? packed =
+                RynorPackedAnimationEncoder.TryEncodeBest(
+                    path,
+                    scaleMode);
+
+            if (packed is not null)
+            {
+                PackedAnimations.Add(
+                    animation,
+                    packed);
+            }
+        }
+        catch
+        {
+            // The legacy 160x86 RGB332 animation remains a guaranteed-safe
+            // fallback and already fits the existing saver partition.
+        }
+
+        return animation;
     }
 
     private static int[] ReadGifFrameDelaysMs(
