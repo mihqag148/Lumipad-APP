@@ -1131,7 +1131,7 @@ public sealed class PixelProCdcLink : IDeviceLink
             PixelProPackedAnimationEncoder.HardTargetBytes)
         {
             LastScreensaverError =
-                "PIXEL packed animation must stay at or below 2 MiB.";
+                "PIXEL packed animation must stay at or below 2000 KiB.";
 
             return false;
         }
@@ -1149,8 +1149,8 @@ public sealed class PixelProCdcLink : IDeviceLink
 
             try
             {
-                port.ReadTimeout = 500;
-                port.WriteTimeout = 5000;
+                port.ReadTimeout = 750;
+                port.WriteTimeout = 10000;
 
                 try
                 {
@@ -1163,18 +1163,51 @@ public sealed class PixelProCdcLink : IDeviceLink
                 string begin =
                     $"SAVPXBEGIN|{packedBytes.Length}";
 
-                Log(
-                    "TX",
-                    begin);
-
-                port.WriteLine(
-                    begin);
-
                 string? beginAck =
-                    await ReadExpectedLineAsync(
-                        port,
-                        "OK|SAVPXBEGIN",
-                        TimeSpan.FromSeconds(8));
+                    null;
+
+                for (int attempt = 0;
+                     attempt < 2;
+                     attempt++)
+                {
+                    Log(
+                        "TX",
+                        attempt == 0
+                            ? begin
+                            : $"{begin} (retry {attempt})");
+
+                    port.WriteLine(
+                        begin);
+
+                    beginAck =
+                        await ReadExpectedLineAsync(
+                            port,
+                            "OK|SAVPXBEGIN",
+                            TimeSpan.FromSeconds(10));
+
+                    if (string.Equals(
+                            beginAck,
+                            "OK|SAVPXBEGIN",
+                            StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(beginAck) &&
+                        !beginAck.StartsWith(
+                            "ERR|",
+                            StringComparison.Ordinal))
+                    {
+                        beginAck = null;
+                    }
+
+                    if (beginAck?.StartsWith(
+                            "ERR|",
+                            StringComparison.Ordinal) == true)
+                    {
+                        break;
+                    }
+                }
 
                 if (!string.Equals(
                         beginAck,
@@ -1190,7 +1223,11 @@ public sealed class PixelProCdcLink : IDeviceLink
                     return false;
                 }
 
-                const int RawChunkSize = 1024;
+                // Keep each CDC line well below the firmware line-buffer limit.
+                // A 512-byte raw chunk becomes ~684 bytes of base64 and leaves
+                // ample headroom for the command/offset text.
+                const int RawChunkSize = 512;
+                const int MaxChunkAttempts = 3;
 
                 for (int offset = 0;
                      offset < packedBytes.Length;
@@ -1208,9 +1245,6 @@ public sealed class PixelProCdcLink : IDeviceLink
                             offset,
                             length);
 
-                    port.WriteLine(
-                        $"SAVPXDATA|{offset}|{encoded}");
-
                     int nextOffset =
                         offset +
                         length;
@@ -1219,10 +1253,43 @@ public sealed class PixelProCdcLink : IDeviceLink
                         $"OK|SAVPXDATA|{nextOffset}";
 
                     string? ack =
-                        await ReadExpectedLineAsync(
-                            port,
-                            expected,
-                            TimeSpan.FromSeconds(5));
+                        null;
+
+                    for (int attempt = 0;
+                         attempt < MaxChunkAttempts;
+                         attempt++)
+                    {
+                        port.WriteLine(
+                            $"SAVPXDATA|{offset}|{encoded}");
+
+                        ack =
+                            await ReadExpectedLineAsync(
+                                port,
+                                expected,
+                                TimeSpan.FromSeconds(7));
+
+                        if (string.Equals(
+                                ack,
+                                expected,
+                                StringComparison.Ordinal))
+                        {
+                            break;
+                        }
+
+                        bool retryable =
+                            string.IsNullOrWhiteSpace(
+                                ack) ||
+                            string.Equals(
+                                ack,
+                                "ERR|SAVPXDATA",
+                                StringComparison.Ordinal);
+
+                        if (!retryable)
+                            break;
+
+                        await Task.Delay(
+                            15 * (attempt + 1));
+                    }
 
                     if (!string.Equals(
                             ack,
@@ -1232,8 +1299,8 @@ public sealed class PixelProCdcLink : IDeviceLink
                         LastScreensaverError =
                             string.IsNullOrWhiteSpace(
                                 ack)
-                                ? "PIXEL PRO stopped answering during packed animation upload."
-                                : $"PIXEL PRO rejected packed animation data: {ack}";
+                                ? $"PIXEL PRO stopped answering near {offset / 1024.0:0.0} KiB of the packed upload."
+                                : $"PIXEL PRO rejected packed animation data near {offset / 1024.0:0.0} KiB: {ack}";
 
                         return false;
                     }
@@ -1247,6 +1314,9 @@ public sealed class PixelProCdcLink : IDeviceLink
                                 packedBytes.Length),
                             0,
                             95));
+
+                    if (((offset / RawChunkSize) & 0x1F) == 0x1F)
+                        await Task.Yield();
                 }
 
                 port.WriteLine(
@@ -1256,13 +1326,36 @@ public sealed class PixelProCdcLink : IDeviceLink
                     await ReadExpectedLineAsync(
                         port,
                         "OK|SAVER|READY",
-                        TimeSpan.FromSeconds(10));
+                        TimeSpan.FromSeconds(20));
 
                 bool ready =
                     string.Equals(
                         finalAck,
                         "OK|SAVER|READY",
                         StringComparison.Ordinal);
+
+                // If only the final ACK was lost, the file can already be
+                // committed in LittleFS. Verify SAVERSTATE before reporting a
+                // false failure to the user.
+                if (!ready &&
+                    string.IsNullOrWhiteSpace(
+                        finalAck))
+                {
+                    port.WriteLine(
+                        "SAVERSTATE");
+
+                    string? state =
+                        await ReadExpectedLineAsync(
+                            port,
+                            "SAVERSTATE|",
+                            TimeSpan.FromSeconds(5));
+
+                    ready =
+                        string.Equals(
+                            state,
+                            "SAVERSTATE|READY",
+                            StringComparison.Ordinal);
+                }
 
                 if (ready)
                 {
