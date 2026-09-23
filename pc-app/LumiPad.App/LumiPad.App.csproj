@@ -20,9 +20,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.23.10</Version>
-    <AssemblyVersion>1.23.10.0</AssemblyVersion>
-    <FileVersion>1.23.10.0</FileVersion>
+    <Version>1.23.11</Version>
+    <AssemblyVersion>1.23.11.0</AssemblyVersion>
+    <FileVersion>1.23.11.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Products\pixel-pro.png" LogicalName="Assets/Products/pixel-pro.png" />

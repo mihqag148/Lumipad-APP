@@ -5730,9 +5730,12 @@ try {{
         {
             0 => "OFFICE",
             1 => "MEDIA",
-            2 => "FUSION 360",
-            3 => "CUSTOM 4",
-            4 => "CUSTOM 5",
+            2 => "BAMBU STUDIO",
+            3 => "FUSION 360",
+            4 => "CAPCUT",
+            5 => "DELTA FORCE",
+            6 => "WUWA",
+            7 => "PC MONITOR",
             _ => $"PROFILE {index + 1}"
         };
 
@@ -5790,7 +5793,7 @@ try {{
             }
             else
             {
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < 8; i++)
                 {
                     AutoProfileDefaultCombo.Items.Add(new ComboBoxItem
                     {
@@ -5803,7 +5806,7 @@ try {{
                     Math.Clamp(
                         _autoProfileSettings.DefaultProfile,
                         0,
-                        4)
+                        7)
                     .ToString();
 
                 if (AutoProfileDefaultLayerCombo is not null)
@@ -5865,7 +5868,7 @@ try {{
         else
         {
             _autoProfileSettings.DefaultProfile =
-                Math.Clamp(profile, 0, 4);
+                Math.Clamp(profile, 0, 7);
         }
 
         if (_uiReady)
@@ -5984,7 +5987,7 @@ try {{
                         : name,
                 ExecutablePath = path,
                 ProfileIndex =
-                    Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 4),
+                    Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 7),
                 PixelProfileIndex =
                     Math.Clamp(
                         _autoProfileSettings.DefaultPixelProfile,
@@ -6015,7 +6018,7 @@ try {{
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 8; i++)
         {
             combo.Items.Add(new ComboBoxItem
             {
@@ -6025,7 +6028,7 @@ try {{
         }
 
         combo.SelectedValue =
-            Math.Clamp(selectedProfile, 0, 4).ToString();
+            Math.Clamp(selectedProfile, 0, 7).ToString();
         return combo;
     }
 
@@ -6218,7 +6221,7 @@ try {{
                 else
                 {
                     current.ProfileIndex =
-                        Math.Clamp(index, 0, 4);
+                        Math.Clamp(index, 0, 7);
                 }
 
                 AutoProfileService.Save(_autoProfileSettings);
@@ -6530,14 +6533,14 @@ try {{
               Math.Clamp(
                   _autoProfileSettings.DefaultProfile,
                   0,
-                  4);
+                  7);
 
         targetProfile = pixel
             ? Math.Clamp(
                 targetProfile,
                 0,
                 Math.Max(0, _pixelProfileCatalog.Count - 1))
-            : Math.Clamp(targetProfile, 0, 4);
+            : Math.Clamp(targetProfile, 0, 7);
 
         int targetLayer = pixel
             ? Math.Clamp(

@@ -1749,7 +1749,7 @@ public sealed class SerialLink : IDeviceLink
 
     public void SetRgbProfile(int index, int effect, byte r, byte g, byte b) =>
         _ = SendLineAsync(
-            $"RGB|PROFILE|{Math.Clamp(index, 0, 4)}|" +
+            $"RGB|PROFILE|{Math.Clamp(index, 0, 7)}|" +
             $"{Math.Clamp(effect, 0, 4)}|{r}|{g}|{b}");
 
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
@@ -1792,7 +1792,7 @@ public sealed class SerialLink : IDeviceLink
         if (!SupportsProfileSwitch)
             return;
 
-        _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 4)}");
+        _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 7)}");
     }
 
     public Task RestartKeyboardAsync() =>
