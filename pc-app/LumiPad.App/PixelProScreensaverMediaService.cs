@@ -519,6 +519,200 @@ public static class PixelProScreensaverMediaService
             0);
     }
 
+    public static byte[] CreateStoredPreviewJpeg(
+        ScreensaverAnimation animation)
+    {
+        if (animation.Frames.Count == 0 ||
+            animation.Width <= 0 ||
+            animation.Height <= 0)
+        {
+            return Array.Empty<byte>();
+        }
+
+        using var source =
+            new Drawing.Bitmap(
+                animation.Width,
+                animation.Height,
+                PixelFormat.Format24bppRgb);
+
+        Drawing.Rectangle rect =
+            new(
+                0,
+                0,
+                source.Width,
+                source.Height);
+
+        BitmapData data =
+            source.LockBits(
+                rect,
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format24bppRgb);
+
+        try
+        {
+            int rowBytes =
+                Math.Abs(
+                    data.Stride);
+
+            byte[] row =
+                new byte[rowBytes];
+
+            byte[] frame =
+                animation.Frames[0];
+
+            for (int y = 0;
+                 y < source.Height;
+                 y++)
+            {
+                Array.Clear(
+                    row,
+                    0,
+                    row.Length);
+
+                for (int x = 0;
+                     x < source.Width;
+                     x++)
+                {
+                    int p =
+                        x * 3;
+
+                    if (animation.PixelFormat ==
+                        ScreensaverPixelFormat.Rgb565)
+                    {
+                        int i =
+                            (y *
+                                 source.Width +
+                             x) *
+                            2;
+
+                        if (i + 1 >= frame.Length)
+                            continue;
+
+                        ushort value =
+                            (ushort)(
+                                frame[i] |
+                                (frame[i + 1] << 8));
+
+                        row[p] =
+                            (byte)(
+                                ((value &
+                                  0x1F) *
+                                 255) /
+                                31);
+
+                        row[p + 1] =
+                            (byte)(
+                                (((value >>
+                                   5) &
+                                  0x3F) *
+                                 255) /
+                                63);
+
+                        row[p + 2] =
+                            (byte)(
+                                (((value >>
+                                   11) &
+                                  0x1F) *
+                                 255) /
+                                31);
+                    }
+                    else
+                    {
+                        int i =
+                            y *
+                                source.Width +
+                            x;
+
+                        if (i >= frame.Length)
+                            continue;
+
+                        byte value =
+                            frame[i];
+
+                        row[p] =
+                            (byte)(
+                                ((value &
+                                  0x03) *
+                                 255) /
+                                3);
+
+                        row[p + 1] =
+                            (byte)(
+                                (((value >>
+                                   2) &
+                                  0x07) *
+                                 255) /
+                                7);
+
+                        row[p + 2] =
+                            (byte)(
+                                (((value >>
+                                   5) &
+                                  0x07) *
+                                 255) /
+                                7);
+                    }
+                }
+
+                IntPtr rowPtr =
+                    IntPtr.Add(
+                        data.Scan0,
+                        y *
+                        data.Stride);
+
+                System.Runtime.InteropServices.Marshal.Copy(
+                    row,
+                    0,
+                    rowPtr,
+                    rowBytes);
+            }
+        }
+        finally
+        {
+            source.UnlockBits(
+                data);
+        }
+
+        using var thumbnail =
+            new Drawing.Bitmap(
+                240,
+                160,
+                PixelFormat.Format24bppRgb);
+
+        using (Drawing.Graphics graphics =
+               Drawing.Graphics.FromImage(
+                   thumbnail))
+        {
+            graphics.Clear(
+                Drawing.Color.Black);
+
+            graphics.InterpolationMode =
+                System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+
+            graphics.PixelOffsetMode =
+                System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+
+            graphics.DrawImage(
+                source,
+                new Drawing.Rectangle(
+                    0,
+                    0,
+                    thumbnail.Width,
+                    thumbnail.Height));
+        }
+
+        return EncodeJpeg(
+            thumbnail,
+            78);
+    }
+
+    public static string StoredMediaKind(
+        ScreensaverAnimation animation) =>
+        animation.PixelFormat ==
+        ScreensaverPixelFormat.Rgb565
+            ? "IMAGE"
+            : "GIF";
+
     private static string ColorModeLabel(
         PixelProPackedColorMode mode) =>
         mode switch
