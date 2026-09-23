@@ -11,6 +11,17 @@ public readonly record struct PixelRgbColor(byte R, byte G, byte B)
     public string Hex => $"{R:X2}{G:X2}{B:X2}";
 }
 
+public sealed record PixelProStoredMediaInfo(
+    bool Ready,
+    string Kind,
+    string FileName,
+    long StoredBytes,
+    int Width,
+    int Height,
+    int Fps,
+    int DurationMs,
+    int ThumbnailBytes);
+
 /// <summary>
 /// Native ESP32-S2 USB CDC transport for PIXEL PRO.
 /// The HID keyboard remains independent; LumiPad owns only the CDC interface.
@@ -891,11 +902,19 @@ public sealed class PixelProCdcLink : IDeviceLink
                 animation,
                 out byte[] packedAnimation))
         {
-            return await Task.Run(
-                    () => SendPackedAnimationAsync(
-                        packedAnimation,
-                        progress))
-                .ConfigureAwait(false);
+            bool sent =
+                await Task.Run(
+                        () => SendPackedAnimationAsync(
+                            packedAnimation,
+                            progress))
+                    .ConfigureAwait(false);
+
+            if (sent)
+                await PersistStoredScreensaverIdentityAsync(
+                        animation)
+                    .ConfigureAwait(false);
+
+            return sent;
         }
 
         if (PixelProScreensaverMediaService.TryGetEncodedGif(
@@ -903,12 +922,20 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out byte[] encodedGif,
                 out ScreensaverScaleMode scaleMode))
         {
-            return await Task.Run(
-                    () => SendEncodedGifAsync(
-                        encodedGif,
-                        scaleMode,
-                        progress))
-                .ConfigureAwait(false);
+            bool sent =
+                await Task.Run(
+                        () => SendEncodedGifAsync(
+                            encodedGif,
+                            scaleMode,
+                            progress))
+                    .ConfigureAwait(false);
+
+            if (sent)
+                await PersistStoredScreensaverIdentityAsync(
+                        animation)
+                    .ConfigureAwait(false);
+
+            return sent;
         }
 
         if (PixelProScreensaverMediaService.TryGetEncodedJpeg(
@@ -917,13 +944,21 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out int jpegWidth,
                 out int jpegHeight))
         {
-            return await Task.Run(
-                    () => SendEncodedJpegAsync(
-                        encodedJpeg,
-                        jpegWidth,
-                        jpegHeight,
-                        progress))
-                .ConfigureAwait(false);
+            bool sent =
+                await Task.Run(
+                        () => SendEncodedJpegAsync(
+                            encodedJpeg,
+                            jpegWidth,
+                            jpegHeight,
+                            progress))
+                    .ConfigureAwait(false);
+
+            if (sent)
+                await PersistStoredScreensaverIdentityAsync(
+                        animation)
+                    .ConfigureAwait(false);
+
+            return sent;
         }
 
         bool staticImage =
@@ -2170,6 +2205,341 @@ public sealed class PixelProCdcLink : IDeviceLink
             line,
             "OK|MENUSHOW",
             StringComparison.Ordinal);
+    }
+
+    private async Task PersistStoredScreensaverIdentityAsync(
+        ScreensaverAnimation animation)
+    {
+        try
+        {
+            byte[] thumbnail =
+                PixelProScreensaverMediaService
+                    .CreateStoredPreviewJpeg(
+                        animation);
+
+            if (thumbnail.Length > 0 &&
+                thumbnail.Length <=
+                    96 * 1024)
+            {
+                bool thumbnailOk =
+                    await UploadMainMenuAssetAsync(
+                            $"SAVTHBEGIN|{thumbnail.Length}",
+                            "OK|SAVTHBEGIN",
+                            "SAVTHDATA",
+                            "OK|SAVTHDATA",
+                            "SAVTHEND",
+                            "OK|SAVTHEND",
+                            thumbnail)
+                        .ConfigureAwait(false);
+
+                if (!thumbnailOk)
+                {
+                    Log(
+                        "WARN",
+                        "PIXEL PRO stored-media thumbnail upload failed.");
+                }
+            }
+
+            string name =
+                Path.GetFileName(
+                    animation.FileName ?? "");
+
+            byte[] nameBytes =
+                System.Text.Encoding.UTF8.GetBytes(
+                    name);
+
+            if (nameBytes.Length > 96)
+            {
+                nameBytes =
+                    nameBytes
+                        .Take(96)
+                        .ToArray();
+            }
+
+            string encodedName =
+                Convert.ToBase64String(
+                    nameBytes);
+
+            string kind =
+                PixelProScreensaverMediaService
+                    .StoredMediaKind(
+                        animation);
+
+            string? response =
+                await RequestLineAsync(
+                        $"SAVMETA|{kind}|{encodedName}",
+                        "OK|SAVMETA")
+                    .ConfigureAwait(false);
+
+            if (!string.Equals(
+                    response,
+                    "OK|SAVMETA",
+                    StringComparison.Ordinal))
+            {
+                Log(
+                    "WARN",
+                    $"PIXEL PRO stored-media metadata save failed: {response ?? "no response"}");
+            }
+        }
+        catch (Exception ex)
+        {
+            // The actual screensaver has already been committed at this point.
+            // Metadata/preview is auxiliary and must not turn a successful
+            // media upload into a false failure.
+            Log(
+                "WARN",
+                $"PIXEL PRO stored-media identity sync failed: {ex.Message}");
+        }
+    }
+
+    public async Task<PixelProStoredMediaInfo?> GetStoredScreensaverInfoAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? line =
+            await RequestLineAsync(
+                    "SAVMEDIA",
+                    "SAVMEDIA|",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (line is null ||
+            !line.StartsWith(
+                "SAVMEDIA|",
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var values =
+            new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (string part in
+                 line.Split('|').Skip(1))
+        {
+            int split =
+                part.IndexOf('=');
+
+            if (split <= 0)
+                continue;
+
+            values[
+                part[..split]] =
+                part[(split + 1)..];
+        }
+
+        bool ready =
+            values.TryGetValue(
+                "STATE",
+                out string? state) &&
+            string.Equals(
+                state,
+                "READY",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!ready)
+        {
+            return new PixelProStoredMediaInfo(
+                false,
+                "",
+                "",
+                0,
+                0,
+                0,
+                0,
+                0,
+                0);
+        }
+
+        string fileName = "";
+
+        if (values.TryGetValue(
+                "NAME",
+                out string? encodedName) &&
+            !string.IsNullOrWhiteSpace(
+                encodedName))
+        {
+            try
+            {
+                fileName =
+                    System.Text.Encoding.UTF8.GetString(
+                        Convert.FromBase64String(
+                            encodedName));
+            }
+            catch
+            {
+            }
+        }
+
+        static long LongValue(
+            IReadOnlyDictionary<string, string> map,
+            string key) =>
+            map.TryGetValue(
+                    key,
+                    out string? value) &&
+                long.TryParse(
+                    value,
+                    out long parsed)
+                ? parsed
+                : 0;
+
+        static int IntValue(
+            IReadOnlyDictionary<string, string> map,
+            string key) =>
+            map.TryGetValue(
+                    key,
+                    out string? value) &&
+                int.TryParse(
+                    value,
+                    out int parsed)
+                ? parsed
+                : 0;
+
+        return new PixelProStoredMediaInfo(
+            true,
+            values.TryGetValue(
+                "KIND",
+                out string? kind)
+                ? kind
+                : "MEDIA",
+            fileName,
+            LongValue(
+                values,
+                "BYTES"),
+            IntValue(
+                values,
+                "W"),
+            IntValue(
+                values,
+                "H"),
+            IntValue(
+                values,
+                "FPS"),
+            IntValue(
+                values,
+                "DUR"),
+            IntValue(
+                values,
+                "THUMB"));
+    }
+
+    public async Task<byte[]?> GetStoredScreensaverPreviewAsync(
+        PixelProStoredMediaInfo info,
+        CancellationToken cancellationToken = default)
+    {
+        if (!info.Ready ||
+            info.ThumbnailBytes <= 0 ||
+            info.ThumbnailBytes >
+                96 * 1024)
+        {
+            return null;
+        }
+
+        await _commandGate.WaitAsync(
+            cancellationToken);
+
+        try
+        {
+            SerialPort? port =
+                _port;
+
+            if (port?.IsOpen != true)
+                return null;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 600;
+                port.WriteTimeout = 2000;
+
+                try
+                {
+                    port.DiscardInBuffer();
+                }
+                catch
+                {
+                }
+
+                using var output =
+                    new MemoryStream(
+                        info.ThumbnailBytes);
+
+                const int ChunkSize = 512;
+
+                for (int offset = 0;
+                     offset < info.ThumbnailBytes;
+                     offset += ChunkSize)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    int count =
+                        Math.Min(
+                            ChunkSize,
+                            info.ThumbnailBytes -
+                            offset);
+
+                    string command =
+                        $"SAVTHREAD|{offset}|{count}";
+
+                    Log(
+                        "TX",
+                        command);
+
+                    port.WriteLine(
+                        command);
+
+                    string prefix =
+                        $"SAVTHDATA|{offset}|";
+
+                    string? line =
+                        await ReadExpectedLineAsync(
+                            port,
+                            prefix,
+                            TimeSpan.FromSeconds(4));
+
+                    if (line is null ||
+                        !line.StartsWith(
+                            prefix,
+                            StringComparison.Ordinal))
+                    {
+                        return null;
+                    }
+
+                    byte[] chunk;
+
+                    try
+                    {
+                        chunk =
+                            Convert.FromBase64String(
+                                line[prefix.Length..]);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+
+                    output.Write(
+                        chunk,
+                        0,
+                        chunk.Length);
+                }
+
+                return output.Length ==
+                       info.ThumbnailBytes
+                    ? output.ToArray()
+                    : null;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
     }
 
     public void ClearScreensaverAnimation() =>
