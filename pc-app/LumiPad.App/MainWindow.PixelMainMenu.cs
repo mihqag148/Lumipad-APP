@@ -670,8 +670,27 @@ public partial class MainWindow
     }
 
     private static ImageSource? LoadPixelMenuIconPreview(
-        string? path) =>
-        LoadLocalImageSource(path);
+        string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) ||
+            !IO.File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return LoadImageSource(
+                PixelProMainMenuMediaService
+                    .CreateIconPreviewPng(
+                        path));
+        }
+        catch
+        {
+            return LoadLocalImageSource(
+                path);
+        }
+    }
 
     private static ImageSource? LoadPixelMenuBackgroundPreview(
         PixelProMainMenuProfile profile)
