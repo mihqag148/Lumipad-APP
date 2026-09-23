@@ -211,8 +211,51 @@ internal static class PixelProPackedAnimationEncoder
             }
         }
 
+        // Final bounded fallback: serialize complete 240×160 rows instead
+        // of sparse delta spans. This intentionally trades quality/efficiency
+        // for a predictable upper bound. Palette4 at 15 FPS for the normal
+        // 10-second PIXEL screensaver window stays below 2 MB even when every
+        // pixel changes every frame.
+        foreach (PixelProPackedColorMode colorMode in
+                 new[]
+                 {
+                     PixelProPackedColorMode.Palette4,
+                     PixelProPackedColorMode.Palette2,
+                 })
+        {
+            Candidate candidate =
+                EncodeCandidate(
+                    image,
+                    dimension,
+                    sourceDelays,
+                    sourceFrameCount,
+                    240,
+                    160,
+                    15,
+                    Math.Min(
+                        maxDurationMs,
+                        10000),
+                    colorMode,
+                    scaleMode,
+                    0,
+                    HardTargetBytes,
+                    true);
+
+            if (!candidate.ExceededLimit &&
+                candidate.Bytes is not null &&
+                candidate.Bytes.Length <=
+                    HardTargetBytes)
+            {
+                return ToResult(
+                    candidate,
+                    scaleMode,
+                    new FileInfo(path).Length,
+                    true);
+            }
+        }
+
         throw new InvalidOperationException(
-            "PIXEL PRO could not encode this GIF below 2000 KiB even after the emergency palette/240×160 fallback.");
+            "PIXEL PRO could not encode this GIF below 2000 KiB after all emergency compression fallbacks.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -286,7 +329,8 @@ internal static class PixelProPackedAnimationEncoder
         PixelProPackedColorMode colorMode,
         ScreensaverScaleMode scaleMode,
         int smartDeltaLevel,
-        int abortAfterBytes)
+        int abortAfterBytes,
+        bool forceFullRows = false)
     {
         List<PlannedFrame> plan =
             BuildFramePlan(
@@ -431,13 +475,20 @@ internal static class PixelProPackedAnimationEncoder
             frameData.Position = 0;
 
             int spanCount =
-                EncodeDeltaSpans(
-                    frameData,
-                    current,
-                    previous,
-                    storageWidth,
-                    storageHeight,
-                    colorMode);
+                forceFullRows
+                    ? EncodeFullRows(
+                        frameData,
+                        current,
+                        storageWidth,
+                        storageHeight,
+                        colorMode)
+                    : EncodeDeltaSpans(
+                        frameData,
+                        current,
+                        previous,
+                        storageWidth,
+                        storageHeight,
+                        colorMode);
 
             WriteU16(
                 output,
@@ -717,6 +768,47 @@ internal static class PixelProPackedAnimationEncoder
             color.G,
             color.B
         );
+    }
+
+    private static int EncodeFullRows(
+        Stream output,
+        IReadOnlyList<uint> current,
+        int width,
+        int height,
+        PixelProPackedColorMode mode)
+    {
+        // Deterministic size fallback: one span per complete row. Avoiding
+        // thousands of tiny sparse-delta spans caps header overhead for noisy
+        // GIFs and makes the final emergency mode size predictable.
+        for (int y = 0;
+             y < height;
+             y++)
+        {
+            int row =
+                y *
+                width;
+
+            WriteU16(
+                output,
+                y);
+
+            WriteU16(
+                output,
+                0);
+
+            WriteU16(
+                output,
+                width);
+
+            EncodeRunRle(
+                output,
+                current,
+                row,
+                width,
+                mode);
+        }
+
+        return height;
     }
 
     private static int EncodeDeltaSpans(
