@@ -1190,8 +1190,33 @@ public sealed class SerialLink : IDeviceLink
         if (animation.PixelFormat != ScreensaverPixelFormat.Rgb332)
             throw new InvalidOperationException("Unsupported screensaver format.");
 
+        if (ScreensaverMediaService.TryGetPackedAnimation(
+                animation,
+                out RynorPackedAnimationResult packed))
+        {
+            try
+            {
+                bool packedSent =
+                    await SendRynorPackedScreensaverAsync(
+                        packed,
+                        useUsb,
+                        progress);
+
+                if (packedSent)
+                    return true;
+            }
+            catch (Exception ex)
+            {
+                // Preserve compatibility and recover from an interrupted
+                // packed upload by falling back to the proven raw format.
+                Log(
+                    "WARN",
+                    $"RYNOR packed saver failed; using legacy fallback: {ex.Message}");
+            }
+        }
+
         int loopMs = animation.FrameDurationsMs.Sum();
-        Log("INFO", $"Screensaver upload: {animation.Frames.Count} frames, loop={loopMs} ms, avg={animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
+        Log("INFO", $"Screensaver legacy upload: {animation.Frames.Count} frames, loop={loopMs} ms, avg={animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
 
         int rawChunkSize = useUsb ? 240 : 180;
         int frameBytes =
@@ -1281,6 +1306,125 @@ public sealed class SerialLink : IDeviceLink
         {
             _mediaGate.Release();
         }
+    }
+
+    private async Task<bool> SendRynorPackedScreensaverAsync(
+        RynorPackedAnimationResult packed,
+        bool useUsb,
+        IProgress<int>? progress)
+    {
+        byte[] payload = packed.Bytes;
+
+        if (payload.Length < 26 ||
+            payload.Length > RynorPackedAnimationEncoder.HardTargetBytes)
+        {
+            throw new InvalidOperationException(
+                "Invalid RYNOR packed screensaver size.");
+        }
+
+        int rawChunkSize =
+            useUsb
+                ? 240
+                : 180;
+
+        int totalChunks =
+            (payload.Length + rawChunkSize - 1) /
+            rawChunkSize;
+
+        Log(
+            "INFO",
+            $"RYNOR packed saver: {packed.StorageWidth}x{packed.StorageHeight}, " +
+            $"{packed.FrameCount} frames @ {packed.Fps} FPS, {packed.ColorMode}, " +
+            $"{payload.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
+
+        string begin =
+            $"SAVPBEGIN|{payload.Length}";
+
+        if (useUsb)
+            await SendUsbSaverLineAsync(begin);
+        else
+            await SendLineAsync(begin);
+
+        int sentChunks = 0;
+
+        for (int offset = 0;
+             offset < payload.Length;
+             offset += rawChunkSize)
+        {
+            int len =
+                Math.Min(
+                    rawChunkSize,
+                    payload.Length - offset);
+
+            string base64 =
+                Convert.ToBase64String(
+                    payload,
+                    offset,
+                    len);
+
+            string line =
+                $"SAVPCHUNK|{offset}|{base64}";
+
+            if (useUsb)
+                await SendUsbSaverLineAsync(line);
+            else
+                await SendBulkLineAsync(line);
+
+            if (!useUsb)
+                await Task.Delay(2);
+
+            sentChunks++;
+            progress?.Report(
+                (int)Math.Round(
+                    sentChunks *
+                    100.0 /
+                    Math.Max(1, totalChunks)));
+        }
+
+        if (useUsb)
+        {
+            string finalAck =
+                await SendUsbSaverLineAsync(
+                    "SAVPEND");
+
+            if (!finalAck.EndsWith(
+                    "|READY",
+                    StringComparison.Ordinal))
+            {
+                Log(
+                    "ERROR",
+                    $"RYNOR packed saver final ACK not READY: {finalAck}");
+                return false;
+            }
+
+            return true;
+        }
+
+        await SendLineAsync(
+            "SAVPEND");
+
+        await Task.Delay(120);
+
+        if (_bleCharacteristic is not null)
+        {
+            string status =
+                await ReadBleStatusAsync();
+
+            bool ready =
+                status.Contains(
+                    "SAVER:READY",
+                    StringComparison.Ordinal);
+
+            Log(
+                ready
+                    ? "INFO"
+                    : "ERROR",
+                $"BLE packed saver verify: {status}");
+
+            return ready;
+        }
+
+        return false;
     }
 
     private async Task<string> ReadBleStatusAsync()
