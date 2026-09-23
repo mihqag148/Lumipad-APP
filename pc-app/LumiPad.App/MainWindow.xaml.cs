@@ -4274,24 +4274,90 @@ public partial class MainWindow : Window
 
     private static async Task DownloadFileAsync(
         string url,
-        string destination)
+        string destination,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         using var response =
             await UpdateHttp.GetAsync(
                 url,
-                HttpCompletionOption.ResponseHeadersRead);
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
         response.EnsureSuccessStatusCode();
 
+        long? totalBytes =
+            response.Content.Headers.ContentLength;
+
         await using IO.Stream input =
-            await response.Content.ReadAsStreamAsync();
+            await response.Content.ReadAsStreamAsync(
+                cancellationToken);
         await using IO.FileStream output =
             new(
                 destination,
                 IO.FileMode.Create,
                 IO.FileAccess.Write,
-                IO.FileShare.None);
+                IO.FileShare.None,
+                128 * 1024,
+                useAsync: true);
 
-        await input.CopyToAsync(output);
+        byte[] buffer =
+            new byte[128 * 1024];
+        long received = 0;
+        int lastPercent = -1;
+
+        while (true)
+        {
+            int read =
+                await input.ReadAsync(
+                    buffer.AsMemory(
+                        0,
+                        buffer.Length),
+                    cancellationToken);
+
+            if (read <= 0)
+                break;
+
+            await output.WriteAsync(
+                buffer.AsMemory(
+                    0,
+                    read),
+                cancellationToken);
+
+            received += read;
+
+            if (progress is null ||
+                !totalBytes.HasValue ||
+                totalBytes.Value <= 0)
+            {
+                continue;
+            }
+
+            int percent =
+                (int)Math.Clamp(
+                    received * 100L /
+                    totalBytes.Value,
+                    0L,
+                    100L);
+
+            if (percent != lastPercent)
+            {
+                lastPercent = percent;
+                progress.Report(percent);
+            }
+        }
+
+        await output.FlushAsync(
+            cancellationToken);
+
+        if (totalBytes.HasValue &&
+            totalBytes.Value > 0 &&
+            received != totalBytes.Value)
+        {
+            throw new IO.IOException(
+                $"Incomplete download: {received} / {totalBytes.Value} bytes.");
+        }
+
+        progress?.Report(100);
     }
 
     private static string? FindUf2Drive(
@@ -5068,24 +5134,71 @@ public partial class MainWindow : Window
         {
             IO.Directory.CreateDirectory(updateRoot);
 
+            AppUpdateButton.Content =
+                L("Downloading 0%", "Đang tải 0%");
             UpdateStatusText.Text =
                 L(
-                    "Downloading latest app…",
-                    "Đang tải app mới nhất…");
+                    "Downloading latest app… 0%",
+                    "Đang tải app mới nhất… 0%");
 
             var asset =
                 await FindLatestAssetAsync(
                     "LumiPad-Windows-x64.zip");
 
-            await DownloadFileAsync(
-                asset.Url,
-                zipPath);
+            var downloadProgress =
+                new Progress<int>(
+                    percent =>
+                    {
+                        int shown =
+                            Math.Clamp(
+                                percent,
+                                0,
+                                100);
+
+                        AppUpdateButton.Content =
+                            L(
+                                $"Downloading {shown}%",
+                                $"Đang tải {shown}%");
+
+                        UpdateStatusText.Text =
+                            L(
+                                $"Downloading {asset.Tag}… {shown}%",
+                                $"Đang tải {asset.Tag}… {shown}%");
+                    });
+
+            using (var downloadTimeout =
+                   new CancellationTokenSource(
+                       TimeSpan.FromMinutes(4)))
+            {
+                await DownloadFileAsync(
+                    asset.Url,
+                    zipPath,
+                    downloadProgress,
+                    downloadTimeout.Token);
+            }
+
+            long zipBytes =
+                new IO.FileInfo(zipPath).Length;
+            if (zipBytes < 1024 * 1024)
+            {
+                throw new InvalidOperationException(
+                    "Downloaded app package is unexpectedly small.");
+            }
+
+            AppUpdateButton.Content =
+                L("Extracting…", "Đang giải nén…");
+            UpdateStatusText.Text =
+                L(
+                    $"Downloaded {zipBytes / 1024d / 1024d:0.0} MB. Extracting…",
+                    $"Đã tải {zipBytes / 1024d / 1024d:0.0} MB. Đang giải nén…");
 
             IO.Directory.CreateDirectory(stagePath);
-            ZipFile.ExtractToDirectory(
-                zipPath,
-                stagePath,
-                true);
+            await Task.Run(
+                () =>
+                    ZipFile.ExtractToDirectory(
+                        zipPath,
+                        stagePath,
+                        true));
 
             string currentExe =
                 Environment.ProcessPath ??
@@ -5122,20 +5235,82 @@ public partial class MainWindow : Window
                     updateRoot,
                     "install-update.ps1");
 
+            string updateLogPath =
+                IO.Path.Combine(
+                    IO.Path.GetTempPath(),
+                    "LumiPad-update.log");
+
             string script =
 $@"$ErrorActionPreference = 'Stop'
 $pidToWait = {Environment.ProcessId}
 $source = '{sourceDir.Replace("'", "''")}'
 $target = '{targetDir.Replace("'", "''")}'
 $exe = '{exeName.Replace("'", "''")}'
+$updateRoot = '{updateRoot.Replace("'", "''")}'
+$log = '{updateLogPath.Replace("'", "''")}'
+
+function Write-UpdateLog([string]$message) {{
+    Add-Content -LiteralPath $log -Value (
+        ('[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] ' + $message)
+    ) -Encoding UTF8
+}}
+
 try {{
-    Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
-    Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
-    Start-Process -FilePath (Join-Path $target $exe)
-}} finally {{
-    Start-Sleep -Milliseconds 500
-    Remove-Item -LiteralPath '{updateRoot.Replace("'", "''")}' -Recurse -Force -ErrorAction SilentlyContinue
+    Write-UpdateLog 'Updater started.'
+
+    # Never wait forever for the old LumiPad process. Give graceful shutdown
+    # up to 10 seconds, then terminate it so locked files cannot stall update.
+    for ($i = 0; $i -lt 40; $i++) {{
+        $old = Get-Process -Id $pidToWait -ErrorAction SilentlyContinue
+        if (-not $old) {{ break }}
+        Start-Sleep -Milliseconds 250
+    }}
+
+    $old = Get-Process -Id $pidToWait -ErrorAction SilentlyContinue
+    if ($old) {{
+        Write-UpdateLog 'Old app did not exit in time; forcing shutdown.'
+        Stop-Process -Id $pidToWait -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 750
+    }}
+
+    $copied = $false
+    for ($attempt = 1; $attempt -le 10; $attempt++) {{
+        try {{
+            Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+            $copied = $true
+            Write-UpdateLog ('Copy completed on attempt ' + $attempt + '.')
+            break
+        }} catch {{
+            Write-UpdateLog ('Copy attempt ' + $attempt + ' failed: ' + $_.Exception.Message)
+            Start-Sleep -Milliseconds 600
+        }}
+    }}
+
+    if (-not $copied) {{
+        throw 'Could not replace LumiPad files after 10 attempts.'
+    }}
+
+    $newExe = Join-Path $target $exe
+    if (-not (Test-Path -LiteralPath $newExe)) {{
+        throw ('Updated executable not found: ' + $newExe)
+    }}
+
+    Start-Process -FilePath $newExe -WorkingDirectory $target
+    Write-UpdateLog 'Updated app launched successfully.'
+
+    Start-Sleep -Milliseconds 1000
+    Remove-Item -LiteralPath $updateRoot -Recurse -Force -ErrorAction SilentlyContinue
+}} catch {{
+    Write-UpdateLog ('UPDATE FAILED: ' + $_.Exception.Message)
+    Add-Type -AssemblyName PresentationFramework
+    [System.Windows.MessageBox]::Show(
+        ('LumiPad update failed.' + [Environment]::NewLine +
+         $_.Exception.Message + [Environment]::NewLine +
+         'Log: ' + $log),
+        'LumiPad Updater',
+        'OK',
+        'Error'
+    ) | Out-Null
 }}";
 
             IO.File.WriteAllText(
@@ -5143,26 +5318,86 @@ try {{
                 script,
                 new UTF8Encoding(false));
 
-            UpdateStatusText.Text =
-                L(
-                    $"Installing {asset.Tag}. LumiPad will reopen automatically…",
-                    $"Đang cài {asset.Tag}. LumiPad sẽ tự mở lại…");
+            string systemDir =
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.System);
+            string powershellPath =
+                IO.Path.Combine(
+                    systemDir,
+                    "WindowsPowerShell",
+                    "v1.0",
+                    "powershell.exe");
 
-            Process.Start(
+            if (!IO.File.Exists(powershellPath))
+                powershellPath = "powershell.exe";
+
+            bool needsElevation =
+                !CanWriteDirectoryForUpdate(
+                    targetDir);
+
+            var startInfo =
                 new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
+                    FileName = powershellPath,
                     Arguments =
-                        $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                        $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"",
                     UseShellExecute = true,
                     WindowStyle =
-                        ProcessWindowStyle.Hidden
-                });
+                        ProcessWindowStyle.Hidden,
+                    WorkingDirectory =
+                        updateRoot
+                };
 
-            // Perform the same graceful device-link cleanup as a normal Exit.
-            // Abrupt process shutdown used to let Windows tear down CDC line
-            // states unpredictably and could leave PIXEL PRO in ROM BOOT.
+            if (needsElevation)
+                startInfo.Verb = "runas";
+
+            AppUpdateButton.Content =
+                L("Installing…", "Đang cài…");
+            UpdateStatusText.Text =
+                needsElevation
+                    ? L(
+                        $"Installing {asset.Tag}. Approve the Windows permission prompt; LumiPad will reopen automatically…",
+                        $"Đang cài {asset.Tag}. Hãy xác nhận quyền Windows; LumiPad sẽ tự mở lại…")
+                    : L(
+                        $"Installing {asset.Tag}. LumiPad will reopen automatically…",
+                        $"Đang cài {asset.Tag}. LumiPad sẽ tự mở lại…");
+
+            Process? updater =
+                Process.Start(
+                    startInfo);
+
+            if (updater is null)
+            {
+                throw new InvalidOperationException(
+                    "Windows could not start the LumiPad updater.");
+            }
+
+            AddLog(
+                "INFO",
+                "UPDATE",
+                $"Updater launched for {asset.Tag}; elevation={needsElevation}; log={updateLogPath}");
+
+            // Keep the normal cleanup path first. If a USB/BLE driver ever
+            // blocks during shutdown, the external updater has a hard 10 s
+            // wait limit and will terminate this process before replacing files.
             ExitApplication();
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatusText.Text =
+                L(
+                    "App update timed out. Check your connection and try again.",
+                    "Cập nhật app quá thời gian. Kiểm tra mạng rồi thử lại.");
+            AddLog(
+                "ERROR",
+                "UPDATE",
+                "App update download timed out.");
+
+            _updateBusy = false;
+            AppUpdateButton.Content =
+                L("Update app", "Cập nhật app");
+            SetDeviceControlsEnabled(
+                _serial.IsConnected);
         }
         catch (Exception ex)
         {
@@ -5176,8 +5411,50 @@ try {{
                 $"App update failed: {ex}");
 
             _updateBusy = false;
+            AppUpdateButton.Content =
+                L("Update app", "Cập nhật app");
             SetDeviceControlsEnabled(
                 _serial.IsConnected);
+        }
+    }
+
+    private static bool CanWriteDirectoryForUpdate(
+        string directory)
+    {
+        string probe =
+            IO.Path.Combine(
+                directory,
+                ".lumipad-update-" +
+                Guid.NewGuid().ToString("N") +
+                ".tmp");
+
+        try
+        {
+            using (IO.FileStream stream =
+                   new(
+                       probe,
+                       IO.FileMode.CreateNew,
+                       IO.FileAccess.Write,
+                       IO.FileShare.None))
+            {
+                stream.WriteByte(0);
+            }
+
+            IO.File.Delete(probe);
+            return true;
+        }
+        catch
+        {
+            try
+            {
+                if (IO.File.Exists(probe))
+                    IO.File.Delete(probe);
+            }
+            catch
+            {
+            }
+
+            return false;
         }
     }
 
