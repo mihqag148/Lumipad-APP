@@ -94,22 +94,23 @@ public partial class MainWindow
             var editorIcon =
                 new System.Windows.Controls.Image
                 {
-                    Width = 30,
-                    Height = 30,
+                    Width = 26,
+                    Height = 26,
                     Stretch = Stretch.Uniform,
                     HorizontalAlignment =
                         System.Windows.HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 0, 0, 3)
+                    VerticalAlignment =
+                        System.Windows.VerticalAlignment.Center
                 };
 
             var combo =
                 new System.Windows.Controls.ComboBox
                 {
                     Tag = capturedSlot,
-                    MinWidth = 78,
+                    MinWidth = 66,
                     FontSize = 9,
                     Height = 22,
-                    Margin = new Thickness(0, 0, 0, 3)
+                    Margin = new Thickness(4, 0, 0, 0)
                 };
 
             combo.SelectionChanged +=
@@ -118,11 +119,14 @@ public partial class MainWindow
             var appButton =
                 new System.Windows.Controls.Button
                 {
-                    Content = "App",
+                    Content = "APP",
                     Tag = capturedSlot,
-                    FontSize = 8,
-                    Padding = new Thickness(3, 1, 3, 1),
-                    Margin = new Thickness(0, 0, 3, 0)
+                    Width = 30,
+                    Height = 20,
+                    FontSize = 7,
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0, 0, 3, 0),
+                    ToolTip = "Choose an app and use its icon"
                 };
 
             appButton.Click +=
@@ -131,11 +135,14 @@ public partial class MainWindow
             var chooseButton =
                 new System.Windows.Controls.Button
                 {
-                    Content = "Icon",
+                    Content = "IMG",
                     Tag = capturedSlot,
-                    FontSize = 8,
-                    Padding = new Thickness(3, 1, 3, 1),
-                    Margin = new Thickness(0, 0, 3, 0)
+                    Width = 30,
+                    Height = 20,
+                    FontSize = 7,
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0, 0, 3, 0),
+                    ToolTip = "Choose a custom icon"
                 };
 
             chooseButton.Click +=
@@ -149,7 +156,8 @@ public partial class MainWindow
                     Width = 20,
                     Height = 20,
                     FontSize = 10,
-                    Padding = new Thickness(0)
+                    Padding = new Thickness(0),
+                    ToolTip = "Clear icon"
                 };
 
             clearButton.Click +=
@@ -161,39 +169,88 @@ public partial class MainWindow
                     Orientation =
                         System.Windows.Controls.Orientation.Horizontal,
                     HorizontalAlignment =
-                        System.Windows.HorizontalAlignment.Center
+                        System.Windows.HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 3, 0, 0)
                 };
 
             buttons.Children.Add(appButton);
             buttons.Children.Add(chooseButton);
             buttons.Children.Add(clearButton);
 
-            var editorStack =
-                new StackPanel();
-
-            editorStack.Children.Add(
+            var slotText =
                 new TextBlock
                 {
                     Text = $"{slot + 1}",
                     FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
                     Foreground =
                         TryFindResource("Muted") as
                         System.Windows.Media.Brush,
                     HorizontalAlignment =
                         System.Windows.HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 0, 0, 1)
+                    VerticalAlignment =
+                        System.Windows.VerticalAlignment.Center
+                };
+
+            var editorGrid =
+                new Grid();
+
+            editorGrid.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
                 });
 
-            editorStack.Children.Add(editorIcon);
-            editorStack.Children.Add(combo);
-            editorStack.Children.Add(buttons);
+            editorGrid.RowDefinitions.Add(
+                new RowDefinition
+                {
+                    Height = GridLength.Auto
+                });
+
+            editorGrid.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = new GridLength(16)
+                });
+
+            editorGrid.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = new GridLength(30)
+                });
+
+            editorGrid.ColumnDefinitions.Add(
+                new ColumnDefinition
+                {
+                    Width = new GridLength(
+                        1,
+                        GridUnitType.Star)
+                });
+
+            Grid.SetRow(slotText, 0);
+            Grid.SetColumn(slotText, 0);
+
+            Grid.SetRow(editorIcon, 0);
+            Grid.SetColumn(editorIcon, 1);
+
+            Grid.SetRow(combo, 0);
+            Grid.SetColumn(combo, 2);
+
+            Grid.SetRow(buttons, 1);
+            Grid.SetColumn(buttons, 0);
+            Grid.SetColumnSpan(buttons, 3);
+
+            editorGrid.Children.Add(slotText);
+            editorGrid.Children.Add(editorIcon);
+            editorGrid.Children.Add(combo);
+            editorGrid.Children.Add(buttons);
 
             PixelMenuSlotsEditor.Children.Add(
                 new Border
                 {
-                    Child = editorStack,
+                    Child = editorGrid,
                     Margin = new Thickness(1),
-                    Padding = new Thickness(2),
+                    Padding = new Thickness(4, 3, 4, 3),
                     CornerRadius = new CornerRadius(7),
                     BorderBrush =
                         TryFindResource("Line") as
