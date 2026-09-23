@@ -171,6 +171,17 @@ public partial class MainWindow : Window
     private bool _rynorProfilePollBusy;
     private int _rynorActiveProfile = -1;
     private string _rynorActiveProfileName = "OFFICE";
+    private readonly string[] _rynorProfileNames =
+    [
+        "OFFICE",
+        "MEDIA",
+        "BAMBU STUDIO",
+        "FUSION 360",
+        "CAPCUT",
+        "DELTA FORCE",
+        "WUWA",
+        "PC MONITOR"
+    ];
     private NowPlayingData? _currentNowPlaying;
     private bool _mediaSeekDragging;
     private bool _syncingMediaUi;
@@ -5764,8 +5775,20 @@ try {{
 
             int index = Math.Clamp(state.Value.Index, 0, 7);
             string name = string.IsNullOrWhiteSpace(state.Value.Name)
-                ? ProfileName(index)
+                ? RynorProfileName(index)
                 : state.Value.Name.Trim();
+
+            bool nameChanged =
+                !string.Equals(
+                    _rynorProfileNames[index],
+                    name,
+                    StringComparison.Ordinal);
+
+            if (nameChanged)
+            {
+                _rynorProfileNames[index] = name;
+                UpdateRynorProfileCatalogUi();
+            }
 
             if (!force &&
                 index == _rynorActiveProfile &&
@@ -5791,7 +5814,7 @@ try {{
         _rynorActiveProfile = index;
         _rynorActiveProfileName =
             string.IsNullOrWhiteSpace(name)
-                ? ProfileName(index)
+                ? RynorProfileName(index)
                 : name.Trim();
 
         _rgbProfileIndex =
@@ -5910,6 +5933,39 @@ try {{
             _ => $"PROFILE {index + 1}"
         };
 
+    private string RynorProfileName(int index)
+    {
+        index = Math.Clamp(index, 0, 7);
+        string name = _rynorProfileNames[index];
+        return string.IsNullOrWhiteSpace(name)
+            ? ProfileName(index)
+            : name;
+    }
+
+    private void UpdateRynorProfileCatalogUi()
+    {
+        if (RgbProfileCombo is not null)
+        {
+            foreach (object entry in RgbProfileCombo.Items)
+            {
+                if (entry is ComboBoxItem item &&
+                    int.TryParse(
+                        item.Tag?.ToString(),
+                        out int index) &&
+                    index is >= 0 and < 8)
+                {
+                    item.Content = RynorProfileName(index);
+                }
+            }
+        }
+
+        if (_uiReady && !IsPixelProActive)
+        {
+            RefreshAutoProfileDefaultSelectors();
+            RefreshAutoProfileMappingsUi();
+        }
+    }
+
     private string PixelProfileName(int index)
     {
         _pixelProfileCatalog.Normalize();
@@ -5968,7 +6024,7 @@ try {{
                 {
                     AutoProfileDefaultCombo.Items.Add(new ComboBoxItem
                     {
-                        Content = ProfileName(i),
+                        Content = RynorProfileName(i),
                         Tag = i.ToString()
                     });
                 }
@@ -6193,7 +6249,7 @@ try {{
         {
             combo.Items.Add(new ComboBoxItem
             {
-                Content = ProfileName(i),
+                Content = RynorProfileName(i),
                 Tag = i.ToString()
             });
         }
@@ -6727,7 +6783,7 @@ try {{
         string profileName =
             pixel
                 ? PixelProfileName(targetProfile)
-                : ProfileName(targetProfile);
+                : RynorProfileName(targetProfile);
 
         AutoProfileStatusText.Text =
             pixel
@@ -7245,7 +7301,7 @@ try {{
             index != _rynorActiveProfile)
         {
             _rynorActiveProfile = index;
-            _rynorActiveProfileName = ProfileName(index);
+            _rynorActiveProfileName = RynorProfileName(index);
             _serial.SetActiveProfile(index);
         }
 
@@ -7253,7 +7309,7 @@ try {{
             index,
             _rynorActiveProfile == index
                 ? _rynorActiveProfileName
-                : ProfileName(index));
+                : RynorProfileName(index));
     }
 
     private void RgbSaveProfile_Click(object sender, RoutedEventArgs e)
@@ -7328,8 +7384,8 @@ try {{
         SaveCurrentRynorRgbProfile(sendToDevice: true);
 
         BottomStatus.Text = L(
-            $"RGB saved to ZMK Profile {index + 1} · {ProfileName(index)}.",
-            $"Đã lưu RGB vào ZMK Profile {index + 1} · {ProfileName(index)}.");
+            $"RGB saved to ZMK Profile {index + 1} · {RynorProfileName(index)}.",
+            $"Đã lưu RGB vào ZMK Profile {index + 1} · {RynorProfileName(index)}.");
     }
 
     private void LedEnabled_Changed(object sender, RoutedEventArgs e)
