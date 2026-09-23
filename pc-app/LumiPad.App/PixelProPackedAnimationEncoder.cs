@@ -38,9 +38,9 @@ internal sealed record PixelProPackedAnimationResult(
 /// useful ideas for a small MCU: delta frames, per-run RLE, and selectable
 /// native/palette color depths. A progressive Smart Delta pass suppresses
 /// visually insignificant temporal noise before reducing resolution/FPS.
-/// New PIXEL PRO media keeps a quality floor of 360×240 and RGB565.
-/// The preferred storage window is about 1800–2000 KiB; simpler GIFs can
-/// naturally encode smaller without padding.
+/// New PIXEL PRO media targets about 1800–2000 KiB. It preserves RGB888/RGB565
+/// and 360×240+ first, then uses adaptive palette / 240×160 fallbacks only when
+/// a busy GIF would otherwise exceed the device storage target.
 /// </summary>
 internal static class PixelProPackedAnimationEncoder
 {
@@ -116,18 +116,14 @@ internal static class PixelProPackedAnimationEncoder
             maxDurationSeconds *
             1000;
 
-        PixelProPackedColorMode[] colorPriority =
+        // Normal path: preserve the existing high-quality policy first.
+        PixelProPackedColorMode[] primaryColorPriority =
         [
             PixelProPackedColorMode.Rgb888,
             PixelProPackedColorMode.Rgb565,
         ];
 
-        // Quality priority is strict and lexicographic:
-        // 1) color depth, 2) FPS, 3) storage resolution.
-        // This means all RGB888 candidates are considered before RGB565.
-        // Within a color mode, a higher FPS is preferred even if that means
-        // using 360×240 instead of 480×320 at that FPS.
-        foreach (PixelProPackedColorMode colorMode in colorPriority)
+        foreach (PixelProPackedColorMode colorMode in primaryColorPriority)
         {
             foreach ((int width, int height, int fps) in BuildQualityLadder())
             {
@@ -163,8 +159,60 @@ internal static class PixelProPackedAnimationEncoder
             }
         }
 
+        // Emergency path for busy/noisy GIFs. Older builds stopped here and
+        // showed "cannot keep this GIF within 2 MiB". PXQ and PIXEL firmware
+        // already support adaptive palettes and 240×160 storage, so use those
+        // capabilities before failing. Playback still scales to 480×320.
+        PixelProPackedColorMode[] fallbackColorPriority =
+        [
+            PixelProPackedColorMode.Palette256,
+            PixelProPackedColorMode.Palette16,
+            PixelProPackedColorMode.Palette4,
+            PixelProPackedColorMode.Palette2,
+        ];
+
+        foreach (PixelProPackedColorMode colorMode in fallbackColorPriority)
+        {
+            foreach ((int width, int height, int fps) in
+                     BuildEmergencyQualityLadder())
+            {
+                // Palette quantization already removes a large amount of
+                // temporal noise. Try lossless delta first, then one mild
+                // Smart Delta pass only if required.
+                foreach (int smartDeltaLevel in new[] { 0, 2 })
+                {
+                    Candidate candidate =
+                        EncodeCandidate(
+                            image,
+                            dimension,
+                            sourceDelays,
+                            sourceFrameCount,
+                            width,
+                            height,
+                            fps,
+                            maxDurationMs,
+                            colorMode,
+                            scaleMode,
+                            smartDeltaLevel,
+                            HardTargetBytes);
+
+                    if (!candidate.ExceededLimit &&
+                        candidate.Bytes is not null &&
+                        candidate.Bytes.Length <=
+                            HardTargetBytes)
+                    {
+                        return ToResult(
+                            candidate,
+                            scaleMode,
+                            new FileInfo(path).Length,
+                            true);
+                    }
+                }
+            }
+        }
+
         throw new InvalidOperationException(
-            "PIXEL PRO could not keep this GIF within 2000 KiB while preserving at least RGB565, 15 FPS, and 360×240. Shorten or simplify the GIF.");
+            "PIXEL PRO could not encode this GIF below 2000 KiB even after the emergency palette/240×160 fallback.");
     }
 
     private static PixelProPackedAnimationResult ToResult(
@@ -215,6 +263,17 @@ internal static class PixelProPackedAnimationEncoder
         return result;
     }
 
+    private static IReadOnlyList<(int Width, int Height, int Fps)>
+        BuildEmergencyQualityLadder() =>
+        new (int Width, int Height, int Fps)[]
+        {
+            // Keep the normal 15 FPS floor. First try 360×240, then 240×160.
+            // Palette4/Palette2 at 240×160 are intentionally the final
+            // guaranteed-size safety net for a 10-second screensaver.
+            (360, 240, 15),
+            (240, 160, 15),
+        };
+
     private static Candidate EncodeCandidate(
         Drawing.Image image,
         FrameDimension dimension,
@@ -241,13 +300,26 @@ internal static class PixelProPackedAnimationEncoder
                 frame =>
                     frame.DelayMs);
 
-        // EncodeBest only emits RGB888/RGB565 now. Palette decoding helpers
-        // remain in this file for backward compatibility with older PXQ data.
         Drawing.Color[] palette =
-            Array.Empty<Drawing.Color>();
+            IsPaletteMode(
+                colorMode)
+                ? BuildAdaptivePalette(
+                    image,
+                    dimension,
+                    plan,
+                    storageWidth,
+                    storageHeight,
+                    scaleMode,
+                    PaletteCount(
+                        colorMode))
+                : Array.Empty<Drawing.Color>();
 
         byte[]? lookup =
-            null;
+            IsPaletteMode(
+                colorMode)
+                ? BuildPaletteLookup(
+                    palette)
+                : null;
 
         using var output =
             new MemoryStream(
