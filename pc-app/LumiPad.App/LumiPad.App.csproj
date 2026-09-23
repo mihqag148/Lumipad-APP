@@ -5,7 +5,7 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- LumiPad v1.23.15 · PIXEL eez-style OS dock -->
+  <!-- LumiPad v1.23.16 · PIXEL Main Menu full-canvas preview -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -20,9 +20,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.23.15</Version>
-    <AssemblyVersion>1.23.15.0</AssemblyVersion>
-    <FileVersion>1.23.15.0</FileVersion>
+    <Version>1.23.16</Version>
+    <AssemblyVersion>1.23.16.0</AssemblyVersion>
+    <FileVersion>1.23.16.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Products\pixel-pro.png" LogicalName="Assets/Products/pixel-pro.png" />

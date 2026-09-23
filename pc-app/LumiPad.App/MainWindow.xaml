@@ -374,8 +374,11 @@
                                     ClipToBounds="True"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center">
-                                <Viewbox Width="420"
-                                         Height="280"
+                                <!-- Keep the complete 480x320 PIXEL canvas inside this
+                                     card. 420x280 was clipped by the Home card at the
+                                     bottom, which hid the entire 50px OS dock. -->
+                                <Viewbox Width="360"
+                                         Height="240"
                                          Stretch="Uniform">
                                     <Grid Width="480"
                                           Height="320"

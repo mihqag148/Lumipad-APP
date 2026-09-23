@@ -264,8 +264,11 @@ public partial class MainWindow
             var previewIcon =
                 new System.Windows.Controls.Image
                 {
-                    Width = 82,
-                    Height = 82,
+                    // Firmware renders menu assets at 96x96 on the native
+                    // 480x320 canvas. With the 360x240 preview this remains
+                    // ~72px on screen, matching the previous apparent size.
+                    Width = 96,
+                    Height = 96,
                     Stretch = Stretch.Uniform,
                     HorizontalAlignment =
                         System.Windows.HorizontalAlignment.Center,
