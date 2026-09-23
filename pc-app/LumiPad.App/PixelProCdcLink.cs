@@ -1214,11 +1214,55 @@ public sealed class PixelProCdcLink : IDeviceLink
                         "OK|SAVPXBEGIN",
                         StringComparison.Ordinal))
                 {
-                    LastScreensaverError =
-                        string.IsNullOrWhiteSpace(
-                            beginAck)
-                            ? "PIXEL PRO did not answer packed animation upload start."
-                            : $"PIXEL PRO rejected packed animation: {beginAck}";
+                    if (beginAck?.StartsWith(
+                            "ERR|NO_SPACE",
+                            StringComparison.Ordinal) == true)
+                    {
+                        long free = 0;
+                        long need =
+                            packedBytes.LongLength;
+
+                        foreach (string part in
+                                 beginAck.Split('|').Skip(2))
+                        {
+                            string[] kv =
+                                part.Split(
+                                    '=',
+                                    2);
+
+                            if (kv.Length == 2 &&
+                                long.TryParse(
+                                    kv[1],
+                                    out long value))
+                            {
+                                if (kv[0] == "FREE")
+                                    free = value;
+
+                                if (kv[0] == "NEED")
+                                    need = value;
+                            }
+                        }
+
+                        LastScreensaverError =
+                            $"PIXEL PRO needs {need / 1024.0:0} KiB but only " +
+                            $"{free / 1024.0:0} KiB is free in media flash.";
+                    }
+                    else if (string.Equals(
+                                 beginAck,
+                                 "ERR|FS_NOT_READY",
+                                 StringComparison.Ordinal))
+                    {
+                        LastScreensaverError =
+                            "PIXEL PRO media storage is not ready.";
+                    }
+                    else
+                    {
+                        LastScreensaverError =
+                            string.IsNullOrWhiteSpace(
+                                beginAck)
+                                ? "PIXEL PRO did not answer packed animation upload start."
+                                : $"PIXEL PRO rejected packed animation: {beginAck}";
+                    }
 
                     return false;
                 }
