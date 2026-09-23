@@ -760,20 +760,50 @@ public partial class MainWindow : Window
         }
     }
 
-    private static System.Windows.Controls.Image CreateProductHubImage(
-        ImageSource source)
+    private static ImageSource LoadProductHubImage(
+        string resourcePath)
     {
-        // The embedded fallback art is intentionally tiny so the executable
-        // stays lightweight. Upscale once at startup with bicubic filtering
-        // plus a mild edge sharpen, then let WPF downsample the HQ result.
-        ImageSource sharpSource =
-            ProductImageSharpener.Create(
-                source);
+        Uri uri =
+            new(
+                resourcePath,
+                UriKind.Relative);
 
+        var streamInfo =
+            System.Windows.Application.GetResourceStream(
+                uri);
+
+        if (streamInfo is null)
+        {
+            throw new InvalidOperationException(
+                $"Embedded product image was not found: {resourcePath}");
+        }
+
+        using IO.Stream stream =
+            streamInfo.Stream;
+
+        var bitmap =
+            new BitmapImage();
+
+        bitmap.BeginInit();
+        bitmap.CacheOption =
+            BitmapCacheOption.OnLoad;
+        bitmap.StreamSource =
+            stream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+
+        return bitmap;
+    }
+
+    private static System.Windows.Controls.Image CreateProductHubImage(
+        string resourcePath)
+    {
         var image =
             new System.Windows.Controls.Image
             {
-                Source = sharpSource,
+                Source =
+                    LoadProductHubImage(
+                        resourcePath),
                 Width = 286,
                 Height = 260,
                 Stretch = Stretch.Uniform,
@@ -785,6 +815,8 @@ public partial class MainWindow : Window
                 UseLayoutRounding = true
             };
 
+        // Source art is now a real 400px HQ render, so WPF only downsamples
+        // it to the card instead of enlarging a 128px fallback.
         RenderOptions.SetBitmapScalingMode(
             image,
             BitmapScalingMode.HighQuality);
@@ -794,14 +826,10 @@ public partial class MainWindow : Window
 
     private UIElement CreateProductPreview(ProductDefinition product)
     {
-        // The two PNG blobs previously embedded in Assets/Products are
-        // truncated/corrupt. Use the already embedded, validated product
-        // artwork providers instead so single-file publishing cannot damage
-        // or partially decode the product-selection previews.
         if (product.Driver == DeviceDriverKind.PixelProCdc)
         {
             return CreateProductHubImage(
-                PixelProProductImage.Create());
+                "Assets/Products/pixel-pro.png");
         }
 
         return CreateRynorOnePreview();
@@ -810,7 +838,7 @@ public partial class MainWindow : Window
     private UIElement CreateRynorOnePreview()
     {
         return CreateProductHubImage(
-            RynorOneProductImage.Create());
+            "Assets/Products/rynor-one.png");
     }
 
     private async void ProductCard_Click(
