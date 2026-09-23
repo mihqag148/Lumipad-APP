@@ -763,12 +763,19 @@ public partial class MainWindow : Window
     private static System.Windows.Controls.Image CreateProductHubImage(
         ImageSource source)
     {
+        // The embedded fallback art is intentionally tiny so the executable
+        // stays lightweight. Upscale once at startup with bicubic filtering
+        // plus a mild edge sharpen, then let WPF downsample the HQ result.
+        ImageSource sharpSource =
+            ProductImageSharpener.Create(
+                source);
+
         var image =
             new System.Windows.Controls.Image
             {
-                Source = source,
-                Width = 276,
-                Height = 252,
+                Source = sharpSource,
+                Width = 286,
+                Height = 260,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment =
                     System.Windows.HorizontalAlignment.Center,
