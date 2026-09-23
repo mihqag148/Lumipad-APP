@@ -1046,6 +1046,15 @@ public partial class MainWindow : Window
                 await UpdatePanelInfoAsync();
                 await CheckForUpdatesAsync(silent: true);
             }
+
+            if (IsPixelProActive &&
+                _screensaverAnimation is null &&
+                _serial is PixelProCdcLink pixelStored &&
+                pixelStored.IsConnected)
+            {
+                await RestorePixelStoredMediaPreviewAsync(
+                    pixelStored);
+            }
         }
         catch (Exception ex)
         {
@@ -9320,6 +9329,164 @@ try {{
         SendScreensaverButton.IsEnabled = false;
     }
 
+    private static BitmapSource? CreateBitmapFromEncodedImage(
+        byte[] bytes)
+    {
+        if (bytes.Length == 0)
+            return null;
+
+        try
+        {
+            using var stream =
+                new IO.MemoryStream(
+                    bytes,
+                    writable: false);
+
+            var bitmap =
+                new BitmapImage();
+
+            bitmap.BeginInit();
+            bitmap.CacheOption =
+                BitmapCacheOption.OnLoad;
+            bitmap.StreamSource =
+                stream;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task RestorePixelStoredMediaPreviewAsync(
+        PixelProCdcLink pixel)
+    {
+        if (!IsPixelProActive ||
+            _screensaverAnimation is not null ||
+            !pixel.IsConnected)
+        {
+            return;
+        }
+
+        try
+        {
+            PixelProStoredMediaInfo? info =
+                await pixel.GetStoredScreensaverInfoAsync();
+
+            if (info is null ||
+                !info.Ready)
+            {
+                return;
+            }
+
+            string displayName =
+                !string.IsNullOrWhiteSpace(
+                    info.FileName)
+                    ? info.FileName
+                    : info.Kind.Equals(
+                        "GIF",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? L(
+                            "Stored PIXEL PRO GIF",
+                            "GIF đang lưu trên PIXEL PRO")
+                        : L(
+                            "Stored PIXEL PRO image",
+                            "Ảnh đang lưu trên PIXEL PRO");
+
+            ScreensaverFileName.Text =
+                displayName;
+
+            string dimensions =
+                info.Width > 0 &&
+                info.Height > 0
+                    ? $"{info.Width}×{info.Height}"
+                    : "--";
+
+            string fps =
+                info.Fps > 0
+                    ? $" · {info.Fps} FPS"
+                    : "";
+
+            string duration =
+                info.DurationMs > 0
+                    ? $" · {info.DurationMs / 1000.0:0.#} s"
+                    : "";
+
+            ScreensaverMediaInfo.Text =
+                L(
+                    $"Stored on PIXEL PRO · {info.Kind} · {info.StoredBytes / 1024.0:0.#} KB · {dimensions}{fps}{duration}",
+                    $"Đang lưu trên PIXEL PRO · {info.Kind} · {info.StoredBytes / 1024.0:0.#} KB · {dimensions}{fps}{duration}");
+
+            byte[]? thumbnail =
+                await pixel.GetStoredScreensaverPreviewAsync(
+                    info);
+
+            BitmapSource? preview =
+                thumbnail is null
+                    ? null
+                    : CreateBitmapFromEncodedImage(
+                        thumbnail);
+
+            ScreensaverPreviewImage.Source =
+                preview;
+
+            ScreensaverPreviewImage.Visibility =
+                preview is null
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+            ScreensaverPreviewHint.Visibility =
+                preview is null
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+            if (PixelHomePreviewHint is not null)
+            {
+                PixelHomePreviewHint.Visibility =
+                    preview is null
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+            }
+
+            ScreensaverSendProgress.Value =
+                100;
+
+            SetScreensaverUploadState(
+                L(
+                    "Stored on PIXEL PRO",
+                    "Đã lưu trên PIXEL PRO"),
+                MediaColor.FromRgb(
+                    48,
+                    209,
+                    88));
+
+            ScreensaverSendStatus.Text =
+                !string.IsNullOrWhiteSpace(
+                    info.FileName)
+                    ? L(
+                        $"PIXEL PRO reports the stored media as {info.FileName}.",
+                        $"PIXEL PRO báo tệp đang lưu là {info.FileName}.")
+                    : L(
+                        "This media was uploaded by an older firmware, so its original filename was not stored. Upload it once with the new version to remember the name and preview.",
+                        "Media này được tải bằng firmware cũ nên chưa lưu tên tệp gốc. Tải lại một lần bằng bản mới để PIXEL PRO nhớ tên và ảnh xem trước.");
+
+            AddLog(
+                "INFO",
+                "PIXEL",
+                $"Restored stored-media identity from device: {displayName}, {info.StoredBytes} bytes");
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "WARN",
+                "PIXEL",
+                $"Stored-media preview restore failed: {ex.Message}");
+        }
+    }
+
     private async Task RestoreScreensaverAfterReconnectAsync()
     {
         if (string.Equals(
@@ -9330,7 +9497,19 @@ try {{
             return;
         }
 
-        if (_screensaverAnimation is null || !_serial.IsConnected)
+        if (!_serial.IsConnected)
+            return;
+
+        if (IsPixelProActive &&
+            _screensaverAnimation is null &&
+            _serial is PixelProCdcLink pixelStored)
+        {
+            await RestorePixelStoredMediaPreviewAsync(
+                pixelStored);
+            return;
+        }
+
+        if (_screensaverAnimation is null)
             return;
 
         try
