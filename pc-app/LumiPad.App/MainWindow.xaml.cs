@@ -152,6 +152,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _memoryUsageTimer = new();
     private readonly DispatcherTimer _diagnosticTimer = new();
     private readonly DispatcherTimer _autoProfileTimer = new();
+    private readonly DispatcherTimer _rynorProfileTimer = new();
     private readonly DispatcherTimer _runningAppsTimer = new();
     private readonly DispatcherTimer _actionEventTimer = new();
     private readonly DispatcherTimer _productStatusTimer = new();
@@ -166,6 +167,10 @@ public partial class MainWindow : Window
     private int _lastAppliedAutoProfile = -1;
     private int _lastAppliedAutoLayer = -1;
     private bool _syncingAutoProfileUi;
+    private bool _syncingRynorProfileUi;
+    private bool _rynorProfilePollBusy;
+    private int _rynorActiveProfile = -1;
+    private string _rynorActiveProfileName = "OFFICE";
     private NowPlayingData? _currentNowPlaying;
     private bool _mediaSeekDragging;
     private bool _syncingMediaUi;
@@ -177,7 +182,7 @@ public partial class MainWindow : Window
     private ActionKeymapWindow? _actionKeymapWindow;
     private int _screensaverPreviewIndex;
     private int _rgbEffect = 3;
-    private bool _rgbAuto;
+    private bool _rgbAuto = true;
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
     private int _rgbIdleDelaySeconds = 60;
@@ -437,6 +442,10 @@ public partial class MainWindow : Window
         _autoProfileTimer.Interval = TimeSpan.FromMilliseconds(700);
         _autoProfileTimer.Tick += (_, _) => PollAutoProfile();
 
+        _rynorProfileTimer.Interval = TimeSpan.FromMilliseconds(450);
+        _rynorProfileTimer.Tick += async (_, _) =>
+            await PollRynorProfileAsync();
+
         _runningAppsTimer.Interval = TimeSpan.FromSeconds(4);
         _runningAppsTimer.Tick += async (_, _) => await RefreshRunningAppsAsync();
 
@@ -527,6 +536,7 @@ public partial class MainWindow : Window
             _updateCheckTimer.Start();
             _ = AutoReconnectLoopAsync(_reconnectCts.Token);
             _autoProfileTimer.Start();
+            _rynorProfileTimer.Start();
             _runningAppsTimer.Start();
             _actionEventTimer.Start();
             _productStatusTimer.Start();
@@ -1881,11 +1891,14 @@ public partial class MainWindow : Window
 
     private static RgbProfileSetting[] CreateDefaultRgbProfiles() =>
     [
-        new() { Effect = 0, R = 255, G = 120, B = 0 },
-        new() { Effect = 1, R = 180, G = 40, B = 255 },
-        new() { Effect = 2, R = 255, G = 90, B = 0 },
-        new() { Effect = 3, R = 0, G = 170, B = 255 },
-        new() { Effect = 3, R = 80, G = 255, B = 100 },
+        new() { Effect = 0, R = 255, G = 120, B = 0 },   // P1 OFFICE
+        new() { Effect = 1, R = 180, G = 40, B = 255 },  // P2 MEDIA
+        new() { Effect = 3, R = 255, G = 95, B = 20 },   // P3 BAMBU STUDIO
+        new() { Effect = 3, R = 0, G = 170, B = 255 },   // P4 FUSION 360
+        new() { Effect = 3, R = 0, G = 220, B = 180 },   // P5 CAPCUT
+        new() { Effect = 4, R = 80, G = 255, B = 100 },  // P6 DELTA FORCE
+        new() { Effect = 3, R = 155, G = 95, B = 255 },  // P7 WUWA
+        new() { Effect = 3, R = 230, G = 230, B = 230 }, // P8 PC MONITOR
     ];
 
     private static PixelRgbColor[] CreateDefaultPixelRgbProfile(
@@ -1984,25 +1997,30 @@ public partial class MainWindow : Window
             _rgbEnabled = settings.RgbEnabled;
             _rgbBrightness = Math.Clamp(settings.RgbBrightness, 5, 50);
             _rgbSpeed = Math.Clamp(settings.RgbSpeed, 10, 100);
-            _rgbAuto = settings.RgbAuto;
+            // RYNOR RGB is profile-bound. ZMK's active layer is the sole
+            // profile source of truth; keep Auto-by-Layer enabled after migration.
+            _rgbAuto = true;
             _rgbEffect = Math.Clamp(settings.RgbEffect, 0, 4);
             _r = settings.R;
             _g = settings.G;
             _b = settings.B;
 
-            if (settings.RgbProfiles is { Length: >= 5 })
+            RgbProfileSetting[] migratedRgb = CreateDefaultRgbProfiles();
+            if (settings.RgbProfiles is { Length: > 0 })
             {
-                _rgbProfiles = settings.RgbProfiles
-                    .Take(5)
-                    .Select(p => new RgbProfileSetting
+                for (int i = 0; i < Math.Min(8, settings.RgbProfiles.Length); i++)
+                {
+                    RgbProfileSetting p = settings.RgbProfiles[i];
+                    migratedRgb[i] = new RgbProfileSetting
                     {
                         Effect = Math.Clamp(p.Effect, 0, 4),
                         R = p.R,
                         G = p.G,
                         B = p.B
-                    })
-                    .ToArray();
+                    };
+                }
             }
+            _rgbProfiles = migratedRgb;
 
             _pixelGifMaxFps =
                 settings.PixelGifMaxFps is 20 or 25 or 30 or 40 or 50 or 60
@@ -2317,6 +2335,7 @@ public partial class MainWindow : Window
         _pixelRgbPreviewTimer.Stop();
         _pixelRgbPreviewClock.Stop();
         _autoProfileTimer.Stop();
+        _rynorProfileTimer.Stop();
         _runningAppsTimer.Stop();
         _actionEventTimer.Stop();
         _productStatusTimer.Stop();
