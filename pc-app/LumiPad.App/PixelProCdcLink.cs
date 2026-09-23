@@ -11,6 +11,17 @@ public readonly record struct PixelRgbColor(byte R, byte G, byte B)
     public string Hex => $"{R:X2}{G:X2}{B:X2}";
 }
 
+public sealed record PixelProStoredMediaInfo(
+    bool Ready,
+    string Kind,
+    string FileName,
+    long StoredBytes,
+    int Width,
+    int Height,
+    int Fps,
+    int DurationMs,
+    int ThumbnailBytes);
+
 /// <summary>
 /// Native ESP32-S2 USB CDC transport for PIXEL PRO.
 /// The HID keyboard remains independent; LumiPad owns only the CDC interface.
