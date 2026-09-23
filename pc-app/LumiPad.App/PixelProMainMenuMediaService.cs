@@ -233,7 +233,7 @@ public static class PixelProMainMenuMediaService
         // inside the same 80x80 rounded-square envelope. We do not add a
         // black frame or force a background; transparent source artwork stays
         // transparent while oversized square icons get softly rounded corners.
-        const int visualSize = 80;
+        const int visualSize = 68;
         const int inset =
             (IconWidth -
              visualSize) /
@@ -260,7 +260,7 @@ public static class PixelProMainMenuMediaService
         using GraphicsPath clip =
             RoundedRectPath(
                 envelope,
-                18);
+                15);
 
         GraphicsState state =
             g.Save();
@@ -550,6 +550,649 @@ public static class PixelProMainMenuMediaService
             top,
             right + 1,
             bottom + 1);
+    }
+
+    private static void FillRoundRectCompat(
+        this Graphics graphics,
+        Brush brush,
+        RectangleF rect,
+        float radius)
+    {
+        using var path =
+            new GraphicsPath();
+
+        float diameter =
+            Math.Max(
+                2f,
+                radius * 2f);
+
+        path.AddArc(
+            rect.Left,
+            rect.Top,
+            diameter,
+            diameter,
+            180,
+            90);
+
+        path.AddArc(
+            rect.Right - diameter,
+            rect.Top,
+            diameter,
+            diameter,
+            270,
+            90);
+
+        path.AddArc(
+            rect.Right - diameter,
+            rect.Bottom - diameter,
+            diameter,
+            diameter,
+            0,
+            90);
+
+        path.AddArc(
+            rect.Left,
+            rect.Bottom - diameter,
+            diameter,
+            diameter,
+            90,
+            90);
+
+        path.CloseFigure();
+
+        graphics.FillPath(
+            brush,
+            path);
+    }
+
+    public static byte[] CreateDockIconPreviewPng(
+        int hostOs,
+        int slot)
+    {
+        hostOs =
+            Math.Clamp(
+                hostOs,
+                1,
+                3);
+
+        slot =
+            Math.Clamp(
+                slot,
+                0,
+                3);
+
+        const int size = 64;
+
+        using var output =
+            new Bitmap(
+                size,
+                size,
+                PixelFormat.Format32bppArgb);
+
+        using Graphics g =
+            Graphics.FromImage(
+                output);
+
+        g.Clear(
+            Color.Transparent);
+
+        ConfigureHighQuality(g);
+
+        static SolidBrush Brush(
+            int r,
+            int gg,
+            int b) =>
+            new(
+                Color.FromArgb(
+                    r,
+                    gg,
+                    b));
+
+        static Pen PenOf(
+            int r,
+            int gg,
+            int b,
+            float width = 2f) =>
+            new(
+                Color.FromArgb(
+                    r,
+                    gg,
+                    b),
+                width);
+
+        void DrawGear(
+            Color fill,
+            Color stroke)
+        {
+            const int cx = 32;
+            const int cy = 32;
+
+            using var tooth =
+                new SolidBrush(fill);
+
+            for (int i = 0; i < 8; i++)
+            {
+                GraphicsState state =
+                    g.Save();
+
+                g.TranslateTransform(
+                    cx,
+                    cy);
+
+                g.RotateTransform(
+                    i * 45f);
+
+                g.FillRoundRectCompat(
+                    tooth,
+                    new RectangleF(
+                        -4,
+                        -27,
+                        8,
+                        12),
+                    3);
+
+                g.Restore(
+                    state);
+            }
+
+            using var body =
+                new SolidBrush(fill);
+
+            g.FillEllipse(
+                body,
+                13,
+                13,
+                38,
+                38);
+
+            using var hole =
+                new SolidBrush(
+                    Color.Transparent);
+
+            using var centerBrush =
+                new SolidBrush(
+                    Color.FromArgb(
+                        22,
+                        24,
+                        29));
+
+            g.FillEllipse(
+                centerBrush,
+                24,
+                24,
+                16,
+                16);
+
+            using var outline =
+                new Pen(
+                    stroke,
+                    2f);
+
+            g.DrawEllipse(
+                outline,
+                13,
+                13,
+                38,
+                38);
+        }
+
+        if (hostOs == 1)
+        {
+            if (slot == 0)
+            {
+                using var blue =
+                    Brush(
+                        0,
+                        164,
+                        239);
+
+                g.FillRectangle(
+                    blue,
+                    10,
+                    10,
+                    19,
+                    19);
+
+                g.FillRectangle(
+                    blue,
+                    35,
+                    10,
+                    19,
+                    19);
+
+                g.FillRectangle(
+                    blue,
+                    10,
+                    35,
+                    19,
+                    19);
+
+                g.FillRectangle(
+                    blue,
+                    35,
+                    35,
+                    19,
+                    19);
+            }
+            else if (slot == 1)
+            {
+                using var tab =
+                    Brush(
+                        255,
+                        194,
+                        45);
+
+                using var body =
+                    Brush(
+                        255,
+                        209,
+                        75);
+
+                using var accent =
+                    Brush(
+                        70,
+                        145,
+                        255);
+
+                g.FillRoundRectCompat(
+                    tab,
+                    new RectangleF(
+                        8,
+                        15,
+                        25,
+                        14),
+                    5);
+
+                g.FillRoundRectCompat(
+                    body,
+                    new RectangleF(
+                        7,
+                        22,
+                        50,
+                        31),
+                    7);
+
+                g.FillRoundRectCompat(
+                    accent,
+                    new RectangleF(
+                        31,
+                        19,
+                        21,
+                        7),
+                    3);
+            }
+            else if (slot == 2)
+            {
+                using var blue =
+                    Brush(
+                        0,
+                        120,
+                        212);
+
+                using var teal =
+                    Brush(
+                        18,
+                        190,
+                        175);
+
+                using var dark =
+                    Brush(
+                        0,
+                        70,
+                        135);
+
+                g.FillEllipse(
+                    blue,
+                    7,
+                    7,
+                    50,
+                    50);
+
+                g.FillPie(
+                    teal,
+                    7,
+                    7,
+                    50,
+                    50,
+                    165,
+                    205);
+
+                g.FillEllipse(
+                    dark,
+                    20,
+                    20,
+                    29,
+                    24);
+
+                g.FillPie(
+                    teal,
+                    13,
+                    18,
+                    38,
+                    31,
+                    205,
+                    130);
+            }
+            else
+            {
+                DrawGear(
+                    Color.FromArgb(
+                        128,
+                        137,
+                        151),
+                    Color.FromArgb(
+                        220,
+                        225,
+                        232));
+            }
+        }
+        else if (hostOs == 2)
+        {
+            if (slot == 0)
+            {
+                Color[] colors =
+                [
+                    Color.FromArgb(86, 149, 255),
+                    Color.FromArgb(142, 83, 255),
+                    Color.FromArgb(255, 91, 109),
+                    Color.FromArgb(43, 199, 140),
+                    Color.FromArgb(255, 181, 49),
+                    Color.FromArgb(85, 205, 255),
+                    Color.FromArgb(255, 105, 180),
+                    Color.FromArgb(125, 125, 235),
+                    Color.FromArgb(96, 220, 120)
+                ];
+
+                for (int row = 0; row < 3; row++)
+                {
+                    for (int col = 0; col < 3; col++)
+                    {
+                        using var brush =
+                            new SolidBrush(
+                                colors[row * 3 + col]);
+
+                        g.FillRoundRectCompat(
+                            brush,
+                            new RectangleF(
+                                10 + col * 16,
+                                10 + row * 16,
+                                12,
+                                12),
+                            4);
+                    }
+                }
+            }
+            else if (slot == 1)
+            {
+                using var light =
+                    Brush(
+                        95,
+                        186,
+                        255);
+
+                using var deep =
+                    Brush(
+                        47,
+                        138,
+                        235);
+
+                using var ink =
+                    Brush(
+                        20,
+                        65,
+                        105);
+
+                g.FillRoundRectCompat(
+                    light,
+                    new RectangleF(
+                        7,
+                        7,
+                        50,
+                        50),
+                    11);
+
+                g.FillRectangle(
+                    deep,
+                    32,
+                    7,
+                    25,
+                    50);
+
+                using var blackPen =
+                    PenOf(
+                        15,
+                        60,
+                        100,
+                        2f);
+
+                g.DrawLine(
+                    blackPen,
+                    32,
+                    11,
+                    32,
+                    50);
+
+                g.FillEllipse(
+                    ink,
+                    20,
+                    25,
+                    3,
+                    5);
+
+                g.FillEllipse(
+                    ink,
+                    41,
+                    25,
+                    3,
+                    5);
+
+                g.DrawArc(
+                    blackPen,
+                    20,
+                    29,
+                    24,
+                    15,
+                    10,
+                    160);
+            }
+            else if (slot == 2)
+            {
+                using var blue =
+                    Brush(
+                        52,
+                        161,
+                        255);
+
+                using var white =
+                    Brush(
+                        245,
+                        250,
+                        255);
+
+                using var red =
+                    Brush(
+                        242,
+                        74,
+                        72);
+
+                g.FillEllipse(
+                    blue,
+                    7,
+                    7,
+                    50,
+                    50);
+
+                g.FillEllipse(
+                    white,
+                    14,
+                    14,
+                    36,
+                    36);
+
+                g.FillEllipse(
+                    blue,
+                    17,
+                    17,
+                    30,
+                    30);
+
+                PointF[] needle =
+                [
+                    new(32, 13),
+                    new(36, 33),
+                    new(28, 33)
+                ];
+
+                g.FillPolygon(
+                    red,
+                    needle);
+
+                using var center =
+                    Brush(
+                        250,
+                        250,
+                        250);
+
+                g.FillEllipse(
+                    center,
+                    29,
+                    29,
+                    6,
+                    6);
+            }
+            else
+            {
+                DrawGear(
+                    Color.FromArgb(
+                        160,
+                        164,
+                        172),
+                    Color.FromArgb(
+                        236,
+                        238,
+                        242));
+            }
+        }
+        else
+        {
+            if (slot == 0)
+            {
+                using var white =
+                    Brush(
+                        246,
+                        246,
+                        246);
+
+                for (int row = 0; row < 3; row++)
+                {
+                    for (int col = 0; col < 3; col++)
+                    {
+                        g.FillEllipse(
+                            white,
+                            13 + col * 15,
+                            13 + row * 15,
+                            7,
+                            7);
+                    }
+                }
+            }
+            else if (slot == 1)
+            {
+                using var tab =
+                    Brush(
+                        92,
+                        155,
+                        255);
+
+                using var body =
+                    Brush(
+                        68,
+                        129,
+                        224);
+
+                g.FillRoundRectCompat(
+                    tab,
+                    new RectangleF(
+                        8,
+                        15,
+                        26,
+                        14),
+                    5);
+
+                g.FillRoundRectCompat(
+                    body,
+                    new RectangleF(
+                        7,
+                        22,
+                        50,
+                        31),
+                    7);
+            }
+            else if (slot == 2)
+            {
+                using var purple =
+                    Brush(
+                        96,
+                        61,
+                        165);
+
+                using var orange =
+                    Brush(
+                        255,
+                        122,
+                        35);
+
+                using var blue =
+                    Brush(
+                        54,
+                        121,
+                        205);
+
+                g.FillEllipse(
+                    purple,
+                    7,
+                    7,
+                    50,
+                    50);
+
+                g.FillPie(
+                    orange,
+                    7,
+                    7,
+                    50,
+                    50,
+                    210,
+                    235);
+
+                g.FillEllipse(
+                    blue,
+                    20,
+                    20,
+                    25,
+                    25);
+            }
+            else
+            {
+                DrawGear(
+                    Color.FromArgb(
+                        132,
+                        139,
+                        149),
+                    Color.FromArgb(
+                        224,
+                        227,
+                        232));
+            }
+        }
+
+        using var stream =
+            new MemoryStream();
+
+        output.Save(
+            stream,
+            ImageFormat.Png);
+
+        return stream.ToArray();
     }
 
     public static void ValidateStaticImage(string path)
