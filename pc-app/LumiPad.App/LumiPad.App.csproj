@@ -5,7 +5,7 @@
   <!-- synchronized updater release build -->
   <!-- updater IO hotfix release sync -->
   <!-- updater IO final release sync -->
-  <!-- LumiPad v1.23.10 · Correct PIXEL PRO Product Hub artwork -->
+  <!-- LumiPad v1.23.11 · PIXEL packed GIF upload reliability -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
