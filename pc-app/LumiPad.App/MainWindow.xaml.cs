@@ -198,7 +198,6 @@ public partial class MainWindow : Window
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
     private int _rgbIdleDelaySeconds = 60;
-    private int _deepSleepDelaySeconds = 0;
     private int _rgbBrightness = 25;
     private int _rgbSpeed = 50;
     private bool _rgbEnabled = true;
@@ -2012,7 +2011,6 @@ public partial class MainWindow : Window
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public int RgbIdleDelaySeconds { get; set; } = 60;
-        public int DeepSleepDelaySeconds { get; set; } = 0;
         public string? ScreensaverMediaPath { get; set; }
         public string? PixelScreensaverMediaPath { get; set; }
         public ScreensaverScaleMode ScreensaverScaleMode { get; set; } = ScreensaverScaleMode.Fill;
@@ -2119,7 +2117,6 @@ public partial class MainWindow : Window
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
-            _deepSleepDelaySeconds = Math.Max(0, settings.DeepSleepDelaySeconds);
             _rynorScreensaverMediaPath =
                 settings.ScreensaverMediaPath;
 
@@ -2206,7 +2203,6 @@ public partial class MainWindow : Window
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
-                DeepSleepDelaySeconds = _deepSleepDelaySeconds,
                 ScreensaverMediaPath = _rynorScreensaverMediaPath,
                 PixelScreensaverMediaPath = _pixelScreensaverMediaPath,
                 // Preserve RYNOR's scale even while PIXEL PRO is active.
@@ -2243,7 +2239,6 @@ public partial class MainWindow : Window
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(RgbIdleDelayCombo, _rgbIdleDelaySeconds.ToString());
-        SelectComboTag(DeepSleepDelayCombo, _deepSleepDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
         if (PixelGifFpsCombo is not null)
             SelectComboTag(PixelGifFpsCombo, _pixelGifMaxFps.ToString());
@@ -3635,8 +3630,6 @@ public partial class MainWindow : Window
         _serial.SetSleepTimeout(_sleepDelaySeconds);
         _serial.SetRgbIdleTimeout(_rgbIdleDelaySeconds);
 
-        if (_activeProduct.Driver != DeviceDriverKind.PixelProCdc)
-            _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
     }
 
     private void ScreensaverSourceCombo_SelectionChanged(
@@ -3753,32 +3746,6 @@ public partial class MainWindow : Window
                 _rgbIdleDelaySeconds == 0
                     ? "Tắt LED khi rảnh: Không bao giờ"
                     : $"Tắt LED khi rảnh: {_rgbIdleDelaySeconds} giây");
-        }
-    }
-
-    private void DeepSleepDelayCombo_SelectionChanged(
-        object sender,
-        SelectionChangedEventArgs e)
-    {
-        if (_activeProduct.Driver == DeviceDriverKind.PixelProCdc)
-            return;
-
-        _deepSleepDelaySeconds =
-            ComboSeconds(sender, _deepSleepDelaySeconds);
-
-        if (_uiReady)
-            SaveAppSettings();
-
-        if (_uiReady && _serial.IsConnected)
-        {
-            _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
-            BottomStatus.Text = L(
-                _deepSleepDelaySeconds == 0
-                    ? "Deep sleep: Never"
-                    : $"Deep sleep: {_deepSleepDelaySeconds}s",
-                _deepSleepDelaySeconds == 0
-                    ? "Ngủ sâu: Không bao giờ"
-                    : $"Ngủ sâu: {_deepSleepDelaySeconds} giây");
         }
     }
 
@@ -12715,10 +12682,6 @@ try {{
 
         if (ConnectBluetoothButton is not null)
             ConnectBluetoothButton.Visibility =
-                pixel ? Visibility.Collapsed : Visibility.Visible;
-
-        if (DeepSleepSettingsPanel is not null)
-            DeepSleepSettingsPanel.Visibility =
                 pixel ? Visibility.Collapsed : Visibility.Visible;
 
         if (RynorHardwareInfoPanel is not null)
