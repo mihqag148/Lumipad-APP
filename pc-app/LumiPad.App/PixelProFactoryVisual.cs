@@ -6,25 +6,15 @@ using DrawingImaging = System.Drawing.Imaging;
 namespace LumiPad.App;
 
 /// <summary>
-/// App-side preview for the firmware-resident PIXEL PRO factory visuals.
-/// The geometry and palette mirror firmware 1.8.9 so clearing user media in
-/// LumiPad immediately reveals the same default wallpaper/screensaver.
+/// PIXEL PRO-only app preview for the firmware-resident factory visuals.
+/// This renderer follows the aqua / cyan / teal reference used by firmware
+/// 1.8.10 and intentionally does not affect any RYNOR ONE media path.
 /// </summary>
 public static class PixelProFactoryVisual
 {
     public const int Width = 480;
     public const int Height = 320;
-    public const int Fps = 12;
-
-    private static readonly Drawing.Color[] Palette =
-    [
-        Drawing.Color.FromArgb(176, 220, 255),
-        Drawing.Color.FromArgb(77, 177, 255),
-        Drawing.Color.FromArgb(29, 132, 246),
-        Drawing.Color.FromArgb(66, 89, 238),
-        Drawing.Color.FromArgb(123, 76, 238),
-        Drawing.Color.FromArgb(226, 94, 205)
-    ];
+    public const int Fps = 20;
 
     public static byte[] CreatePng(
         long elapsedMs = 0,
@@ -34,7 +24,7 @@ public static class PixelProFactoryVisual
             new Drawing.Bitmap(
                 Width,
                 Height,
-                DrawingImaging.PixelFormat.Format32bppArgb);
+                DrawingImaging.PixelFormat.Format32bppPArgb);
 
         using Drawing.Graphics graphics =
             Drawing.Graphics.FromImage(bitmap);
@@ -43,138 +33,78 @@ public static class PixelProFactoryVisual
             Drawing2D.SmoothingMode.AntiAlias;
         graphics.PixelOffsetMode =
             Drawing2D.PixelOffsetMode.HighQuality;
+        graphics.CompositingQuality =
+            Drawing2D.CompositingQuality.HighQuality;
+
+        DrawSky(
+            graphics,
+            elapsedMs,
+            animated);
 
         float phase =
             animated
-                ? elapsedMs * 0.00115f
-                : 0.35f;
+                ? elapsedMs * 0.00105f
+                : 0.62f;
 
-        const int bandCount = 32;
-
-        for (int band = 0; band < bandCount; band++)
-        {
-            int y0 =
-                band * Height /
-                bandCount;
-            int y1 =
-                (band + 1) * Height /
-                bandCount;
-
-            float position =
-                band /
-                (float)(bandCount - 1) *
-                (Palette.Length - 1);
-
-            int index =
-                Math.Min(
-                    (int)position,
-                    Palette.Length - 2);
-
-            float local =
-                position -
-                index;
-
-            Drawing.Color color =
-                Lerp(
-                    Palette[index],
-                    Palette[index + 1],
-                    local);
-
-            using var brush =
-                new Drawing.SolidBrush(color);
-
-            graphics.FillRectangle(
-                brush,
-                0,
-                y0,
-                Width,
-                Math.Max(
-                    1,
-                    y1 - y0));
-        }
-
-        DrawOrb(
+        // Back atmospheric sheet.
+        DrawRibbon(
             graphics,
-            34 +
-            (int)(MathF.Sin(
-                phase * 0.45f) * 7.0f),
-            91,
-            70,
-            Drawing.Color.FromArgb(255, 155, 126),
-            Drawing.Color.FromArgb(255, 188, 154),
-            Drawing.Color.FromArgb(255, 226, 207));
+            118,
+            30,
+            72,
+            phase * 0.42f,
+            0.78f,
+            Drawing.Color.FromArgb(178, 73, 190, 218),
+            Drawing.Color.FromArgb(218, 186, 242, 237),
+            Drawing.Color.FromArgb(170, 224, 255, 250));
 
-        DrawWave(
+        // Deep teal hill on the left/middle.
+        DrawRibbon(
             graphics,
-            112,
-            26,
-            52,
-            phase * 0.75f,
-            0.015f,
-            Drawing.Color.FromArgb(255, 128, 178),
-            Drawing.Color.FromArgb(255, 209, 229));
+            160,
+            37,
+            92,
+            phase * -0.55f + 1.55f,
+            0.92f,
+            Drawing.Color.FromArgb(246, 0, 60, 104),
+            Drawing.Color.FromArgb(238, 20, 204, 177),
+            Drawing.Color.FromArgb(185, 164, 255, 236));
 
-        DrawWave(
+        // Bright cyan middle layer.
+        DrawRibbon(
             graphics,
-            165,
-            32,
-            54,
-            phase * 0.95f + 1.35f,
-            0.018f,
-            Drawing.Color.FromArgb(179, 73, 238),
-            Drawing.Color.FromArgb(230, 190, 255));
+            214,
+            28,
+            72,
+            phase * 0.66f + 2.18f,
+            1.08f,
+            Drawing.Color.FromArgb(238, 0, 93, 171),
+            Drawing.Color.FromArgb(232, 41, 196, 220),
+            Drawing.Color.FromArgb(180, 196, 255, 251));
 
-        DrawWave(
+        // Thin luminous turquoise ribbon crossing the lower-middle region.
+        DrawRibbon(
             graphics,
-            218,
-            29,
-            58,
-            phase * 1.10f + 2.25f,
-            0.014f,
-            Drawing.Color.FromArgb(36, 104, 244),
-            Drawing.Color.FromArgb(151, 203, 255));
-
-        DrawWave(
-            graphics,
-            266,
+            244,
             20,
-            50,
-            phase * 0.85f + 0.75f,
-            0.021f,
-            Drawing.Color.FromArgb(54, 205, 238),
-            Drawing.Color.FromArgb(195, 246, 255));
+            44,
+            phase * 0.34f + 0.82f,
+            1.22f,
+            Drawing.Color.FromArgb(178, 0, 117, 159),
+            Drawing.Color.FromArgb(206, 50, 225, 205),
+            Drawing.Color.FromArgb(190, 218, 255, 250));
 
-        int orbX =
-            385 +
-            (int)(MathF.Sin(
-                phase * 0.55f) * 14.0f);
-
-        int orbY =
-            72 +
-            (int)(MathF.Cos(
-                phase * 0.48f) * 10.0f);
-
-        DrawOrb(
+        // Foreground navy sheet gives the reference its deep lower edge.
+        DrawRibbon(
             graphics,
-            orbX,
-            orbY,
-            42,
-            Drawing.Color.FromArgb(77, 140, 250),
-            Drawing.Color.FromArgb(117, 193, 255),
-            Drawing.Color.FromArgb(219, 243, 255));
-
-        DrawOrb(
-            graphics,
-            320 +
-            (int)(MathF.Cos(
-                phase * 0.68f) * 10.0f),
-            252 +
-            (int)(MathF.Sin(
-                phase * 0.60f) * 7.0f),
-            24,
-            Drawing.Color.FromArgb(112, 105, 245),
-            Drawing.Color.FromArgb(137, 205, 255),
-            Drawing.Color.FromArgb(232, 246, 255));
+            276,
+            30,
+            96,
+            phase * -0.48f + 0.28f,
+            0.82f,
+            Drawing.Color.FromArgb(255, 0, 50, 111),
+            Drawing.Color.FromArgb(255, 0, 27, 70),
+            Drawing.Color.FromArgb(168, 119, 238, 232));
 
         using var output =
             new MemoryStream();
@@ -186,183 +116,275 @@ public static class PixelProFactoryVisual
         return output.ToArray();
     }
 
-    private static Drawing.Color Lerp(
-        Drawing.Color a,
-        Drawing.Color b,
-        float amount)
+    private static void DrawSky(
+        Drawing.Graphics graphics,
+        long elapsedMs,
+        bool animated)
     {
-        amount =
-            Math.Clamp(
-                amount,
-                0.0f,
-                1.0f);
+        using var background =
+            new Drawing2D.LinearGradientBrush(
+                new Drawing.Rectangle(
+                    0,
+                    0,
+                    Width,
+                    Height),
+                Drawing.Color.FromArgb(
+                    8,
+                    94,
+                    160),
+                Drawing.Color.FromArgb(
+                    123,
+                    218,
+                    234),
+                32.0f);
 
-        static int Channel(
-            int from,
-            int to,
-            float t) =>
-            Math.Clamp(
-                (int)Math.Round(
-                    from +
-                    (to - from) *
-                    t),
-                0,
-                255);
+        graphics.FillRectangle(
+            background,
+            0,
+            0,
+            Width,
+            Height);
 
-        return Drawing.Color.FromArgb(
-            Channel(
-                a.R,
-                b.R,
-                amount),
-            Channel(
-                a.G,
-                b.G,
-                amount),
-            Channel(
-                a.B,
-                b.B,
-                amount));
+        float drift =
+            animated
+                ? MathF.Sin(
+                    elapsedMs *
+                    0.00058f) *
+                  26.0f
+                : 0.0f;
+
+        using var glowPath =
+            new Drawing2D.GraphicsPath();
+
+        glowPath.AddEllipse(
+            238 + drift,
+            -72,
+            330,
+            255);
+
+        using var glow =
+            new Drawing2D.PathGradientBrush(
+                glowPath)
+            {
+                CenterPoint =
+                    new Drawing.PointF(
+                        390 + drift,
+                        70),
+                CenterColor =
+                    Drawing.Color.FromArgb(
+                        210,
+                        247,
+                        255,
+                        251),
+                SurroundColors =
+                [
+                    Drawing.Color.FromArgb(
+                        0,
+                        247,
+                        255,
+                        251)
+                ]
+            };
+
+        graphics.FillPath(
+            glow,
+            glowPath);
+
+        using var haze =
+            new Drawing2D.LinearGradientBrush(
+                new Drawing.Rectangle(
+                    0,
+                    28,
+                    Width,
+                    160),
+                Drawing.Color.FromArgb(
+                    18,
+                    135,
+                    220,
+                    235),
+                Drawing.Color.FromArgb(
+                    92,
+                    232,
+                    252,
+                    248),
+                Drawing2D.LinearGradientMode.Vertical);
+
+        graphics.FillRectangle(
+            haze,
+            0,
+            28,
+            Width,
+            160);
     }
 
-    private static void DrawWave(
+    private static void DrawRibbon(
         Drawing.Graphics graphics,
-        int baseY,
-        int amplitude,
-        int thickness,
+        float baseY,
+        float amplitude,
+        float thickness,
         float phase,
         float frequency,
-        Drawing.Color color,
-        Drawing.Color highlight)
+        Drawing.Color topColor,
+        Drawing.Color bottomColor,
+        Drawing.Color edgeColor)
     {
-        const int step = 30;
+        Drawing.PointF[] top =
+            CreateWavePoints(
+                baseY,
+                amplitude,
+                phase,
+                frequency);
 
-        using var brush =
-            new Drawing.SolidBrush(color);
+        Drawing.PointF[] bottom =
+            CreateWavePoints(
+                baseY +
+                thickness,
+                amplitude *
+                0.72f,
+                phase +
+                0.72f,
+                frequency *
+                0.93f);
 
-        using var pen =
+        Array.Reverse(
+            bottom);
+
+        using var path =
+            new Drawing2D.GraphicsPath();
+
+        path.AddCurve(
+            top,
+            0.28f);
+
+        path.AddLine(
+            top[^1],
+            bottom[0]);
+
+        path.AddCurve(
+            bottom,
+            0.28f);
+
+        path.CloseFigure();
+
+        float minY =
+            Math.Max(
+                -20.0f,
+                baseY -
+                amplitude -
+                12.0f);
+
+        float maxY =
+            Math.Min(
+                Height +
+                80.0f,
+                baseY +
+                thickness +
+                amplitude +
+                24.0f);
+
+        using var fill =
+            new Drawing2D.LinearGradientBrush(
+                new Drawing.RectangleF(
+                    0,
+                    minY,
+                    Width,
+                    Math.Max(
+                        1.0f,
+                        maxY -
+                        minY)),
+                topColor,
+                bottomColor,
+                Drawing2D.LinearGradientMode.Vertical);
+
+        graphics.FillPath(
+            fill,
+            path);
+
+        using var edge =
             new Drawing.Pen(
-                highlight,
-                1.0f);
+                edgeColor,
+                1.15f);
 
-        for (int x = 0;
-             x < Width - 1;
-             x += step)
-        {
-            int x1 =
-                Math.Min(
-                    x + step,
-                    Width - 1);
+        using var edgePath =
+            new Drawing2D.GraphicsPath();
 
-            int y0 =
-                baseY +
-                (int)(MathF.Sin(
-                    x * frequency +
-                    phase) *
-                    amplitude);
+        edgePath.AddCurve(
+            top,
+            0.28f);
 
-            int y1 =
-                baseY +
-                (int)(MathF.Sin(
-                    x1 * frequency +
-                    phase) *
-                    amplitude);
+        graphics.DrawPath(
+            edge,
+            edgePath);
 
-            Drawing.Point[] polygon =
-            [
-                new(x, y0),
-                new(x1, y1),
-                new(x1, y1 + thickness),
-                new(x, y0 + thickness)
-            ];
+        // A broad translucent shine just below the leading edge keeps the
+        // preview close to the soft glassy highlight in the source image.
+        using var shine =
+            new Drawing.Pen(
+                Drawing.Color.FromArgb(
+                    34,
+                    255,
+                    255,
+                    255),
+                6.0f);
 
-            graphics.FillPolygon(
-                brush,
-                polygon);
-
-            graphics.DrawLine(
-                pen,
-                x,
-                y0,
-                x1,
-                y1);
-        }
+        graphics.DrawPath(
+            shine,
+            edgePath);
     }
 
-    private static void DrawOrb(
-        Drawing.Graphics graphics,
-        int cx,
-        int cy,
-        int radius,
-        Drawing.Color outer,
-        Drawing.Color inner,
-        Drawing.Color shine)
+    private static Drawing.PointF[] CreateWavePoints(
+        float baseY,
+        float amplitude,
+        float phase,
+        float frequency)
     {
-        using var outerBrush =
-            new Drawing.SolidBrush(outer);
+        const int step = 48;
+        int count =
+            Width /
+            step +
+            4;
 
-        using var innerBrush =
-            new Drawing.SolidBrush(inner);
+        var points =
+            new Drawing.PointF[count];
 
-        using var shineBrush =
-            new Drawing.SolidBrush(shine);
+        for (int i = 0;
+             i < count;
+             i++)
+        {
+            float x =
+                -step +
+                i *
+                step;
 
-        using var shinePen =
-            new Drawing.Pen(
-                shine,
-                1.0f);
+            float normalized =
+                x /
+                Width *
+                MathF.PI *
+                2.0f;
 
-        graphics.FillEllipse(
-            outerBrush,
-            cx - radius,
-            cy - radius,
-            radius * 2,
-            radius * 2);
+            float y =
+                baseY +
+                MathF.Sin(
+                    normalized *
+                    frequency +
+                    phase) *
+                amplitude +
+                MathF.Sin(
+                    normalized *
+                    frequency *
+                    1.91f -
+                    phase *
+                    0.47f +
+                    1.2f) *
+                amplitude *
+                0.22f;
 
-        int innerRadius =
-            Math.Max(
-                2,
-                radius * 3 / 4);
+            points[i] =
+                new Drawing.PointF(
+                    x,
+                    y);
+        }
 
-        int innerCx =
-            cx -
-            radius / 6;
-
-        int innerCy =
-            cy -
-            radius / 6;
-
-        graphics.FillEllipse(
-            innerBrush,
-            innerCx - innerRadius,
-            innerCy - innerRadius,
-            innerRadius * 2,
-            innerRadius * 2);
-
-        graphics.DrawEllipse(
-            shinePen,
-            cx - radius,
-            cy - radius,
-            radius * 2,
-            radius * 2);
-
-        int shineRadius =
-            Math.Max(
-                2,
-                radius / 8);
-
-        int shineCx =
-            cx -
-            radius / 3;
-
-        int shineCy =
-            cy -
-            radius / 3;
-
-        graphics.FillEllipse(
-            shineBrush,
-            shineCx - shineRadius,
-            shineCy - shineRadius,
-            shineRadius * 2,
-            shineRadius * 2);
+        return points;
     }
 }
