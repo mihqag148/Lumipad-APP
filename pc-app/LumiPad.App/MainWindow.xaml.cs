@@ -136,6 +136,7 @@ public partial class MainWindow : Window
     private string? _screensaverMediaPath;
     private string? _rynorScreensaverMediaPath;
     private string? _pixelScreensaverMediaPath;
+    private bool _pixelFactoryScreensaverPreview;
 
     private readonly PixelProMainMenuConfig _pixelMainMenu =
         PixelProMainMenuStore.Load();
@@ -366,6 +367,17 @@ public partial class MainWindow : Window
                 ScreensaverMediaService.MinFrameIntervalMs);
         _screensaverPreviewTimer.Tick += (_, _) =>
         {
+            if (_pixelFactoryScreensaverPreview &&
+                IsPixelProActive)
+            {
+                ScreensaverPreviewImage.Source =
+                    CreateBitmapFromEncodedImage(
+                        PixelProFactoryVisual.CreatePng(
+                            _screensaverPreviewClock.ElapsedMilliseconds,
+                            animated: true));
+                return;
+            }
+
             if (_screensaverAnimation is null ||
                 _screensaverAnimation.PixelFormat != ScreensaverPixelFormat.Rgb332 ||
                 _screensaverAnimation.Frames.Count < 2)
@@ -8893,7 +8905,12 @@ try {{
             return;
 
         if (IsPixelProActive)
+        {
             SetPixelHomePreviewMode(false);
+            _pixelFactoryScreensaverPreview = false;
+            _screensaverPreviewTimer.Stop();
+            _screensaverPreviewClock.Reset();
+        }
 
         _screensaverMediaPath = dialog.FileName;
 
@@ -9001,7 +9018,10 @@ try {{
             return;
 
         if (IsPixelProActive)
+        {
             SetPixelHomePreviewMode(false);
+            _pixelFactoryScreensaverPreview = false;
+        }
 
         SendScreensaverButton.IsEnabled = false;
         ScreensaverSendProgress.Value = 0;
@@ -9269,11 +9289,16 @@ try {{
             pcMonitor
                 ? L("Showing PC Monitor screensaver now.",
                     "Đang bật PC Monitor làm bảo vệ màn hình.")
-                : L("Showing the uploaded GIF / image now.",
-                    "Đang hiển thị GIF / ảnh đã tải lên ngay.");
+                : _pixelFactoryScreensaverPreview &&
+                  IsPixelProActive
+                    ? L(
+                        "Showing the PIXEL PRO factory screensaver now.",
+                        "Đang hiển thị bảo vệ màn hình mặc định của PIXEL PRO.")
+                    : L("Showing the uploaded GIF / image now.",
+                        "Đang hiển thị GIF / ảnh đã tải lên ngay.");
     }
 
-    private void ClearScreensaverMedia_Click(
+    private async void ClearScreensaverMedia_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -9288,45 +9313,170 @@ try {{
         SaveAppSettings();
         _screensaverPreviewTimer.Stop();
         _screensaverPreviewClock.Reset();
-        _serial.ClearScreensaverAnimation();
 
         if (IsPixelProActive)
         {
-            Dispatcher.BeginInvoke(
-                new Action(async () =>
+            _pixelFactoryScreensaverPreview = false;
+
+            if (_serial is PixelProCdcLink pixel &&
+                pixel.IsConnected)
+            {
+                try
                 {
-                    await Task.Delay(300);
+                    bool cleared =
+                        await pixel.ClearScreensaverAnimationAsync();
+
+                    if (!cleared)
+                    {
+                        throw new InvalidOperationException(
+                            "PIXEL PRO did not confirm SAVCLEAR.");
+                    }
+
+                    _screensaverSource = "Media";
+
+                    if (ScreensaverSourceCombo is not null)
+                        SelectComboTag(
+                            ScreensaverSourceCombo,
+                            "Media");
+
+                    UpdateScreensaverSourceUi();
+                    SaveAppSettings();
+
+                    await pixel.SetScreensaverSourceAsync(false);
+                    await RestorePixelStoredMediaPreviewAsync(pixel);
+                    await pixel.ShowScreensaverNowAsync(false);
                     await UpdateMemoryUsageAsync();
-                }));
+
+                    SendScreensaverButton.IsEnabled = false;
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    AddLog(
+                        "ERROR",
+                        "PIXEL",
+                        $"Factory screensaver restore failed: {ex}");
+
+                    ShowPixelFactoryScreensaverPreview(
+                        L(
+                            $"PIXEL PRO clear failed to confirm: {ex.Message}",
+                            $"PIXEL PRO chưa xác nhận thao tác xóa: {ex.Message}"));
+
+                    SendScreensaverButton.IsEnabled = false;
+                    return;
+                }
+            }
+
+            ShowPixelFactoryScreensaverPreview(
+                L(
+                    "Factory screensaver selected. Connect PIXEL PRO to sync it.",
+                    "Đã chọn bảo vệ màn hình mặc định. Kết nối PIXEL PRO để đồng bộ."));
+
+            SendScreensaverButton.IsEnabled = false;
+            return;
         }
+
+        _serial.ClearScreensaverAnimation();
 
         ScreensaverPreviewImage.Source = null;
         ScreensaverPreviewImage.Visibility = Visibility.Collapsed;
         ScreensaverPreviewHint.Visibility = Visibility.Visible;
 
         if (PixelHomePreviewHint is not null)
-            PixelHomePreviewHint.Visibility =
-                IsPixelProActive
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
+            PixelHomePreviewHint.Visibility = Visibility.Collapsed;
 
-        ScreensaverFileName.Text = L("No file selected", "Chưa chọn tệp");
+        ScreensaverFileName.Text =
+            L(
+                "No file selected",
+                "Chưa chọn tệp");
+
         ScreensaverMediaInfo.Text =
-            IsPixelProActive
-                ? L(
-                    "PIXEL PRO keeps the original GIF file and scales it on-device to the 480×320 ILI9486.",
-                    "PIXEL PRO giữ nguyên file GIF gốc và scale trực tiếp trên thiết bị ra ILI9486 480×320.")
-                : L(
-                    $"Converted to a lightweight loop for {_activeProduct.Name}.",
-                    $"Tự chuyển thành vòng lặp nhẹ cho {_activeProduct.Name}.");
+            L(
+                $"Converted to a lightweight loop for {_activeProduct.Name}.",
+                $"Tự chuyển thành vòng lặp nhẹ cho {_activeProduct.Name}.");
+
         ScreensaverSendProgress.Value = 0;
+
         SetScreensaverUploadState(
-            L("Not uploaded", "Chưa tải lên"),
-            MediaColor.FromRgb(99, 99, 102));
+            L(
+                "Not uploaded",
+                "Chưa tải lên"),
+            MediaColor.FromRgb(
+                99,
+                99,
+                102));
+
         ScreensaverSendStatus.Text =
-            L("Custom screensaver cleared. No screensaver will be shown until another GIF or image is uploaded.",
-              "Đã xóa bảo vệ màn hình. Sẽ không hiện screensaver cho tới khi tải GIF hoặc ảnh mới.");
+            L(
+                "Custom screensaver cleared. No screensaver will be shown until another GIF or image is uploaded.",
+                "Đã xóa bảo vệ màn hình. Sẽ không hiện screensaver cho tới khi tải GIF hoặc ảnh mới.");
+
         SendScreensaverButton.IsEnabled = false;
+    }
+
+    private void ShowPixelFactoryScreensaverPreview(
+        string? status = null)
+    {
+        if (!IsPixelProActive)
+            return;
+
+        _pixelFactoryScreensaverPreview = true;
+        _screensaverAnimation = null;
+        _screensaverPreviewIndex = 0;
+
+        _screensaverPreviewTimer.Interval =
+            TimeSpan.FromMilliseconds(
+                1000.0 /
+                PixelProFactoryVisual.Fps);
+
+        _screensaverPreviewClock.Restart();
+
+        ScreensaverPreviewImage.Source =
+            CreateBitmapFromEncodedImage(
+                PixelProFactoryVisual.CreatePng(
+                    0,
+                    animated: true));
+
+        ScreensaverPreviewImage.Visibility =
+            Visibility.Visible;
+
+        ScreensaverPreviewHint.Visibility =
+            Visibility.Collapsed;
+
+        if (PixelHomePreviewHint is not null)
+        {
+            PixelHomePreviewHint.Visibility =
+                Visibility.Collapsed;
+        }
+
+        ScreensaverFileName.Text =
+            L(
+                "PIXEL PRO Factory Default",
+                "Mặc định PIXEL PRO");
+
+        ScreensaverMediaInfo.Text =
+            L(
+                $"Built into firmware · {PixelProFactoryVisual.Width}×{PixelProFactoryVisual.Height} · {PixelProFactoryVisual.Fps} FPS · protected fallback",
+                $"Tích hợp trong firmware · {PixelProFactoryVisual.Width}×{PixelProFactoryVisual.Height} · {PixelProFactoryVisual.Fps} FPS · mặc định không thể xóa");
+
+        ScreensaverSendProgress.Value = 100;
+
+        SetScreensaverUploadState(
+            L(
+                "Factory default active",
+                "Đang dùng mặc định"),
+            MediaColor.FromRgb(
+                48,
+                209,
+                88));
+
+        ScreensaverSendStatus.Text =
+            status ??
+            L(
+                "PIXEL PRO factory screensaver is active. Uploading custom media will override it.",
+                "Bảo vệ màn hình mặc định của PIXEL PRO đang hoạt động. Tải media riêng sẽ ghi đè lên nó.");
+
+        _screensaverPreviewTimer.Start();
     }
 
     private static BitmapSource? CreateBitmapFromEncodedImage(
@@ -9381,6 +9531,24 @@ try {{
             {
                 return;
             }
+
+            if (info.Kind.Equals(
+                    "DEFAULT",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                ShowPixelFactoryScreensaverPreview();
+
+                AddLog(
+                    "INFO",
+                    "PIXEL",
+                    "PIXEL PRO reports firmware factory screensaver DEFAULT");
+
+                return;
+            }
+
+            _pixelFactoryScreensaverPreview = false;
+            _screensaverPreviewTimer.Stop();
+            _screensaverPreviewClock.Reset();
 
             string displayName =
                 !string.IsNullOrWhiteSpace(
