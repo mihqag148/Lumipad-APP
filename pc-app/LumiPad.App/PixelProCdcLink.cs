@@ -22,6 +22,25 @@ public sealed record PixelProStoredMediaInfo(
     int DurationMs,
     int ThumbnailBytes);
 
+public sealed record PixelProMainMenuBackgroundInfo(
+    int Profile,
+    string State,
+    string AssetId,
+    long StoredBytes,
+    int Width,
+    int Height)
+{
+    public bool IsFactory =>
+        State.Equals(
+            "FACTORY",
+            StringComparison.OrdinalIgnoreCase);
+
+    public bool IsCustom =>
+        State.Equals(
+            "CUSTOM",
+            StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>
 /// Native ESP32-S2 USB CDC transport for PIXEL PRO.
 /// The HID keyboard remains independent; LumiPad owns only the CDC interface.
@@ -2081,6 +2100,77 @@ public sealed class PixelProCdcLink : IDeviceLink
             "OK|MENUICONEND",
             iconBytes,
             progress);
+    }
+
+    public async Task<PixelProMainMenuBackgroundInfo?>
+        GetMainMenuBackgroundInfoAsync(
+            int profile,
+            CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string? line =
+            await RequestLineAsync(
+                    $"MENUBGSTATE|{profile}",
+                    "MENUBGSTATE|",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(line))
+            return null;
+
+        var values =
+            line.Split('|')
+                .Skip(1)
+                .Select(part => part.Split('=', 2))
+                .Where(parts => parts.Length == 2)
+                .ToDictionary(
+                    parts => parts[0],
+                    parts => parts[1],
+                    StringComparer.OrdinalIgnoreCase);
+
+        if (!values.TryGetValue(
+                "PROFILE",
+                out string? profileText) ||
+            !int.TryParse(
+                profileText,
+                out int reportedProfile) ||
+            !values.TryGetValue(
+                "STATE",
+                out string? state) ||
+            !values.TryGetValue(
+                "ASSET",
+                out string? assetId))
+        {
+            return null;
+        }
+
+        _ =
+            long.TryParse(
+                values.GetValueOrDefault("BYTES"),
+                out long bytes);
+
+        _ =
+            int.TryParse(
+                values.GetValueOrDefault("W"),
+                out int width);
+
+        _ =
+            int.TryParse(
+                values.GetValueOrDefault("H"),
+                out int height);
+
+        return new PixelProMainMenuBackgroundInfo(
+            reportedProfile,
+            state,
+            assetId,
+            bytes,
+            width,
+            height);
     }
 
     public async Task<bool> ClearMainMenuBackgroundAsync(
