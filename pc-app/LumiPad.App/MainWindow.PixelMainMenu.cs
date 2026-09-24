@@ -26,6 +26,8 @@ public partial class MainWindow
     private PixelProMainMenuProfile PixelMenuProfile =>
         _pixelMainMenu.Profiles[PixelMenuProfileIndex];
 
+    private bool _pixelMenuBackgroundStateRequestActive;
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint PrivateExtractIcons(
         string szFileName,
@@ -540,6 +542,111 @@ public partial class MainWindow
 
         RefreshPixelMainMenuActionChoices();
         RefreshPixelMenuStatusPreview();
+
+        _ =
+            RefreshPixelMenuDeviceBackgroundAsync(
+                profileIndex);
+    }
+
+    private async Task RefreshPixelMenuDeviceBackgroundAsync(
+        int profileIndex)
+    {
+        if (_pixelMenuBackgroundStateRequestActive ||
+            _serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected ||
+            profileIndex != PixelMenuProfileIndex)
+        {
+            return;
+        }
+
+        _pixelMenuBackgroundStateRequestActive = true;
+
+        try
+        {
+            PixelProMainMenuBackgroundInfo? info =
+                await pixel.GetMainMenuBackgroundInfoAsync(
+                    profileIndex);
+
+            if (info is null ||
+                profileIndex != PixelMenuProfileIndex)
+            {
+                return;
+            }
+
+            PixelProMainMenuProfile profile =
+                _pixelMainMenu.Profiles[profileIndex];
+
+            if (info.IsFactory)
+            {
+                PixelMenuBackgroundName.Text =
+                    info.AssetId.Equals(
+                        PixelProFactoryMenuVisual.AssetId,
+                        StringComparison.OrdinalIgnoreCase)
+                        ? L(
+                            "Factory Dune · device",
+                            "Factory Dune · trên mạch")
+                        : L(
+                            $"Factory · {info.AssetId}",
+                            $"Mặc định · {info.AssetId}");
+
+                PixelMenuBackgroundPreview.Source =
+                    info.AssetId.Equals(
+                        PixelProFactoryMenuVisual.AssetId,
+                        StringComparison.OrdinalIgnoreCase)
+                        ? LoadImageSource(
+                            PixelProFactoryMenuVisual.CreateJpeg())
+                        : LoadPixelMenuBackgroundPreview(
+                            profile);
+
+                PixelMenuStatusText.Text =
+                    L(
+                        $"PIXEL PRO reports Factory Dune active on Profile {profileIndex + 1:00}.",
+                        $"PIXEL PRO báo Profile {profileIndex + 1:00} đang dùng Factory Dune.");
+            }
+            else if (info.IsCustom)
+            {
+                bool localAvailable =
+                    !string.IsNullOrWhiteSpace(
+                        profile.BackgroundPath) &&
+                    IO.File.Exists(
+                        profile.BackgroundPath);
+
+                PixelMenuBackgroundName.Text =
+                    localAvailable
+                        ? L(
+                            $"Device custom · {IO.Path.GetFileName(profile.BackgroundPath)}",
+                            $"Ảnh custom trên mạch · {IO.Path.GetFileName(profile.BackgroundPath)}")
+                        : L(
+                            $"Custom JPEG on device · {Math.Max(1, info.StoredBytes / 1024)} KB",
+                            $"JPEG custom trên mạch · {Math.Max(1, info.StoredBytes / 1024)} KB");
+
+                PixelMenuBackgroundPreview.Source =
+                    localAvailable
+                        ? LoadPixelMenuBackgroundPreview(
+                            profile)
+                        : null;
+
+                PixelMenuStatusText.Text =
+                    localAvailable
+                        ? L(
+                            $"PIXEL PRO reports a custom background active on Profile {profileIndex + 1:00}.",
+                            $"PIXEL PRO báo Profile {profileIndex + 1:00} đang dùng ảnh custom.")
+                        : L(
+                            $"PIXEL PRO has a custom background on Profile {profileIndex + 1:00}; this PC does not have the original local file.",
+                            $"PIXEL PRO đang có ảnh custom ở Profile {profileIndex + 1:00}; máy tính này không có file gốc local.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(
+                "WARN",
+                "PIXEL MENU",
+                $"Could not read device background state: {ex.Message}");
+        }
+        finally
+        {
+            _pixelMenuBackgroundStateRequestActive = false;
+        }
     }
 
     private void RefreshPixelMenuStatusPreview()
@@ -663,9 +770,7 @@ public partial class MainWindow
             !IO.File.Exists(profile.BackgroundPath))
         {
             return LoadImageSource(
-                PixelProFactoryVisual.CreatePng(
-                    0,
-                    animated: false));
+                PixelProFactoryMenuVisual.CreateJpeg());
         }
 
         try
