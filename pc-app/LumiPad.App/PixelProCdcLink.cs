@@ -2545,6 +2545,20 @@ public sealed class PixelProCdcLink : IDeviceLink
     public void ClearScreensaverAnimation() =>
         SendCommand("SAVCLEAR");
 
+    public async Task<bool> ClearScreensaverAnimationAsync()
+    {
+        string? line =
+            await RequestLineAsync(
+                    "SAVCLEAR",
+                    "OK|SAVCLEAR")
+                .ConfigureAwait(false);
+
+        return string.Equals(
+            line,
+            "OK|SAVCLEAR",
+            StringComparison.Ordinal);
+    }
+
     public async Task<string?> GetScreensaverStateAsync()
     {
         string? line =
