@@ -6,12 +6,14 @@ using DrawingImaging = System.Drawing.Imaging;
 namespace LumiPad.App;
 
 /// <summary>
-/// PIXEL PRO-only app preview for the firmware-resident factory visuals.
-/// This renderer follows the aqua / cyan / teal reference used by firmware
-/// 1.8.10 and intentionally does not affect any RYNOR ONE media path.
+/// PIXEL PRO-only preview for the firmware-resident red/orange dune
+/// screensaver introduced by firmware 1.9.7.
 /// </summary>
 public static class PixelProFactoryVisual
 {
+    public const string AssetId =
+        "DUNE_RED_ORANGE_ANIM";
+
     public const int Width = 480;
     public const int Height = 320;
     public const int Fps = 20;
@@ -31,80 +33,79 @@ public static class PixelProFactoryVisual
 
         graphics.SmoothingMode =
             Drawing2D.SmoothingMode.AntiAlias;
+
         graphics.PixelOffsetMode =
             Drawing2D.PixelOffsetMode.HighQuality;
+
         graphics.CompositingQuality =
             Drawing2D.CompositingQuality.HighQuality;
 
-        DrawSky(
-            graphics,
-            elapsedMs,
-            animated);
+        using (
+            var baseStream =
+                new MemoryStream(
+                    PixelProFactoryMenuVisual.CreateJpeg(),
+                    writable: false))
+        using (
+            var source =
+                new Drawing.Bitmap(
+                    baseStream))
+        {
+            graphics.DrawImage(
+                source,
+                new Drawing.Rectangle(
+                    0,
+                    0,
+                    Width,
+                    Height));
+        }
 
         float phase =
             animated
-                ? elapsedMs * 0.00105f
-                : 0.62f;
+                ? elapsedMs * 0.00072f
+                : 0.64f;
 
-        // Back atmospheric sheet.
-        DrawRibbon(
+        DrawHorizonGlow(
             graphics,
-            118,
-            30,
-            72,
-            phase * 0.42f,
-            0.78f,
-            Drawing.Color.FromArgb(178, 73, 190, 218),
-            Drawing.Color.FromArgb(218, 186, 242, 237),
-            Drawing.Color.FromArgb(170, 224, 255, 250));
+            phase);
 
-        // Deep teal hill on the left/middle.
-        DrawRibbon(
+        DrawAnimatedRidge(
             graphics,
-            160,
-            37,
-            92,
-            phase * -0.55f + 1.55f,
-            0.92f,
-            Drawing.Color.FromArgb(246, 0, 60, 104),
-            Drawing.Color.FromArgb(238, 20, 204, 177),
-            Drawing.Color.FromArgb(185, 164, 255, 236));
+            baseY: 164,
+            amplitude: 20,
+            phase: phase * 0.52f + 0.55f,
+            frequency: 0.92f,
+            width: 2.8f,
+            Drawing.Color.FromArgb(
+                124,
+                255,
+                190,
+                70));
 
-        // Bright cyan middle layer.
-        DrawRibbon(
+        DrawAnimatedRidge(
             graphics,
-            214,
-            28,
-            72,
-            phase * 0.66f + 2.18f,
-            1.08f,
-            Drawing.Color.FromArgb(238, 0, 93, 171),
-            Drawing.Color.FromArgb(232, 41, 196, 220),
-            Drawing.Color.FromArgb(180, 196, 255, 251));
+            baseY: 218,
+            amplitude: 25,
+            phase: -phase * 0.46f + 1.65f,
+            frequency: 0.84f,
+            width: 2.2f,
+            Drawing.Color.FromArgb(
+                116,
+                255,
+                92,
+                18));
 
-        // Thin luminous turquoise ribbon crossing the lower-middle region.
-        DrawRibbon(
+        DrawAnimatedRidge(
             graphics,
-            244,
-            20,
-            44,
-            phase * 0.34f + 0.82f,
-            1.22f,
-            Drawing.Color.FromArgb(178, 0, 117, 159),
-            Drawing.Color.FromArgb(206, 50, 225, 205),
-            Drawing.Color.FromArgb(190, 218, 255, 250));
-
-        // Foreground navy sheet gives the reference its deep lower edge.
-        DrawRibbon(
-            graphics,
-            276,
-            30,
-            96,
-            phase * -0.48f + 0.28f,
-            0.82f,
-            Drawing.Color.FromArgb(255, 0, 50, 111),
-            Drawing.Color.FromArgb(255, 0, 27, 70),
-            Drawing.Color.FromArgb(168, 119, 238, 232));
+            baseY: 272,
+            amplitude: 23,
+            phase: phase * 0.38f + 2.75f,
+            frequency: 0.77f,
+            width: 1.8f,
+            Drawing.Color.FromArgb(
+                88,
+                255,
+                72,
+                16));
 
         using var output =
             new MemoryStream();
@@ -116,51 +117,23 @@ public static class PixelProFactoryVisual
         return output.ToArray();
     }
 
-    private static void DrawSky(
+    private static void DrawHorizonGlow(
         Drawing.Graphics graphics,
-        long elapsedMs,
-        bool animated)
+        float phase)
     {
-        using var background =
-            new Drawing2D.LinearGradientBrush(
-                new Drawing.Rectangle(
-                    0,
-                    0,
-                    Width,
-                    Height),
-                Drawing.Color.FromArgb(
-                    8,
-                    94,
-                    160),
-                Drawing.Color.FromArgb(
-                    123,
-                    218,
-                    234),
-                32.0f);
-
-        graphics.FillRectangle(
-            background,
-            0,
-            0,
-            Width,
-            Height);
-
         float drift =
-            animated
-                ? MathF.Sin(
-                    elapsedMs *
-                    0.00058f) *
-                  26.0f
-                : 0.0f;
+            MathF.Sin(
+                phase * 0.41f) *
+            24.0f;
 
         using var glowPath =
             new Drawing2D.GraphicsPath();
 
         glowPath.AddEllipse(
-            238 + drift,
-            -72,
-            330,
-            255);
+            242 + drift,
+            72,
+            220,
+            142);
 
         using var glow =
             new Drawing2D.PathGradientBrush(
@@ -168,197 +141,50 @@ public static class PixelProFactoryVisual
             {
                 CenterPoint =
                     new Drawing.PointF(
-                        390 + drift,
-                        70),
+                        342 + drift,
+                        145),
                 CenterColor =
                     Drawing.Color.FromArgb(
-                        210,
-                        247,
+                        70,
                         255,
-                        251),
+                        182,
+                        72),
                 SurroundColors =
                 [
                     Drawing.Color.FromArgb(
                         0,
-                        247,
                         255,
-                        251)
+                        92,
+                        18)
                 ]
             };
 
         graphics.FillPath(
             glow,
             glowPath);
-
-        using var haze =
-            new Drawing2D.LinearGradientBrush(
-                new Drawing.Rectangle(
-                    0,
-                    28,
-                    Width,
-                    160),
-                Drawing.Color.FromArgb(
-                    18,
-                    135,
-                    220,
-                    235),
-                Drawing.Color.FromArgb(
-                    92,
-                    232,
-                    252,
-                    248),
-                Drawing2D.LinearGradientMode.Vertical);
-
-        graphics.FillRectangle(
-            haze,
-            0,
-            28,
-            Width,
-            160);
     }
 
-    private static void DrawRibbon(
+    private static void DrawAnimatedRidge(
         Drawing.Graphics graphics,
         float baseY,
         float amplitude,
-        float thickness,
         float phase,
         float frequency,
-        Drawing.Color topColor,
-        Drawing.Color bottomColor,
-        Drawing.Color edgeColor)
+        float width,
+        Drawing.Color color)
     {
-        Drawing.PointF[] top =
-            CreateWavePoints(
-                baseY,
-                amplitude,
-                phase,
-                frequency);
-
-        Drawing.PointF[] bottom =
-            CreateWavePoints(
-                baseY +
-                thickness,
-                amplitude *
-                0.72f,
-                phase +
-                0.72f,
-                frequency *
-                0.93f);
-
-        Array.Reverse(
-            bottom);
-
-        using var path =
-            new Drawing2D.GraphicsPath();
-
-        path.AddCurve(
-            top,
-            0.28f);
-
-        path.AddLine(
-            top[^1],
-            bottom[0]);
-
-        path.AddCurve(
-            bottom,
-            0.28f);
-
-        path.CloseFigure();
-
-        float minY =
-            Math.Max(
-                -20.0f,
-                baseY -
-                amplitude -
-                12.0f);
-
-        float maxY =
-            Math.Min(
-                Height +
-                80.0f,
-                baseY +
-                thickness +
-                amplitude +
-                24.0f);
-
-        using var fill =
-            new Drawing2D.LinearGradientBrush(
-                new Drawing.RectangleF(
-                    0,
-                    minY,
-                    Width,
-                    Math.Max(
-                        1.0f,
-                        maxY -
-                        minY)),
-                topColor,
-                bottomColor,
-                Drawing2D.LinearGradientMode.Vertical);
-
-        graphics.FillPath(
-            fill,
-            path);
-
-        using var edge =
-            new Drawing.Pen(
-                edgeColor,
-                1.15f);
-
-        using var edgePath =
-            new Drawing2D.GraphicsPath();
-
-        edgePath.AddCurve(
-            top,
-            0.28f);
-
-        graphics.DrawPath(
-            edge,
-            edgePath);
-
-        // A broad translucent shine just below the leading edge keeps the
-        // preview close to the soft glassy highlight in the source image.
-        using var shine =
-            new Drawing.Pen(
-                Drawing.Color.FromArgb(
-                    34,
-                    255,
-                    255,
-                    255),
-                6.0f);
-
-        graphics.DrawPath(
-            shine,
-            edgePath);
-    }
-
-    private static Drawing.PointF[] CreateWavePoints(
-        float baseY,
-        float amplitude,
-        float phase,
-        float frequency)
-    {
-        const int step = 48;
-        int count =
-            Width /
-            step +
-            4;
+        const int step = 32;
 
         var points =
-            new Drawing.PointF[count];
+            new List<Drawing.PointF>();
 
-        for (int i = 0;
-             i < count;
-             i++)
+        for (int x = -step;
+             x <= Width + step;
+             x += step)
         {
-            float x =
-                -step +
-                i *
-                step;
-
             float normalized =
                 x /
-                Width *
+                (float)Width *
                 MathF.PI *
                 2.0f;
 
@@ -374,17 +200,46 @@ public static class PixelProFactoryVisual
                     frequency *
                     1.91f -
                     phase *
-                    0.47f +
-                    1.2f) *
+                    0.44f +
+                    1.1f) *
                 amplitude *
-                0.22f;
+                0.20f;
 
-            points[i] =
+            points.Add(
                 new Drawing.PointF(
                     x,
-                    y);
+                    y));
         }
 
-        return points;
+        using var path =
+            new Drawing2D.GraphicsPath();
+
+        path.AddCurve(
+            points.ToArray(),
+            0.30f);
+
+        using var broad =
+            new Drawing.Pen(
+                Drawing.Color.FromArgb(
+                    Math.Max(
+                        16,
+                        color.A / 3),
+                    color.R,
+                    color.G,
+                    color.B),
+                width * 4.0f);
+
+        graphics.DrawPath(
+            broad,
+            path);
+
+        using var edge =
+            new Drawing.Pen(
+                color,
+                width);
+
+        graphics.DrawPath(
+            edge,
+            path);
     }
 }
