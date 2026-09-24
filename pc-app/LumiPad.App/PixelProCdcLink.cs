@@ -14,6 +14,7 @@ public readonly record struct PixelRgbColor(byte R, byte G, byte B)
 public sealed record PixelProStoredMediaInfo(
     bool Ready,
     string Kind,
+    string AssetId,
     string FileName,
     long StoredBytes,
     int Width,
@@ -2433,6 +2434,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                 false,
                 "",
                 "",
+                "",
                 0,
                 0,
                 0,
@@ -2492,6 +2494,11 @@ public sealed class PixelProCdcLink : IDeviceLink
                 out string? kind)
                 ? kind
                 : "MEDIA",
+            values.TryGetValue(
+                "ASSET",
+                out string? assetId)
+                ? assetId
+                : "",
             fileName,
             LongValue(
                 values,
