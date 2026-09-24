@@ -1,3 +1,4 @@
+using System.IO;
 using Drawing = System.Drawing;
 using Drawing2D = System.Drawing.Drawing2D;
 using DrawingImaging = System.Drawing.Imaging;
