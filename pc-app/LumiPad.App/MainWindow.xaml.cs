@@ -9418,8 +9418,8 @@ try {{
 
         ScreensaverFileName.Text =
             L(
-                "PIXEL PRO Factory Default",
-                "Mặc định PIXEL PRO");
+                "Factory Dune Animation",
+                "Factory Dune Animation");
 
         ScreensaverMediaInfo.Text =
             L(
@@ -9440,8 +9440,8 @@ try {{
         ScreensaverSendStatus.Text =
             status ??
             L(
-                "PIXEL PRO factory screensaver is active. Uploading custom media will override it.",
-                "Bảo vệ màn hình mặc định của PIXEL PRO đang hoạt động. Tải media riêng sẽ ghi đè lên nó.");
+                "PIXEL PRO Factory Dune Animation is active. Uploading custom media will override it.",
+                "Factory Dune Animation của PIXEL PRO đang hoạt động. Tải media riêng sẽ ghi đè lên nó.");
 
         _screensaverPreviewTimer.Start();
     }
@@ -9503,12 +9503,24 @@ try {{
                     "DEFAULT",
                     StringComparison.OrdinalIgnoreCase))
             {
-                ShowPixelFactoryScreensaverPreview();
+                string factoryStatus =
+                    info.AssetId.Equals(
+                        PixelProFactoryVisual.AssetId,
+                        StringComparison.OrdinalIgnoreCase)
+                        ? L(
+                            "PIXEL PRO reports Factory Dune Animation active on the device.",
+                            "PIXEL PRO báo Factory Dune Animation đang hoạt động trên mạch.")
+                        : L(
+                            "PIXEL PRO reports a firmware factory screensaver.",
+                            "PIXEL PRO báo đang dùng bảo vệ màn hình mặc định của firmware.");
+
+                ShowPixelFactoryScreensaverPreview(
+                    factoryStatus);
 
                 AddLog(
                     "INFO",
                     "PIXEL",
-                    "PIXEL PRO reports firmware factory screensaver DEFAULT");
+                    $"PIXEL PRO factory screensaver: {info.AssetId}");
 
                 return;
             }
