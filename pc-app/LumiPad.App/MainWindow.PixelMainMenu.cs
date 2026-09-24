@@ -476,8 +476,8 @@ public partial class MainWindow
             PixelMenuBackgroundName.Text =
                 string.IsNullOrWhiteSpace(background)
                     ? L(
-                        "No background",
-                        "Chưa có ảnh nền")
+                        "Factory default",
+                        "Ảnh mặc định")
                     : IO.Path.GetFileName(background);
 
             PixelMenuBackgroundPreview.Source =
@@ -662,7 +662,10 @@ public partial class MainWindow
         if (string.IsNullOrWhiteSpace(profile.BackgroundPath) ||
             !IO.File.Exists(profile.BackgroundPath))
         {
-            return null;
+            return LoadImageSource(
+                PixelProFactoryVisual.CreatePng(
+                    0,
+                    animated: false));
         }
 
         try
@@ -863,7 +866,7 @@ public partial class MainWindow
         }
     }
 
-    private void PixelMenuClearBackground_Click(
+    private async void PixelMenuClearBackground_Click(
         object sender,
         RoutedEventArgs e)
     {
@@ -876,6 +879,65 @@ public partial class MainWindow
             _pixelMainMenu);
 
         RefreshPixelMainMenuUi();
+
+        if (_serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected)
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    "Factory background selected locally. Connect PIXEL PRO to apply it.",
+                    "Đã chọn ảnh nền mặc định trong app. Kết nối PIXEL PRO để áp dụng.");
+            return;
+        }
+
+        int profileIndex =
+            PixelMenuProfileIndex;
+
+        try
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    "Restoring factory background…",
+                    "Đang khôi phục ảnh nền mặc định…");
+
+            bool cleared =
+                await pixel.ClearMainMenuBackgroundAsync(
+                    profileIndex);
+
+            if (!cleared)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not confirm MENUBGCLEAR.");
+            }
+
+            pixel.SetProfileLayer(
+                profileIndex,
+                _pixelSelectedLayer);
+
+            bool shown =
+                await pixel.ShowMainMenuAsync();
+
+            PixelMenuStatusText.Text =
+                shown
+                    ? L(
+                        $"Factory background active for Keymap Profile {profileIndex + 1:00}.",
+                        $"Ảnh nền mặc định đang hoạt động cho Keymap Profile {profileIndex + 1:00}.")
+                    : L(
+                        "Factory background was restored, but PIXEL PRO did not confirm MENUSHOW.",
+                        "Đã khôi phục ảnh nền mặc định nhưng PIXEL PRO chưa xác nhận MENUSHOW.");
+        }
+        catch (Exception ex)
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    $"Could not restore factory background: {ex.Message}",
+                    $"Không thể khôi phục ảnh nền mặc định: {ex.Message}");
+
+            AddLog(
+                "ERROR",
+                "PIXEL MENU",
+                $"Factory background restore failed: {ex}");
+        }
     }
 
     private void PixelMenuBlurSlider_ValueChanged(
