@@ -8898,6 +8898,15 @@ try {{
             await _serial.SetScreensaverSourceAsync(false);
 
         await PrepareScreensaverMediaAsync();
+
+        if (IsPixelProActive &&
+            _serial.IsConnected &&
+            _screensaverAnimation is not null)
+        {
+            SendScreensaverMedia_Click(
+                SendScreensaverButton,
+                new RoutedEventArgs());
+        }
     }
 
     private ScreensaverScaleMode SelectedScreensaverScaleMode()
@@ -9184,6 +9193,32 @@ try {{
                     SelectComboTag(ScreensaverSourceCombo, "Media");
                 UpdateScreensaverSourceUi();
                 await _serial.SetScreensaverSourceAsync(false);
+
+                if (IsPixelProActive &&
+                    _serial is PixelProCdcLink pixel)
+                {
+                    PixelProStoredMediaInfo? stored =
+                        await pixel
+                            .GetStoredScreensaverInfoAsync();
+
+                    bool storedCustom =
+                        stored is not null &&
+                        stored.Ready &&
+                        !string.Equals(
+                            stored.Kind,
+                            "DEFAULT",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        stored.Bytes > 0;
+
+                    if (!storedCustom)
+                    {
+                        throw new InvalidOperationException(
+                            "PIXEL PRO still reports the factory screensaver after upload.");
+                    }
+
+                    await pixel
+                        .ShowScreensaverNowAsync(false);
+                }
 
                 SetScreensaverUploadState(
                     L("Uploaded & verified", "Đã tải lên và xác nhận"),
