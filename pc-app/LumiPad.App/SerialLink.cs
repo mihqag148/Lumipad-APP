@@ -61,6 +61,8 @@ public sealed class SerialLink : IDeviceLink
         SupportsCapability("SAVERSTATE");
     public bool SupportsProfileSwitch =>
         SupportsCapability("PROFILE");
+    public bool SupportsProfileCatalog =>
+        SupportsCapability("PROFILECAT");
     public bool SupportsActions =>
         SupportsCapability("ACTION");
     public bool SupportsVariableArtwork =>
@@ -124,6 +126,9 @@ public sealed class SerialLink : IDeviceLink
             // explicit CAPS field.
             if (_protocolVersion >= 4)
                 _capabilities.Add("MEDIAFAST");
+
+            if (_protocolVersion >= 5)
+                _capabilities.Add("PROFILECAT");
         }
 
         Log(
@@ -1906,7 +1911,7 @@ public sealed class SerialLink : IDeviceLink
 
     public void SetRgbProfile(int index, int effect, byte r, byte g, byte b) =>
         _ = SendLineAsync(
-            $"RGB|PROFILE|{Math.Clamp(index, 0, 9)}|" +
+            $"RGB|PROFILE|{RynorProfiles.Clamp(index)}|" +
             $"{Math.Clamp(effect, 0, 4)}|{r}|{g}|{b}");
 
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
@@ -1944,7 +1949,9 @@ public sealed class SerialLink : IDeviceLink
     public void SetDeepSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|DEEPSLEEP|{Math.Max(0, seconds)}");
 
-    public async Task<(int Index, string Name)?> ReadActiveProfileAsync()
+    private async Task<string?> RequestProfileMetadataAsync(
+        string command,
+        string context)
     {
         if (!IsConnected || !SupportsProfileSwitch)
             return null;
@@ -1961,14 +1968,14 @@ public sealed class SerialLink : IDeviceLink
             {
                 _port.ReadTimeout = 500;
                 _port.DiscardInBuffer();
-                byte[] data = Encoding.UTF8.GetBytes("PROFILE\n");
+                byte[] data = Encoding.UTF8.GetBytes(command + "\n");
                 _port.Write(data, 0, data.Length);
                 response = await Task.Run(() => _port.ReadLine().Trim());
             }
             else if (_bleCharacteristic is not null)
             {
                 var characteristic = _bleCharacteristic;
-                byte[] data = Encoding.UTF8.GetBytes("PROFILE\n");
+                byte[] data = Encoding.UTF8.GetBytes(command + "\n");
 
                 using var writer = new DataWriter();
                 writer.WriteBytes(data);
@@ -1994,7 +2001,7 @@ public sealed class SerialLink : IDeviceLink
         }
         catch (Exception ex)
         {
-            Log("WARN", $"Read active profile failed: {ex.Message}");
+            Log("WARN", $"{context} failed: {ex.Message}");
             return null;
         }
         finally
@@ -2002,6 +2009,55 @@ public sealed class SerialLink : IDeviceLink
             _writeGate.Release();
             _mediaGate.Release();
         }
+
+        return response;
+    }
+
+    public async Task<string[]?> ReadProfileCatalogAsync()
+    {
+        if (!SupportsProfileCatalog)
+            return null;
+
+        var names = new string[RynorProfiles.Count];
+
+        for (int requested = 0; requested < RynorProfiles.Count; requested++)
+        {
+            string? response = await RequestProfileMetadataAsync(
+                $"PROFILEINFO|{requested}",
+                $"Read profile {requested + 1}");
+
+            if (string.IsNullOrWhiteSpace(response))
+                return null;
+
+            string[] parts = response.Split('|', 3);
+            if (parts.Length < 3 ||
+                !string.Equals(
+                    parts[0],
+                    "PROFILEINFO",
+                    StringComparison.Ordinal) ||
+                !int.TryParse(parts[1], out int returned) ||
+                returned != requested)
+            {
+                return null;
+            }
+
+            names[requested] =
+                string.IsNullOrWhiteSpace(parts[2])
+                    ? RynorProfiles.DefaultName(requested)
+                    : parts[2].Trim();
+        }
+
+        return names;
+    }
+
+    public async Task<(int Index, string Name)?> ReadActiveProfileAsync()
+    {
+        string? response = await RequestProfileMetadataAsync(
+            "PROFILE",
+            "Read active profile");
+
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
 
         string[] parts = response.Split('|', 3);
         if (parts.Length < 2 ||
@@ -2011,11 +2067,11 @@ public sealed class SerialLink : IDeviceLink
             return null;
         }
 
-        index = Math.Clamp(index, 0, 9);
+        index = RynorProfiles.Clamp(index);
         string name =
             parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])
                 ? parts[2].Trim()
-                : $"PROFILE {index + 1}";
+                : RynorProfiles.DefaultName(index);
 
         return (index, name);
     }
@@ -2025,7 +2081,8 @@ public sealed class SerialLink : IDeviceLink
         if (!SupportsProfileSwitch)
             return;
 
-        _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 9)}");
+        _ = SendLineAsync(
+            $"CFG|PROFILE|{RynorProfiles.Clamp(profile)}");
     }
 
     public Task RestartKeyboardAsync() =>
