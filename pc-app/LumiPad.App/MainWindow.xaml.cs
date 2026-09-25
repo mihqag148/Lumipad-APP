@@ -116,8 +116,10 @@ public partial class MainWindow : Window
         "https://api.github.com/repos/mihqag148/RYNOR-ONE/releases/latest";
     private const string PixelProFirmwareReleaseApi =
         "https://api.github.com/repos/mihqag148/PIXEL-PRO/releases/latest";
+    // Routine PIXEL PRO updates must preserve NVS + LittleFS. The merged
+    // image is recovery-only and is never used by the normal Update button.
     private const string PixelProNativeFirmwareAsset =
-        "PIXEL_PRO_merged.bin";
+        "PIXEL_PRO_app.bin";
     private bool _updateBusy;
     private bool _checkingUpdates;
     private bool _appUpdateAvailable;
@@ -4665,8 +4667,8 @@ public partial class MainWindow : Window
     {
         var confirm = System.Windows.MessageBox.Show(
             L(
-                "Install or repair native USB firmware on PIXEL PRO? LumiPad will download the latest PIXEL PRO native USB image and the official Espressif flashing engine. Put the board into ROM BOOT mode when prompted.",
-                "Cài hoặc sửa firmware native USB cho PIXEL PRO? LumiPad sẽ tự tải bản native USB mới nhất và bộ nạp chính thức của Espressif. Đưa mạch vào ROM BOOT khi app yêu cầu."),
+                "Update PIXEL PRO firmware while preserving keymap, Main Menu and media? LumiPad will write only the application partition. Put the board into ROM BOOT mode when prompted.",
+                "Cập nhật firmware PIXEL PRO và giữ nguyên keymap, Main Menu, media? LumiPad chỉ ghi phân vùng ứng dụng. Đưa mạch vào ROM BOOT khi app yêu cầu."),
             "PIXEL PRO · Install native USB",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -4848,7 +4850,9 @@ public partial class MainWindow : Window
             startInfo.ArgumentList.Add("--after");
             startInfo.ArgumentList.Add("hard-reset");
             startInfo.ArgumentList.Add("write-flash");
-            startInfo.ArgumentList.Add("0x0");
+            // Application-only update. Never erase/write NVS at 0x9000 or
+            // LittleFS at 0x190000 during a normal firmware update.
+            startInfo.ArgumentList.Add("0x10000");
             startInfo.ArgumentList.Add(mergedPath);
 
             using Process process =
@@ -4986,8 +4990,9 @@ public partial class MainWindow : Window
                 "PIXEL PRO native USB vendor HID driver is not active.");
         }
 
-        // PIXEL PRO native USB phase 1 is recovered through the ESP32-S2 ROM BOOT
-        // loader. The merged native USB image is written at 0x0.
+        // Routine update uses PIXEL_PRO_app.bin at 0x10000 so device-owned
+        // keymap/Main Menu/media survive firmware updates. Full merged images
+        // remain manual recovery-only.
         await BootstrapPixelProFirmwareAsync();
     }
 
