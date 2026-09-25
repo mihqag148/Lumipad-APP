@@ -40,6 +40,11 @@ public sealed record PixelProMainMenuBackgroundInfo(
         State.Equals(
             "CUSTOM",
             StringComparison.OrdinalIgnoreCase);
+
+    public bool IsEmpty =>
+        State.Equals(
+            "EMPTY",
+            StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record PixelProActiveProfileState(
