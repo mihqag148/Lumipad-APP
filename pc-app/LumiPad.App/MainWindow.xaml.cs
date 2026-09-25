@@ -11656,7 +11656,7 @@ try {{
                 "Touch the 4 targets shown on PIXEL PRO, in order.",
                 "Chạm lần lượt 4 dấu + đang hiện trên màn hình PIXEL PRO.");
 
-        MessageBox.Show(
+        System.Windows.MessageBox.Show(
             this,
             L(
                 "PIXEL PRO is now in touch calibration mode.\n\nTouch each of the 4 crosshair targets shown on the device screen. After the fourth touch, the calibration is saved automatically and the Main Menu returns.",
@@ -11664,8 +11664,8 @@ try {{
             L(
                 "PIXEL PRO Touch Calibration",
                 "Cân chỉnh cảm ứng PIXEL PRO"),
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Information);
     }
 
     private async void PixelKeymapReset_Click(
