@@ -903,6 +903,9 @@
                                         Click="PixelKeymapImport_Click"/>
                                 <Button Content="Export"
                                         Click="PixelKeymapExport_Click"/>
+                                <Button Content="Calibrate Touch"
+                                        ToolTip="Calibrate PIXEL PRO resistive touch"
+                                        Click="PixelTouchCalibrate_Click"/>
                                 <Button Content="Reset"
                                         ToolTip="Reset current profile to default"
                                         Click="PixelKeymapReset_Click"

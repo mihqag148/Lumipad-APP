@@ -11625,6 +11625,49 @@ try {{
                 "Lưu thất bại. Mở Diagnostics để xem chi tiết.");
     }
 
+    private async void PixelTouchCalibrate_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected)
+        {
+            PixelKeymapStatusText.Text =
+                L(
+                    "Connect PIXEL PRO before calibrating touch.",
+                    "Hãy kết nối PIXEL PRO trước khi cân chỉnh cảm ứng.");
+            return;
+        }
+
+        bool started =
+            await pixel.StartTouchCalibrationAsync();
+
+        if (!started)
+        {
+            PixelKeymapStatusText.Text =
+                L(
+                    "Could not start touch calibration.",
+                    "Không thể bắt đầu cân chỉnh cảm ứng.");
+            return;
+        }
+
+        PixelKeymapStatusText.Text =
+            L(
+                "Touch the 4 targets shown on PIXEL PRO, in order.",
+                "Chạm lần lượt 4 dấu + đang hiện trên màn hình PIXEL PRO.");
+
+        System.Windows.MessageBox.Show(
+            this,
+            L(
+                "PIXEL PRO is now in touch calibration mode.\n\nTouch each of the 4 crosshair targets shown on the device screen. After the fourth touch, the calibration is saved automatically and the Main Menu returns.",
+                "PIXEL PRO đang ở chế độ cân chỉnh cảm ứng.\n\nHãy chạm lần lượt 4 dấu + trên màn hình thiết bị. Sau điểm thứ 4, thông số sẽ tự lưu và Main Menu sẽ hiện lại."),
+            L(
+                "PIXEL PRO Touch Calibration",
+                "Cân chỉnh cảm ứng PIXEL PRO"),
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Information);
+    }
+
     private async void PixelKeymapReset_Click(
         object sender,
         RoutedEventArgs e)
