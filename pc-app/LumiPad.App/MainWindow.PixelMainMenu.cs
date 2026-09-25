@@ -1505,6 +1505,46 @@ public partial class MainWindow
         PixelProMainMenuProfile profile =
             PixelMenuProfile;
 
+        // Auto-extracted app icons live in the LumiPad cache. If an update or
+        // cleanup removed a cached PNG, rebuild it from the stored AppPath
+        // instead of interpreting the missing cache file as "clear icon".
+        for (int slot = 0;
+             slot < PixelProMainMenuStore.SlotCount;
+             slot++)
+        {
+            PixelProMainMenuSlot item =
+                profile.Slots[slot];
+
+            bool iconMissing =
+                string.IsNullOrWhiteSpace(
+                    item.IconPath) ||
+                !IO.File.Exists(
+                    item.IconPath);
+
+            if (iconMissing &&
+                !string.IsNullOrWhiteSpace(
+                    item.AppPath) &&
+                IO.File.Exists(
+                    item.AppPath))
+            {
+                string? rebuilt =
+                    ExtractPixelMenuAppIcon(
+                        item.AppPath);
+
+                if (!string.IsNullOrWhiteSpace(
+                        rebuilt))
+                {
+                    item.IconPath =
+                        rebuilt;
+                    item.AutoIcon =
+                        true;
+                }
+            }
+        }
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
         try
         {
             PixelMenuStatusText.Text =
@@ -1646,9 +1686,49 @@ public partial class MainWindow
                 ReportOperation();
             }
 
-            pixel.SetProfileLayer(
-                profileIndex,
-                _pixelSelectedLayer);
+            if (!await pixel
+                    .SetProfileLayerAsync(
+                        profileIndex,
+                        _pixelSelectedLayer))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not confirm the selected Main Menu profile.");
+            }
+
+            int expectedIconMask = 0;
+
+            for (int slot = 0;
+                 slot < PixelProMainMenuStore.SlotCount;
+                 slot++)
+            {
+                string? path =
+                    profile.Slots[slot].IconPath;
+
+                if (!string.IsNullOrWhiteSpace(path) &&
+                    IO.File.Exists(path))
+                {
+                    expectedIconMask |=
+                        1 << slot;
+                }
+            }
+
+            int? deviceIconMask =
+                await pixel
+                    .GetMainMenuIconMaskAsync(
+                        profileIndex);
+
+            if (deviceIconMask is null)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not report Main Menu icon storage state.");
+            }
+
+            if (deviceIconMask.Value !=
+                expectedIconMask)
+            {
+                throw new InvalidOperationException(
+                    $"Main Menu icon verify failed: app={expectedIconMask:X2}, device={deviceIconMask.Value:X2}.");
+            }
 
             if (!await pixel.ShowMainMenuAsync())
             {
