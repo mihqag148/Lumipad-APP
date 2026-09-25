@@ -1055,11 +1055,19 @@ public partial class MainWindow : Window
             {
                 await UpdateMemoryUsageAsync();
                 await UpdatePanelInfoAsync();
+
+                if (IsPixelProActive)
+                {
+                    await SyncPixelStateAfterConnectAsync();
+                }
+
                 await CheckForUpdatesAsync(silent: true);
             }
 
             if (IsPixelProActive &&
                 _screensaverAnimation is null &&
+                string.IsNullOrWhiteSpace(
+                    _pixelScreensaverMediaPath) &&
                 _serial is PixelProCdcLink pixelStored &&
                 pixelStored.IsConnected)
             {
@@ -3350,6 +3358,42 @@ public partial class MainWindow : Window
         await DetectAsync();
     }
 
+    private async Task SyncPixelStateAfterConnectAsync()
+    {
+        if (!IsPixelProActive ||
+            _serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected)
+        {
+            return;
+        }
+
+        bool storageReady =
+            await pixel.EnsureStorageReadyAsync();
+
+        if (!storageReady)
+        {
+            ScreensaverSendStatus.Text =
+                pixel.LastScreensaverError ??
+                L(
+                    "PIXEL PRO media storage is not ready.",
+                    "Bộ nhớ media PIXEL PRO chưa sẵn sàng.");
+
+            AddLog(
+                "ERROR",
+                "PIXEL STORAGE",
+                ScreensaverSendStatus.Text);
+
+            return;
+        }
+
+        await RestoreScreensaverAfterReconnectAsync();
+
+        // A merged firmware flash does not include user LittleFS assets.
+        // Always push the locally saved Main Menu profile again after the
+        // device reconnects, so app preview and physical screen cannot drift.
+        QueuePixelMainMenuAutoSync();
+    }
+
     private async Task DetectAsync()
     {
         bool pixel =
@@ -3415,6 +3459,12 @@ public partial class MainWindow : Window
             SendPowerTiming();
             await UpdateMemoryUsageAsync();
             await UpdatePanelInfoAsync();
+
+            if (pixel)
+            {
+                await SyncPixelStateAfterConnectAsync();
+            }
+
             UpdateTransportIndicators();
             UpdateSleepButtonUi();
             await CheckForUpdatesAsync(silent: true);
@@ -3579,7 +3629,16 @@ public partial class MainWindow : Window
                         SendPowerTiming();
                         await UpdateMemoryUsageAsync();
                         await UpdatePanelInfoAsync();
-                        await RestoreScreensaverAfterReconnectAsync();
+
+                        if (IsPixelProActive)
+                        {
+                            await SyncPixelStateAfterConnectAsync();
+                        }
+                        else
+                        {
+                            await RestoreScreensaverAfterReconnectAsync();
+                        }
+
                         UpdateTransportIndicators();
                         UpdateSleepButtonUi();
                         await CheckForUpdatesAsync(silent: true);
@@ -9682,75 +9741,189 @@ try {{
         if (!_serial.IsConnected)
             return;
 
-        if (IsPixelProActive &&
-            _screensaverAnimation is null &&
-            _serial is PixelProCdcLink pixelStored)
-        {
-            await RestorePixelStoredMediaPreviewAsync(
-                pixelStored);
-            return;
-        }
-
-        if (_screensaverAnimation is null)
-            return;
-
         try
         {
-            string? state = await _serial.GetScreensaverStateAsync();
+            if (IsPixelProActive &&
+                _serial is PixelProCdcLink pixel)
+            {
+                PixelProStoredMediaInfo? stored =
+                    await pixel.GetStoredScreensaverInfoAsync();
 
-            if (string.Equals(state, "READY", StringComparison.Ordinal))
+                bool customStored =
+                    stored is not null &&
+                    stored.Ready &&
+                    !string.Equals(
+                        stored.Kind,
+                        "DEFAULT",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    stored.StoredBytes > 0;
+
+                if (customStored)
+                {
+                    ScreensaverSendProgress.Value = 100;
+                    SetScreensaverUploadState(
+                        L("Stored on PIXEL PRO", "Đã lưu trên PIXEL PRO"),
+                        MediaColor.FromRgb(48, 209, 88));
+                    ScreensaverSendStatus.Text =
+                        L(
+                            "Custom screensaver is already stored on PIXEL PRO.",
+                            "Bảo vệ màn hình tùy chỉnh đã có trong PIXEL PRO.");
+                    return;
+                }
+
+                if (_screensaverAnimation is null &&
+                    !string.IsNullOrWhiteSpace(
+                        _pixelScreensaverMediaPath) &&
+                    IO.File.Exists(
+                        _pixelScreensaverMediaPath))
+                {
+                    _screensaverMediaPath =
+                        _pixelScreensaverMediaPath;
+
+                    await PrepareScreensaverMediaAsync();
+                }
+
+                if (_screensaverAnimation is null)
+                {
+                    await RestorePixelStoredMediaPreviewAsync(
+                        pixel);
+                    return;
+                }
+
+                AddLog(
+                    "INFO",
+                    "SAVER",
+                    stored is null
+                        ? "PIXEL SAVMEDIA unavailable; restoring local media"
+                        : $"PIXEL SAVMEDIA={stored.Kind}/{stored.StoredBytes}; restoring local media");
+
+                var pixelProgress =
+                    new Progress<int>(
+                        value =>
+                        {
+                            ScreensaverSendProgress.Value =
+                                value;
+
+                            ScreensaverSendStatus.Text =
+                                L(
+                                    $"Restoring PIXEL screensaver… {value}%",
+                                    $"Đang khôi phục bảo vệ màn hình PIXEL… {value}%");
+                        });
+
+                bool pixelVerified =
+                    await pixel.SendScreensaverAnimationAsync(
+                        _screensaverAnimation,
+                        pixelProgress);
+
+                if (!pixelVerified)
+                {
+                    ScreensaverSendStatus.Text =
+                        pixel.LastScreensaverError ??
+                        L(
+                            "PIXEL PRO screensaver upload failed.",
+                            "Tải bảo vệ màn hình PIXEL PRO thất bại.");
+
+                    SetScreensaverUploadState(
+                        L("Upload failed", "Tải lên thất bại"),
+                        MediaColor.FromRgb(255, 69, 58));
+
+                    return;
+                }
+
+                PixelProStoredMediaInfo? verifiedStored =
+                    await pixel.GetStoredScreensaverInfoAsync();
+
+                bool nowCustom =
+                    verifiedStored is not null &&
+                    verifiedStored.Ready &&
+                    !string.Equals(
+                        verifiedStored.Kind,
+                        "DEFAULT",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    verifiedStored.StoredBytes > 0;
+
+                if (!nowCustom)
+                {
+                    ScreensaverSendStatus.Text =
+                        L(
+                            "Upload completed but PIXEL PRO still reports the factory screensaver.",
+                            "Đã tải xong nhưng PIXEL PRO vẫn báo bảo vệ màn hình mặc định.");
+
+                    SetScreensaverUploadState(
+                        L("Verify failed", "Xác minh thất bại"),
+                        MediaColor.FromRgb(255, 69, 58));
+
+                    return;
+                }
+
+                await pixel.ShowScreensaverNowAsync(false);
+
+                ScreensaverSendProgress.Value = 100;
+                SetScreensaverUploadState(
+                    L("Uploaded & verified", "Đã tải lên và xác nhận"),
+                    MediaColor.FromRgb(48, 209, 88));
+                ScreensaverSendStatus.Text =
+                    L(
+                        "PIXEL PRO custom screensaver restored.",
+                        "Đã khôi phục bảo vệ màn hình tùy chỉnh PIXEL PRO.");
+
+                return;
+            }
+
+            if (_screensaverAnimation is null)
+                return;
+
+            string? state =
+                await _serial.GetScreensaverStateAsync();
+
+            if (string.Equals(
+                    state,
+                    "READY",
+                    StringComparison.Ordinal))
             {
                 ScreensaverSendProgress.Value = 100;
                 SetScreensaverUploadState(
                     L("Stored on keyboard", "Đã lưu trên bàn phím"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    IsPixelProActive
-                        ? L(
-                            "The original GIF is already stored on PIXEL PRO.",
-                            "GIF gốc đã được lưu sẵn trên PIXEL PRO.")
-                        : L(
-                            "Screensaver is already stored in keyboard flash.",
-                            "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
-                AddLog(
-                    "INFO",
-                    "SAVER",
-                    "Persisted screensaver already READY; reconnect restore skipped");
+                    L(
+                        "Screensaver is already stored in keyboard flash.",
+                        "Bảo vệ màn hình đã có sẵn trong flash của bàn phím.");
                 return;
             }
 
-            if (!string.Equals(state, "EMPTY", StringComparison.Ordinal) &&
-                !string.Equals(state, "ERROR", StringComparison.Ordinal))
+            if (!string.Equals(
+                    state,
+                    "EMPTY",
+                    StringComparison.Ordinal) &&
+                !string.Equals(
+                    state,
+                    "ERROR",
+                    StringComparison.Ordinal))
             {
-                // An unrelated GATT response or temporary read failure must
-                // never trigger a large automatic upload.
                 AddLog(
                     "WARN",
                     "SAVER",
                     $"Saver state unavailable ({state ?? "unknown"}); automatic restore skipped");
 
-                ScreensaverSendStatus.Text =
-                    L("Could not verify keyboard screensaver; no restore was attempted.",
-                      "Không xác minh được bảo vệ màn hình trên bàn phím; không tự tải lại.");
                 return;
             }
 
-            AddLog(
-                "INFO",
-                "SAVER",
-                $"Keyboard reported {state}; restoring local screensaver");
+            var progress =
+                new Progress<int>(
+                    value =>
+                    {
+                        ScreensaverSendProgress.Value = value;
+                        ScreensaverSendStatus.Text =
+                            L(
+                                $"Restoring screensaver… {value}%",
+                                $"Đang khôi phục bảo vệ màn hình… {value}%");
+                    });
 
-            var progress = new Progress<int>(value =>
-            {
-                ScreensaverSendProgress.Value = value;
-                ScreensaverSendStatus.Text =
-                    L($"Restoring screensaver… {value}%",
-                      $"Đang khôi phục bảo vệ màn hình… {value}%");
-            });
-
-            bool verified = await _serial.SendScreensaverAnimationAsync(
-                _screensaverAnimation,
-                progress);
+            bool verified =
+                await _serial.SendScreensaverAnimationAsync(
+                    _screensaverAnimation,
+                    progress);
 
             if (verified)
             {
@@ -9759,13 +9932,9 @@ try {{
                     L("Uploaded & verified", "Đã tải lên và xác nhận"),
                     MediaColor.FromRgb(48, 209, 88));
                 ScreensaverSendStatus.Text =
-                    IsPixelProActive
-                        ? L(
-                            "PIXEL PRO screensaver restored after reconnect.",
-                            "Đã khôi phục bảo vệ màn hình PIXEL PRO sau khi kết nối lại.")
-                        : L(
-                            "Custom screensaver restored because keyboard flash was empty.",
-                            "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
+                    L(
+                        "Custom screensaver restored because keyboard flash was empty.",
+                        "Đã khôi phục bảo vệ màn hình vì flash bàn phím đang trống.");
             }
         }
         catch (Exception ex)
@@ -9774,7 +9943,6 @@ try {{
                 "WARN",
                 "SAVER",
                 $"Automatic screensaver state check failed: {ex.Message}");
-            // Keep the keyboard connection alive even if state verification fails.
         }
     }
 
