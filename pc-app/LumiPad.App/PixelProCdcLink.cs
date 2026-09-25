@@ -2658,6 +2658,65 @@ public sealed class PixelProCdcLink : IDeviceLink
         return ascii.Trim();
     }
 
+    public async Task<bool> BeginMainMenuBatchAsync(
+        int profile,
+        CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string expected =
+            $"OK|MENUBATCHBEGIN|{profile}";
+
+        string? line =
+            await RequestLineAsync(
+                    $"MENUBATCHBEGIN|{profile}",
+                    expected,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        return string.Equals(
+            line,
+            expected,
+            StringComparison.Ordinal);
+    }
+
+    public async Task<bool> EndMainMenuBatchAsync(
+        int profile,
+        CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string expected =
+            $"OK|MENUBATCHEND|{profile}";
+
+        string? line =
+            await RequestLineAsync(
+                    $"MENUBATCHEND|{profile}",
+                    expected,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        return string.Equals(
+            line,
+            expected,
+            StringComparison.Ordinal);
+    }
+
+    public Task<string?> GetResetInfoAsync(
+        CancellationToken cancellationToken = default) =>
+        RequestLineAsync(
+            "RESETINFO",
+            "RESETINFO|",
+            cancellationToken);
+
     public async Task<bool> SetMainMenuProfileAsync(
         int profile,
         IReadOnlyList<int> actions,
