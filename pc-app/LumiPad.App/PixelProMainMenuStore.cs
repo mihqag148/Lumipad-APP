@@ -70,16 +70,70 @@ public static class PixelProMainMenuStore
             "LumiPad",
             "pixel_main_menu.json");
 
+    private static string RecoveryBackupPath =>
+        Path.Combine(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData),
+            "LumiPad",
+            "pixel_main_menu.recovery.json");
+
     public static PixelProMainMenuConfig Load()
     {
         try
         {
-            if (!File.Exists(ConfigPath))
+            PixelProMainMenuConfig primary =
+                File.Exists(ConfigPath)
+                    ? Normalize(
+                        JsonSerializer.Deserialize<PixelProMainMenuConfig>(
+                            File.ReadAllText(ConfigPath)) ??
+                        new PixelProMainMenuConfig())
+                    : Normalize(
+                        new PixelProMainMenuConfig());
+
+            // Never let a device-side empty state permanently erase the only
+            // recoverable Main Menu copy on the PC. If the primary cache is
+            // empty but a shadow backup still has real menu data, restore the
+            // backup into the editor immediately.
+            if (!HasRecoverableContent(primary))
+            {
+                PixelProMainMenuConfig backup =
+                    LoadRecoveryBackup();
+
+                if (HasRecoverableContent(backup))
+                {
+                    WriteConfig(
+                        ConfigPath,
+                        backup);
+
+                    return backup;
+                }
+            }
+
+            if (HasRecoverableContent(primary))
+            {
+                WriteConfig(
+                    RecoveryBackupPath,
+                    primary);
+            }
+
+            return primary;
+        }
+        catch
+        {
+            return Normalize(new PixelProMainMenuConfig());
+        }
+    }
+
+    public static PixelProMainMenuConfig LoadRecoveryBackup()
+    {
+        try
+        {
+            if (!File.Exists(RecoveryBackupPath))
                 return Normalize(new PixelProMainMenuConfig());
 
             return Normalize(
                 JsonSerializer.Deserialize<PixelProMainMenuConfig>(
-                    File.ReadAllText(ConfigPath)) ??
+                    File.ReadAllText(RecoveryBackupPath)) ??
                 new PixelProMainMenuConfig());
         }
         catch
@@ -88,28 +142,74 @@ public static class PixelProMainMenuStore
         }
     }
 
+    public static bool HasRecoverableProfile(
+        PixelProMainMenuProfile? profile)
+    {
+        if (profile is null)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(
+                profile.BackgroundPath))
+        {
+            return true;
+        }
+
+        return (profile.Slots ?? [])
+            .Any(
+                slot =>
+                    slot is not null &&
+                    (slot.ActionId > 0 ||
+                     !string.IsNullOrWhiteSpace(slot.IconPath) ||
+                     !string.IsNullOrWhiteSpace(slot.AppPath)));
+    }
+
+    public static bool HasRecoverableContent(
+        PixelProMainMenuConfig? config) =>
+        config?.Profiles?.Any(
+            HasRecoverableProfile) == true;
+
     public static void Save(PixelProMainMenuConfig config)
     {
         try
         {
             config = Normalize(config);
 
-            string? folder = Path.GetDirectoryName(ConfigPath);
-            if (!string.IsNullOrWhiteSpace(folder))
-                Directory.CreateDirectory(folder);
-
-            File.WriteAllText(
+            WriteConfig(
                 ConfigPath,
-                JsonSerializer.Serialize(
-                    config,
-                    new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    }));
+                config);
+
+            // An empty device response is allowed to update the disposable
+            // editor cache, but it must never overwrite the recovery copy.
+            if (HasRecoverableContent(config))
+            {
+                WriteConfig(
+                    RecoveryBackupPath,
+                    config);
+            }
         }
         catch
         {
         }
+    }
+
+    private static void WriteConfig(
+        string path,
+        PixelProMainMenuConfig config)
+    {
+        string? folder =
+            Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrWhiteSpace(folder))
+            Directory.CreateDirectory(folder);
+
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(
+                config,
+                new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                }));
     }
 
     private static PixelProMainMenuSlot NormalizeSlot(
