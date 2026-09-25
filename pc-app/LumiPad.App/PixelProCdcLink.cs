@@ -42,6 +42,15 @@ public sealed record PixelProMainMenuBackgroundInfo(
             StringComparison.OrdinalIgnoreCase);
 }
 
+public sealed record PixelProActiveProfileState(
+    int Profile,
+    int Layer);
+
+public sealed record PixelProDeviceMainMenuProfile(
+    int Profile,
+    int[] Actions,
+    string[] Labels);
+
 public sealed record PixelProStorageInfo(
     bool Ready,
     long TotalBytes,
@@ -884,6 +893,149 @@ public sealed class PixelProCdcLink : IDeviceLink
         IReadOnlyList<PixelProKeyBinding> bindings,
         CancellationToken cancellationToken = default) =>
         SetKeymapAsync(0, 0, bindings, cancellationToken);
+
+    public async Task<PixelProActiveProfileState?> GetActiveProfileStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? line =
+            await RequestLineAsync(
+                    "GET_PROFILE",
+                    "PROFILE|",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(line) ||
+            !line.StartsWith(
+                "PROFILE|",
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        int profile = -1;
+        int layer = -1;
+
+        foreach (string part in
+                 line.Split('|').Skip(1))
+        {
+            int split =
+                part.IndexOf('=');
+
+            if (split <= 0)
+                continue;
+
+            string key =
+                part[..split];
+
+            string value =
+                part[(split + 1)..];
+
+            if (key.Equals(
+                    "ACTIVE",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _ = int.TryParse(
+                    value,
+                    out profile);
+            }
+            else if (key.Equals(
+                         "LAYER",
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                _ = int.TryParse(
+                    value,
+                    out layer);
+            }
+        }
+
+        if (profile < 0 ||
+            profile >= PixelProMainMenuStore.ProfileCount ||
+            layer < 0 ||
+            layer > 3)
+        {
+            return null;
+        }
+
+        return new PixelProActiveProfileState(
+            profile,
+            layer);
+    }
+
+    public async Task<PixelProDeviceMainMenuProfile?> GetMainMenuProfileAsync(
+        int profile,
+        CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string prefix =
+            $"MENUCFG|{profile}|";
+
+        string? line =
+            await RequestLineAsync(
+                    $"GET_MENUCFG|{profile}",
+                    prefix,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(line) ||
+            !line.StartsWith(
+                prefix,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string[] fields =
+            line.Split('|');
+
+        if (fields.Length < 4)
+            return null;
+
+        string[] actionTokens =
+            fields[2].Split(',');
+
+        string[] labelTokens =
+            fields[3].Split(',');
+
+        if (actionTokens.Length !=
+                PixelProMainMenuStore.SlotCount ||
+            labelTokens.Length !=
+                PixelProMainMenuStore.SlotCount)
+        {
+            return null;
+        }
+
+        int[] actions =
+            new int[
+                PixelProMainMenuStore.SlotCount];
+
+        for (int slot = 0;
+             slot < actions.Length;
+             slot++)
+        {
+            if (!int.TryParse(
+                    actionTokens[slot],
+                    out int action))
+            {
+                return null;
+            }
+
+            actions[slot] =
+                Math.Clamp(
+                    action,
+                    0,
+                    32);
+        }
+
+        return new PixelProDeviceMainMenuProfile(
+            profile,
+            actions,
+            labelTokens);
+    }
 
     public void SetProfileLayer(int profile, int layer)
     {
