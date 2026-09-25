@@ -27,6 +27,31 @@ public partial class MainWindow
         _pixelMainMenu.Profiles[PixelMenuProfileIndex];
 
     private bool _pixelMenuBackgroundStateRequestActive;
+    private bool _pixelMenuAutoSyncPending;
+
+    private void QueuePixelMainMenuAutoSync()
+    {
+        if (!IsPixelProActive ||
+            _serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected ||
+            PixelMenuSaveButton is null)
+        {
+            return;
+        }
+
+        if (!PixelMenuSaveButton.IsEnabled)
+        {
+            _pixelMenuAutoSyncPending = true;
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            new Action(
+                () =>
+                    PixelMenuSave_Click(
+                        PixelMenuSaveButton,
+                        new RoutedEventArgs())));
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint PrivateExtractIcons(
@@ -924,7 +949,9 @@ public partial class MainWindow
             _pixelMainMenu);
 
         RefreshPixelMainMenuUi();
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private void PixelMenuChooseBackground_Click(
         object sender,
@@ -969,7 +996,9 @@ public partial class MainWindow
                     $"Background error: {ex.Message}",
                     $"Lỗi ảnh nền: {ex.Message}");
         }
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private async void PixelMenuClearBackground_Click(
         object sender,
@@ -1078,7 +1107,9 @@ public partial class MainWindow
                 LoadPixelMenuBackgroundPreview(
                     PixelMenuProfile);
         }
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private void PixelMenuOpacitySlider_ValueChanged(
         object sender,
@@ -1113,7 +1144,9 @@ public partial class MainWindow
                 LoadPixelMenuBackgroundPreview(
                     PixelMenuProfile);
         }
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private void PixelMenuScaleCombo_SelectionChanged(
         object sender,
@@ -1154,7 +1187,9 @@ public partial class MainWindow
                 LoadPixelMenuBackgroundPreview(
                     PixelMenuProfile);
         }
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private static string? ExtractPixelMenuAppIcon(
         string appPath)
@@ -1379,7 +1414,9 @@ public partial class MainWindow
                 : L(
                     $"Assigned {action.Name} with its app icon.",
                     $"Đã gán {action.Name} kèm icon của app.");
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private void PixelMenuChooseIcon_Click(
         object sender,
@@ -1442,7 +1479,9 @@ public partial class MainWindow
                     $"Icon error: {ex.Message}",
                     $"Lỗi icon: {ex.Message}");
         }
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private void PixelMenuClearIcon_Click(
         object sender,
@@ -1474,7 +1513,9 @@ public partial class MainWindow
             _pixelMainMenu);
 
         RefreshPixelMainMenuUi();
-    }
+    
+        QueuePixelMainMenuAutoSync();
+}
 
     private async void PixelMenuSave_Click(
         object sender,
@@ -1492,6 +1533,8 @@ public partial class MainWindow
         }
 
         SetPixelHomePreviewMode(true);
+
+        _pixelMenuAutoSyncPending = false;
 
         PixelMenuSaveButton.IsEnabled =
             false;
@@ -1600,6 +1643,40 @@ public partial class MainWindow
             {
                 throw new InvalidOperationException(
                     "PIXEL PRO could not clear the profile background.");
+            }
+
+            PixelProMainMenuBackgroundInfo? backgroundState =
+                await pixel
+                    .GetMainMenuBackgroundInfoAsync(
+                        profileIndex);
+
+            bool expectsCustomBackground =
+                !string.IsNullOrWhiteSpace(
+                    profile.BackgroundPath) &&
+                IO.File.Exists(
+                    profile.BackgroundPath);
+
+            bool backgroundVerified =
+                backgroundState is not null &&
+                backgroundState.Profile ==
+                    profileIndex &&
+                (expectsCustomBackground
+                    ? string.Equals(
+                          backgroundState.State,
+                          "CUSTOM",
+                          StringComparison.OrdinalIgnoreCase) &&
+                      backgroundState.StoredBytes > 0
+                    : string.Equals(
+                          backgroundState.State,
+                          "FACTORY",
+                          StringComparison.OrdinalIgnoreCase));
+
+            if (!backgroundVerified)
+            {
+                throw new InvalidOperationException(
+                    expectsCustomBackground
+                        ? "PIXEL PRO still reports the factory Main Menu background after upload."
+                        : "PIXEL PRO did not confirm the factory Main Menu background.");
             }
 
             ReportOperation();
@@ -1767,6 +1844,18 @@ public partial class MainWindow
         {
             PixelMenuSaveButton.IsEnabled =
                 true;
+
+            if (_pixelMenuAutoSyncPending)
+            {
+                _pixelMenuAutoSyncPending = false;
+
+                Dispatcher.BeginInvoke(
+                    new Action(
+                        () =>
+                            PixelMenuSave_Click(
+                                PixelMenuSaveButton,
+                                new RoutedEventArgs())));
+            }
         }
     }
 
