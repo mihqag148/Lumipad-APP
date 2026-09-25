@@ -2050,7 +2050,7 @@ public partial class MainWindow : Window
             RgbProfileSetting[] migratedRgb = CreateDefaultRgbProfiles();
             if (settings.RgbProfiles is { Length: > 0 })
             {
-                for (int i = 0; i < Math.Min(10, settings.RgbProfiles.Length); i++)
+                for (int i = 0; i < Math.Min(RynorProfiles.Count, settings.RgbProfiles.Length); i++)
                 {
                     RgbProfileSetting p = settings.RgbProfiles[i];
                     migratedRgb[i] = new RgbProfileSetting
