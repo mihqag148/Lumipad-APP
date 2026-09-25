@@ -29,6 +29,69 @@ public partial class MainWindow
     private bool _pixelMenuBackgroundStateRequestActive;
     private bool _pixelMenuAutoSyncPending;
 
+    private int RecoverPixelMenuActionsFromAppPaths(
+        PixelProMainMenuProfile profile)
+    {
+        int recovered = 0;
+
+        foreach (PixelProMainMenuSlot slot in profile.Slots)
+        {
+            if (slot.ActionId > 0 ||
+                string.IsNullOrWhiteSpace(slot.AppPath))
+            {
+                continue;
+            }
+
+            ActionScriptDefinition? action =
+                _actionScripts.FirstOrDefault(
+                    script =>
+                        script.ActionId is >= 1 and <= 32 &&
+                        script.Steps.Count == 1 &&
+                        script.Steps[0].Type.Equals(
+                            "Run",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(
+                            script.Steps[0].Value,
+                            slot.AppPath,
+                            StringComparison.OrdinalIgnoreCase));
+
+            if (action is null)
+            {
+                continue;
+            }
+
+            slot.ActionId =
+                action.ActionId;
+
+            recovered++;
+        }
+
+        return recovered;
+    }
+
+    private static bool PixelMenuHasLocalAssets(
+        PixelProMainMenuProfile profile)
+    {
+        if (!string.IsNullOrWhiteSpace(
+                profile.BackgroundPath) &&
+            IO.File.Exists(
+                profile.BackgroundPath))
+        {
+            return true;
+        }
+
+        return profile.Slots.Any(
+            slot =>
+                (!string.IsNullOrWhiteSpace(
+                     slot.IconPath) &&
+                 IO.File.Exists(
+                     slot.IconPath)) ||
+                (!string.IsNullOrWhiteSpace(
+                     slot.AppPath) &&
+                 IO.File.Exists(
+                     slot.AppPath)));
+    }
+
     private async Task SyncPixelMainMenuFromDeviceAsync(
         PixelProCdcLink pixel)
     {
@@ -84,21 +147,17 @@ public partial class MainWindow
             _pixelMainMenu.Profiles[
                 profileIndex];
 
-        for (int slot = 0;
-             slot < PixelProMainMenuStore.SlotCount;
-             slot++)
-        {
-            // Action mapping is device-owned. Icon/background paths remain local
-            // cache references because the binary assets themselves are already
-            // stored in PIXEL PRO LittleFS and are not downloaded just to edit.
-            localCache.Slots[slot].ActionId =
-                deviceMenu.Actions[slot];
-        }
+        int recoveredActions =
+            RecoverPixelMenuActionsFromAppPaths(
+                localCache);
 
-        PixelProMainMenuStore.Save(
-            _pixelMainMenu);
+        bool deviceHasActions =
+            deviceMenu.Actions.Any(
+                action => action > 0);
 
-        RefreshPixelMainMenuUi();
+        bool localHasActions =
+            localCache.Slots.Any(
+                slot => slot.ActionId > 0);
 
         int? iconMask =
             await pixel.GetMainMenuIconMaskAsync(
@@ -107,6 +166,79 @@ public partial class MainWindow
         PixelProMainMenuBackgroundInfo? background =
             await pixel.GetMainMenuBackgroundInfoAsync(
                 profileIndex);
+
+        bool deviceMissingLocalIcons =
+            localCache.Slots
+                .Select((slot, index) =>
+                    new
+                    {
+                        Slot = slot,
+                        Index = index
+                    })
+                .Any(
+                    item =>
+                        !string.IsNullOrWhiteSpace(
+                            item.Slot.IconPath) &&
+                        IO.File.Exists(
+                            item.Slot.IconPath) &&
+                        ((iconMask ?? 0) &
+                         (1 << item.Index)) == 0);
+
+        bool localHasBackground =
+            !string.IsNullOrWhiteSpace(
+                localCache.BackgroundPath) &&
+            IO.File.Exists(
+                localCache.BackgroundPath);
+
+        bool deviceMissingLocalBackground =
+            localHasBackground &&
+            background?.IsCustom != true;
+
+        bool shouldRestoreFromLocal =
+            (!deviceHasActions &&
+             localHasActions) ||
+            deviceMissingLocalIcons ||
+            deviceMissingLocalBackground;
+
+        if (shouldRestoreFromLocal &&
+            (localHasActions ||
+             PixelMenuHasLocalAssets(
+                 localCache)))
+        {
+            PixelProMainMenuStore.Save(
+                _pixelMainMenu);
+
+            RefreshPixelMainMenuUi();
+
+            PixelMenuStatusText.Text =
+                L(
+                    $"PIXEL PRO Main Menu is incomplete after firmware flash. Restoring cached Profile {profileIndex + 1:00}…",
+                    $"Main Menu trên PIXEL PRO bị thiếu sau khi flash firmware. Đang khôi phục Profile {profileIndex + 1:00} từ cache…");
+
+            AddLog(
+                "INFO",
+                "PIXEL MENU",
+                $"Rehydrating Profile {profileIndex + 1:00}: deviceActions={(deviceHasActions ? "YES" : "EMPTY")}, icons={(iconMask ?? 0):X2}, recoveredActions={recoveredActions}.");
+
+            QueuePixelMainMenuAutoSync();
+            return;
+        }
+
+        for (int slot = 0;
+             slot < PixelProMainMenuStore.SlotCount;
+             slot++)
+        {
+            // Once the device has a real action map, it remains authoritative.
+            // A completely empty action map is handled above as a post-flash
+            // recovery case so it cannot erase a valid local Main Menu cache.
+            localCache.Slots[slot].ActionId =
+                deviceMenu.Actions[slot];
+        }
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
+        RefreshPixelMainMenuUi();
 
         PixelMenuStatusText.Text =
             L(
