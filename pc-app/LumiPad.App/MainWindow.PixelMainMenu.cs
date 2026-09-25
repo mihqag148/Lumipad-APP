@@ -28,6 +28,7 @@ public partial class MainWindow
 
     private bool _pixelMenuBackgroundStateRequestActive;
     private bool _pixelMenuAutoSyncPending;
+    private readonly HashSet<int> _pixelMenuReconnectRestoreAttempted = [];
 
     private int RecoverPixelMenuActionsFromAppPaths(
         PixelProMainMenuProfile profile)
@@ -99,6 +100,18 @@ public partial class MainWindow
             !pixel.IsConnected)
         {
             return;
+        }
+
+        string? resetInfo =
+            await pixel.GetResetInfoAsync();
+
+        if (!string.IsNullOrWhiteSpace(
+                resetInfo))
+        {
+            AddLog(
+                "INFO",
+                "PIXEL RESET",
+                resetInfo);
         }
 
         PixelProActiveProfileState? active =
@@ -210,19 +223,51 @@ public partial class MainWindow
 
             RefreshPixelMainMenuUi();
 
+            // A failed restore must never become a reconnect -> upload ->
+            // reset -> reconnect loop. Try at most once for this profile until
+            // a complete save succeeds.
+            if (!_pixelMenuReconnectRestoreAttempted.Add(
+                    profileIndex))
+            {
+                PixelMenuStatusText.Text =
+                    L(
+                        $"Automatic Main Menu restore paused for Profile {profileIndex + 1:00} after a reconnect. The link must stay stable before another save.",
+                        $"Đã dừng tự khôi phục Main Menu Profile {profileIndex + 1:00} sau khi kết nối lại để tránh vòng lặp reset. Hãy để kết nối ổn định trước lần lưu tiếp theo.");
+
+                AddLog(
+                    "WARN",
+                    "PIXEL MENU",
+                    $"Skipped repeated reconnect restore for Profile {profileIndex + 1:00}.");
+
+                return;
+            }
+
             PixelMenuStatusText.Text =
                 L(
-                    $"PIXEL PRO Main Menu is incomplete after firmware flash. Restoring cached Profile {profileIndex + 1:00}…",
-                    $"Main Menu trên PIXEL PRO bị thiếu sau khi flash firmware. Đang khôi phục Profile {profileIndex + 1:00} từ cache…");
+                    $"PIXEL PRO Main Menu is incomplete after firmware flash. Restoring cached Profile {profileIndex + 1:00} once…",
+                    $"Main Menu trên PIXEL PRO bị thiếu sau khi flash firmware. Đang khôi phục Profile {profileIndex + 1:00} một lần…");
 
             AddLog(
                 "INFO",
                 "PIXEL MENU",
-                $"Rehydrating Profile {profileIndex + 1:00}: deviceActions={(deviceHasActions ? "YES" : "EMPTY")}, icons={(iconMask ?? 0):X2}, recoveredActions={recoveredActions}.");
+                $"One-shot rehydrate Profile {profileIndex + 1:00}: deviceActions={(deviceHasActions ? "YES" : "EMPTY")}, icons={(iconMask ?? 0):X2}, recoveredActions={recoveredActions}.");
+
+            // Avoid hammering a CDC interface during the first milliseconds
+            // after Windows has just enumerated it.
+            await Task.Delay(900);
+
+            if (!pixel.IsConnected)
+            {
+                return;
+            }
 
             QueuePixelMainMenuAutoSync();
             return;
         }
+
+        // A complete device state proves the previous restore succeeded.
+        _pixelMenuReconnectRestoreAttempted.Remove(
+            profileIndex);
 
         for (int slot = 0;
              slot < PixelProMainMenuStore.SlotCount;
@@ -1792,6 +1837,12 @@ public partial class MainWindow
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
 
+        bool menuBatchStarted =
+            false;
+
+        bool menuCommitSucceeded =
+            false;
+
         try
         {
             if (!await pixel.EnsureStorageReadyAsync())
@@ -1805,6 +1856,21 @@ public partial class MainWindow
                 L(
                     $"Preparing Main Menu for Keymap Profile {profileIndex + 1:00}…",
                     $"Đang xử lý Main Menu cho Keymap Profile {profileIndex + 1:00}…");
+
+            // Firmware 1.10.11 defers all Main Menu redraws until the whole
+            // profile transaction is complete. Older firmware simply falls
+            // back to the previous per-operation behavior.
+            menuBatchStarted =
+                await pixel.BeginMainMenuBatchAsync(
+                    profileIndex);
+
+            if (!menuBatchStarted)
+            {
+                AddLog(
+                    "WARN",
+                    "PIXEL MENU",
+                    "Firmware does not support MENUBATCH; continuing with legacy menu sync.");
+            }
 
             const int TotalOperations =
                 11;
@@ -2018,7 +2084,19 @@ public partial class MainWindow
                     $"Main Menu icon verify failed: app={expectedIconMask:X2}, device={deviceIconMask.Value:X2}.");
             }
 
-            if (!await pixel.ShowMainMenuAsync())
+            if (menuBatchStarted)
+            {
+                if (!await pixel.EndMainMenuBatchAsync(
+                        profileIndex))
+                {
+                    throw new InvalidOperationException(
+                        "PIXEL PRO did not finish the Main Menu batch.");
+                }
+
+                menuBatchStarted =
+                    false;
+            }
+            else if (!await pixel.ShowMainMenuAsync())
             {
                 throw new InvalidOperationException(
                     "PIXEL PRO did not show the main menu.");
@@ -2028,6 +2106,12 @@ public partial class MainWindow
 
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
+
+            menuCommitSucceeded =
+                true;
+
+            _pixelMenuReconnectRestoreAttempted.Remove(
+                profileIndex);
 
             PixelMenuUploadProgress.Value =
                 100;
@@ -2053,19 +2137,44 @@ public partial class MainWindow
         }
         finally
         {
+            if (menuBatchStarted &&
+                pixel.IsConnected)
+            {
+                try
+                {
+                    await pixel.EndMainMenuBatchAsync(
+                        profileIndex);
+                }
+                catch (Exception ex)
+                {
+                    AddLog(
+                        "WARN",
+                        "PIXEL MENU",
+                        $"Could not close interrupted Main Menu batch: {ex.Message}");
+                }
+            }
+
             PixelMenuSaveButton.IsEnabled =
                 true;
 
             if (_pixelMenuAutoSyncPending)
             {
-                _pixelMenuAutoSyncPending = false;
+                _pixelMenuAutoSyncPending =
+                    false;
 
-                Dispatcher.BeginInvoke(
-                    new Action(
-                        () =>
-                            PixelMenuSave_Click(
-                                PixelMenuSaveButton,
-                                new RoutedEventArgs())));
+                // Only coalesce another editor change after a successful
+                // transaction. After a disconnect/reset, automatic retry is
+                // deliberately stopped until the link is stable.
+                if (menuCommitSucceeded &&
+                    pixel.IsConnected)
+                {
+                    Dispatcher.BeginInvoke(
+                        new Action(
+                            () =>
+                                PixelMenuSave_Click(
+                                    PixelMenuSaveButton,
+                                    new RoutedEventArgs())));
+                }
             }
         }
     }
