@@ -1145,14 +1145,34 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     private void SendCommand(string command)
     {
-        SerialPort? port = _port;
-        if (port?.IsOpen != true)
-            return;
+        // Fire-and-forget commands must share the same gate as request/response
+        // transactions. Writing directly to SerialPort here allowed RGB,
+        // profile and power updates to interleave with Main Menu restore after
+        // reconnect, which could leave the device on an empty menu.
+        _ = SendCommandSerializedAsync(command);
+    }
 
+    private async Task SendCommandSerializedAsync(string command)
+    {
         try
         {
-            port.WriteLine(command);
-            Log("TX", command);
+            await _commandGate
+                .WaitAsync()
+                .ConfigureAwait(false);
+
+            try
+            {
+                SerialPort? port = _port;
+                if (port?.IsOpen != true)
+                    return;
+
+                port.WriteLine(command);
+                Log("TX", command);
+            }
+            finally
+            {
+                _commandGate.Release();
+            }
         }
         catch (Exception ex)
         {
