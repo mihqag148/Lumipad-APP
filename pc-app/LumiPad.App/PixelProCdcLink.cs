@@ -754,6 +754,30 @@ public sealed class PixelProCdcLink : IDeviceLink
         SendCommand($"SET_PROFILE|{profile}|{layer}");
     }
 
+    public async Task<bool> SetProfileLayerAsync(
+        int profile,
+        int layer,
+        CancellationToken cancellationToken = default)
+    {
+        profile = Math.Clamp(profile, 0, 19);
+        layer = Math.Clamp(layer, 0, 3);
+        _activeProfile = profile;
+
+        string expected =
+            $"OK|PROFILE|{profile}|{layer}";
+
+        string? response =
+            await RequestLineAsync(
+                $"SET_PROFILE|{profile}|{layer}",
+                expected,
+                cancellationToken);
+
+        return string.Equals(
+            response,
+            expected,
+            StringComparison.Ordinal);
+    }
+
     public async Task<string?> GetMacroAsync(
         int index,
         CancellationToken cancellationToken = default)
@@ -2065,6 +2089,49 @@ public sealed class PixelProCdcLink : IDeviceLink
             "OK|MENUBGEND",
             jpegBytes,
             progress);
+    }
+
+    public async Task<int?> GetMainMenuIconMaskAsync(
+        int profile,
+        CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string prefix =
+            $"MENUICONSTATE|PROFILE={profile}|MASK=";
+
+        string? line =
+            await RequestLineAsync(
+                $"MENUICONSTATE|{profile}",
+                prefix,
+                cancellationToken);
+
+        if (line is null ||
+            !line.StartsWith(
+                prefix,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string hex =
+            line[prefix.Length..].Trim();
+
+        try
+        {
+            return Convert.ToInt32(
+                       hex,
+                       16) &
+                   0xFF;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public Task<bool> UploadMainMenuIconAsync(
