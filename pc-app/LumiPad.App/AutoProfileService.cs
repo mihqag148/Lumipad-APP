@@ -68,7 +68,7 @@ public sealed class AutoProfileSettings
             LegacyActivePresetIndex = 0;
         }
 
-        DefaultProfile = Math.Clamp(DefaultProfile, 0, 7);
+        DefaultProfile = Math.Clamp(DefaultProfile, 0, 9);
         DefaultPixelProfile = Math.Clamp(DefaultPixelProfile, 0, 19);
         DefaultLayer = Math.Clamp(DefaultLayer, 0, 3);
 
@@ -93,7 +93,7 @@ public sealed class AutoProfileSettings
                     : mapping.Name.Trim();
             mapping.ExecutablePath = key;
             mapping.ProfileIndex =
-                Math.Clamp(mapping.ProfileIndex, 0, 7);
+                Math.Clamp(mapping.ProfileIndex, 0, 9);
             mapping.PixelProfileIndex =
                 Math.Clamp(mapping.PixelProfileIndex, 0, 19);
             mapping.LayerIndex =
