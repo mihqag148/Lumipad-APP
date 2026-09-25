@@ -93,6 +93,96 @@ public partial class MainWindow
                      slot.AppPath)));
     }
 
+    private async Task<int> RecoverPixelMenuActionsFromKeymapAsync(
+        PixelProCdcLink pixel,
+        int profileIndex,
+        PixelProMainMenuProfile profile)
+    {
+        IReadOnlyList<PixelProKeyBinding>? layer0 =
+            await pixel.GetKeymapAsync(
+                profileIndex,
+                0);
+
+        if (layer0 is null ||
+            layer0.Count !=
+                PixelProMainMenuStore.SlotCount)
+        {
+            return 0;
+        }
+
+        int recovered = 0;
+
+        for (int slot = 0;
+             slot < PixelProMainMenuStore.SlotCount;
+             slot++)
+        {
+            if (profile.Slots[slot].ActionId > 0)
+                continue;
+
+            PixelProKeyBinding binding =
+                layer0[slot];
+
+            if (binding.Type !=
+                    PixelProKeyBindingType.Action ||
+                binding.Code is < 1 or > 32)
+            {
+                continue;
+            }
+
+            PixelProMainMenuSlot target =
+                profile.Slots[slot];
+
+            target.ActionId =
+                binding.Code;
+
+            ActionScriptDefinition? action =
+                _actionScripts.FirstOrDefault(
+                    item =>
+                        item.ActionId ==
+                        binding.Code);
+
+            string? appPath =
+                PixelMenuActionRunPath(
+                    action);
+
+            if (string.IsNullOrWhiteSpace(
+                    target.AppPath) &&
+                !string.IsNullOrWhiteSpace(
+                    appPath))
+            {
+                target.AppPath =
+                    appPath;
+            }
+
+            if ((string.IsNullOrWhiteSpace(
+                     target.IconPath) ||
+                 !IO.File.Exists(
+                     target.IconPath)) &&
+                !string.IsNullOrWhiteSpace(
+                    target.AppPath) &&
+                IO.File.Exists(
+                    target.AppPath))
+            {
+                string? icon =
+                    ExtractPixelMenuAppIcon(
+                        target.AppPath);
+
+                if (!string.IsNullOrWhiteSpace(
+                        icon))
+                {
+                    target.IconPath =
+                        icon;
+                    target.AutoIcon =
+                        true;
+                }
+            }
+
+            recovered++;
+        }
+
+        return recovered;
+    }
+
     private async Task SyncPixelMainMenuFromDeviceAsync(
         PixelProCdcLink pixel)
     {
@@ -160,9 +250,49 @@ public partial class MainWindow
             _pixelMainMenu.Profiles[
                 profileIndex];
 
+        if (!PixelProMainMenuStore.HasRecoverableProfile(
+                localCache))
+        {
+            PixelProMainMenuConfig recovery =
+                PixelProMainMenuStore.LoadRecoveryBackup();
+
+            PixelProMainMenuProfile backup =
+                recovery.Profiles[
+                    profileIndex];
+
+            if (PixelProMainMenuStore.HasRecoverableProfile(
+                    backup))
+            {
+                _pixelMainMenu.Profiles[
+                    profileIndex] =
+                    backup;
+
+                localCache =
+                    _pixelMainMenu.Profiles[
+                        profileIndex];
+
+                AddLog(
+                    "INFO",
+                    "PIXEL MENU",
+                    $"Recovered Profile {profileIndex + 1:00} from the LumiPad shadow backup.");
+            }
+        }
+
         int recoveredActions =
             RecoverPixelMenuActionsFromAppPaths(
                 localCache);
+
+        recoveredActions +=
+            await RecoverPixelMenuActionsFromKeymapAsync(
+                pixel,
+                profileIndex,
+                localCache);
+
+        if (recoveredActions > 0)
+        {
+            PixelProMainMenuStore.Save(
+                _pixelMainMenu);
+        }
 
         bool deviceHasActions =
             deviceMenu.Actions.Any(
