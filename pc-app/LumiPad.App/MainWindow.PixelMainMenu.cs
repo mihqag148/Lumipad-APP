@@ -1665,7 +1665,7 @@ public partial class MainWindow
                           backgroundState.State,
                           "CUSTOM",
                           StringComparison.OrdinalIgnoreCase) &&
-                      backgroundState.Bytes > 0
+                      backgroundState.StoredBytes > 0
                     : string.Equals(
                           backgroundState.State,
                           "FACTORY",
