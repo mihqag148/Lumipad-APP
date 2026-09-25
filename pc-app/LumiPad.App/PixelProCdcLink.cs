@@ -42,6 +42,17 @@ public sealed record PixelProMainMenuBackgroundInfo(
             StringComparison.OrdinalIgnoreCase);
 }
 
+public sealed record PixelProStorageInfo(
+    bool Ready,
+    long TotalBytes,
+    long UsedBytes,
+    long FreeBytes,
+    int Profile,
+    string Background,
+    int IconMask,
+    string Saver,
+    string Firmware);
+
 /// <summary>
 /// Native ESP32-S2 USB CDC transport for PIXEL PRO.
 /// The HID keyboard remains independent; LumiPad owns only the CDC interface.
@@ -942,6 +953,12 @@ public sealed class PixelProCdcLink : IDeviceLink
             return false;
         }
 
+        if (!await EnsureStorageReadyAsync()
+                .ConfigureAwait(false))
+        {
+            return false;
+        }
+
         if (PixelProScreensaverMediaService.TryGetPackedAnimation(
                 animation,
                 out byte[] packedAnimation))
@@ -1346,11 +1363,11 @@ public sealed class PixelProCdcLink : IDeviceLink
                     return false;
                 }
 
-                // Keep each CDC line well below the firmware line-buffer limit.
-                // A 512-byte raw chunk becomes ~684 bytes of base64 and leaves
-                // ample headroom for the command/offset text.
-                const int RawChunkSize = 512;
-                const int MaxChunkAttempts = 3;
+                // Use smaller acknowledged chunks for long ~2 MB transfers.
+                // This is slower than fire-and-forget but is substantially more
+                // tolerant of Windows usbser/TinyUSB scheduling stalls.
+                const int RawChunkSize = 384;
+                const int MaxChunkAttempts = 5;
 
                 for (int offset = 0;
                      offset < packedBytes.Length;
@@ -1389,7 +1406,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                             await ReadExpectedLineAsync(
                                 port,
                                 expected,
-                                TimeSpan.FromSeconds(7));
+                                TimeSpan.FromSeconds(10));
 
                         if (string.Equals(
                                 ack,
@@ -1411,7 +1428,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                             break;
 
                         await Task.Delay(
-                            15 * (attempt + 1));
+                            30 * (attempt + 1));
                     }
 
                     if (!string.Equals(
@@ -1964,8 +1981,8 @@ public sealed class PixelProCdcLink : IDeviceLink
 
             try
             {
-                port.ReadTimeout = 500;
-                port.WriteTimeout = 5000;
+                port.ReadTimeout = 750;
+                port.WriteTimeout = 8000;
 
                 try { port.DiscardInBuffer(); } catch { }
 
@@ -1976,7 +1993,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                     await ReadExpectedLineAsync(
                         port,
                         beginAck,
-                        TimeSpan.FromSeconds(8));
+                        TimeSpan.FromSeconds(10));
 
                 if (!string.Equals(
                         start,
@@ -1986,7 +2003,8 @@ public sealed class PixelProCdcLink : IDeviceLink
                     return false;
                 }
 
-                const int RawChunkSize = 1024;
+                const int RawChunkSize = 384;
+                const int MaxChunkAttempts = 5;
 
                 for (int offset = 0;
                      offset < bytes.Length;
@@ -2003,18 +2021,47 @@ public sealed class PixelProCdcLink : IDeviceLink
                             offset,
                             len);
 
-                    port.WriteLine(
-                        $"{dataCommand}|{offset}|{encoded}");
+                    int nextOffset =
+                        offset + len;
 
-                    int nextOffset = offset + len;
                     string expected =
                         $"{dataAckPrefix}|{nextOffset}";
 
-                    string? ack =
-                        await ReadExpectedLineAsync(
-                            port,
-                            expected,
-                            TimeSpan.FromSeconds(5));
+                    string? ack = null;
+
+                    for (int attempt = 0;
+                         attempt < MaxChunkAttempts;
+                         attempt++)
+                    {
+                        port.WriteLine(
+                            $"{dataCommand}|{offset}|{encoded}");
+
+                        ack =
+                            await ReadExpectedLineAsync(
+                                port,
+                                expected,
+                                TimeSpan.FromSeconds(8));
+
+                        if (string.Equals(
+                                ack,
+                                expected,
+                                StringComparison.Ordinal))
+                        {
+                            break;
+                        }
+
+                        bool retryable =
+                            string.IsNullOrWhiteSpace(ack) ||
+                            ack.StartsWith(
+                                "ERR|",
+                                StringComparison.Ordinal);
+
+                        if (!retryable)
+                            break;
+
+                        await Task.Delay(
+                            25 * (attempt + 1));
+                    }
 
                     if (!string.Equals(
                             ack,
@@ -2038,7 +2085,7 @@ public sealed class PixelProCdcLink : IDeviceLink
                     await ReadExpectedLineAsync(
                         port,
                         endAck,
-                        TimeSpan.FromSeconds(10));
+                        TimeSpan.FromSeconds(12));
 
                 bool ok =
                     string.Equals(
@@ -2810,6 +2857,133 @@ public sealed class PixelProCdcLink : IDeviceLink
             refreshHz,
             busHz,
             gifMaxFps);
+    }
+
+    public async Task<PixelProStorageInfo?> GetStorageInfoAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? line =
+            await RequestLineAsync(
+                    "FSINFO",
+                    "FSINFO|",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(line) ||
+            !line.StartsWith(
+                "FSINFO|",
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var values =
+            new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (string part in
+                 line.Split('|').Skip(1))
+        {
+            int split =
+                part.IndexOf('=');
+
+            if (split <= 0)
+                continue;
+
+            values[part[..split]] =
+                part[(split + 1)..];
+        }
+
+        static long LongValue(
+            IReadOnlyDictionary<string, string> map,
+            string key) =>
+            map.TryGetValue(key, out string? value) &&
+            long.TryParse(value, out long parsed)
+                ? parsed
+                : 0;
+
+        static int IntValue(
+            IReadOnlyDictionary<string, string> map,
+            string key) =>
+            map.TryGetValue(key, out string? value) &&
+            int.TryParse(value, out int parsed)
+                ? parsed
+                : 0;
+
+        int iconMask = 0;
+
+        if (values.TryGetValue(
+                "ICONS",
+                out string? iconText))
+        {
+            _ = int.TryParse(
+                iconText,
+                System.Globalization.NumberStyles.HexNumber,
+                null,
+                out iconMask);
+        }
+
+        return new PixelProStorageInfo(
+            values.TryGetValue("READY", out string? readyText) &&
+                readyText == "1",
+            LongValue(values, "TOTAL"),
+            LongValue(values, "USED"),
+            LongValue(values, "FREE"),
+            IntValue(values, "PROFILE"),
+            values.GetValueOrDefault("BG") ?? "",
+            iconMask & 0xFF,
+            values.GetValueOrDefault("SAVER") ?? "",
+            values.GetValueOrDefault("FW") ?? "");
+    }
+
+    public async Task<bool> EnsureStorageReadyAsync(
+        CancellationToken cancellationToken = default)
+    {
+        PixelProStorageInfo? info =
+            await GetStorageInfoAsync(
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (info?.Ready == true &&
+            info.TotalBytes > 0)
+        {
+            return true;
+        }
+
+        string? repair =
+            await RequestLineAsync(
+                    "FSREPAIR",
+                    "OK|FSREPAIR",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(repair) ||
+            !repair.StartsWith(
+                "OK|FSREPAIR",
+                StringComparison.Ordinal))
+        {
+            LastScreensaverError =
+                "PIXEL PRO media storage is not ready. Firmware 1.10.6 or newer is required.";
+
+            return false;
+        }
+
+        info =
+            await GetStorageInfoAsync(
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        bool ready =
+            info?.Ready == true &&
+            info.TotalBytes > 0;
+
+        if (!ready)
+        {
+            LastScreensaverError =
+                "PIXEL PRO media storage could not be mounted.";
+        }
+
+        return ready;
     }
 
     public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
