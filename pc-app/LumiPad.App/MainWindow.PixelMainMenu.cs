@@ -110,8 +110,8 @@ public partial class MainWindow
 
         PixelMenuStatusText.Text =
             L(
-                $"Loaded Main Menu from PIXEL PRO · Profile {profileIndex + 1:00} · BG {(background?.IsCustom == true ? "CUSTOM" : "FACTORY")} · Icons {(iconMask ?? 0):X2}.",
-                $"Đã đọc Main Menu từ PIXEL PRO · Profile {profileIndex + 1:00} · Nền {(background?.IsCustom == true ? "CUSTOM" : "FACTORY")} · Icon {(iconMask ?? 0):X2}.");
+                $"Loaded Main Menu from PIXEL PRO · Profile {profileIndex + 1:00} · BG {(background?.IsCustom == true ? "CUSTOM" : "EMPTY")} · Icons {(iconMask ?? 0):X2}.",
+                $"Đã đọc Main Menu từ PIXEL PRO · Profile {profileIndex + 1:00} · Nền {(background?.IsCustom == true ? "CUSTOM" : "EMPTY")} · Icon {(iconMask ?? 0):X2}.");
     }
 
     private void QueuePixelMainMenuAutoSync()
@@ -588,8 +588,8 @@ public partial class MainWindow
             PixelMenuBackgroundName.Text =
                 string.IsNullOrWhiteSpace(background)
                     ? L(
-                        "Factory default",
-                        "Ảnh mặc định")
+                        "No background",
+                        "Không có ảnh nền")
                     : IO.Path.GetFileName(background);
 
             PixelMenuBackgroundPreview.Source =
@@ -686,32 +686,20 @@ public partial class MainWindow
             PixelProMainMenuProfile profile =
                 _pixelMainMenu.Profiles[profileIndex];
 
-            if (info.IsFactory)
+            if (info.IsEmpty)
             {
                 PixelMenuBackgroundName.Text =
-                    info.AssetId.Equals(
-                        PixelProFactoryMenuVisual.AssetId,
-                        StringComparison.OrdinalIgnoreCase)
-                        ? L(
-                            "Factory Dune · device",
-                            "Factory Dune · trên mạch")
-                        : L(
-                            $"Factory · {info.AssetId}",
-                            $"Mặc định · {info.AssetId}");
+                    L(
+                        "No background · device",
+                        "Không có ảnh nền · trên mạch");
 
                 PixelMenuBackgroundPreview.Source =
-                    info.AssetId.Equals(
-                        PixelProFactoryMenuVisual.AssetId,
-                        StringComparison.OrdinalIgnoreCase)
-                        ? LoadImageSource(
-                            PixelProFactoryMenuVisual.CreateJpeg())
-                        : LoadPixelMenuBackgroundPreview(
-                            profile);
+                    null;
 
                 PixelMenuStatusText.Text =
                     L(
-                        $"PIXEL PRO reports Factory Dune active on Profile {profileIndex + 1:00}.",
-                        $"PIXEL PRO báo Profile {profileIndex + 1:00} đang dùng Factory Dune.");
+                        $"PIXEL PRO reports no Main Menu background on Profile {profileIndex + 1:00}.",
+                        $"PIXEL PRO báo Profile {profileIndex + 1:00} không có ảnh nền Main Menu.");
             }
             else if (info.IsCustom)
             {
@@ -879,8 +867,7 @@ public partial class MainWindow
         if (string.IsNullOrWhiteSpace(profile.BackgroundPath) ||
             !IO.File.Exists(profile.BackgroundPath))
         {
-            return LoadImageSource(
-                PixelProFactoryMenuVisual.CreateJpeg());
+            return null;
         }
 
         try
@@ -1760,15 +1747,15 @@ public partial class MainWindow
                       backgroundState.StoredBytes > 0
                     : string.Equals(
                           backgroundState.State,
-                          "FACTORY",
+                          "EMPTY",
                           StringComparison.OrdinalIgnoreCase));
 
             if (!backgroundVerified)
             {
                 throw new InvalidOperationException(
                     expectsCustomBackground
-                        ? "PIXEL PRO still reports the factory Main Menu background after upload."
-                        : "PIXEL PRO did not confirm the factory Main Menu background.");
+                        ? "PIXEL PRO did not confirm the custom Main Menu background after upload."
+                        : "PIXEL PRO did not confirm that the Main Menu background is empty.");
             }
 
             ReportOperation();
