@@ -3401,10 +3401,11 @@ public partial class MainWindow : Window
             await RestoreScreensaverAfterReconnectAsync();
         }
 
-        // A merged firmware flash does not include user LittleFS assets.
-        // Always push the locally saved Main Menu profile again after the
-        // device reconnects, so app preview and physical screen cannot drift.
-        QueuePixelMainMenuAutoSync();
+        // PIXEL PRO is authoritative for Main Menu state. Do not push the
+        // app's cached JSON automatically on reconnect; doing that can overwrite
+        // a valid device configuration with stale local state.
+        await SyncPixelMainMenuFromDeviceAsync(
+            pixel);
     }
 
     private async Task DetectAsync()
