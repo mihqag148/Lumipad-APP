@@ -31,7 +31,10 @@ public sealed record PixelProMainMenuBackgroundInfo(
     int Width,
     int Height)
 {
-    public bool IsFactory =>
+    public bool IsEmpty =>
+        State.Equals(
+            "EMPTY",
+            StringComparison.OrdinalIgnoreCase) ||
         State.Equals(
             "FACTORY",
             StringComparison.OrdinalIgnoreCase);
