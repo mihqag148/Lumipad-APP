@@ -39,9 +39,13 @@ public sealed class SerialLink : IDeviceLink
     private int _consecutiveLinkFailures;
     private string _lastUsbPortSignature = "";
 
-    public bool IsConnected => _bleCharacteristic is not null || _port?.IsOpen == true;
+    private bool IsBleTransportConnected =>
+        _bleCharacteristic is not null &&
+        _bleDevice?.ConnectionStatus == BluetoothConnectionStatus.Connected;
+
+    public bool IsConnected => IsBleTransportConnected || _port?.IsOpen == true;
     public bool IsUsbConnected => _port?.IsOpen == true;
-    public bool IsBluetoothConnected => _bleCharacteristic is not null;
+    public bool IsBluetoothConnected => IsBleTransportConnected;
     public string ConnectionName => _connectionName;
     public event Action<string>? LinkError;
     public event Action<string, string>? Diagnostic;
@@ -484,8 +488,13 @@ public sealed class SerialLink : IDeviceLink
         BluetoothLEDevice sender,
         object args)
     {
-        if (sender.ConnectionStatus != BluetoothConnectionStatus.Disconnected)
+        // Ignore late callbacks from a BLE object that belonged to an older
+        // session. Otherwise a stale disconnect can tear down a fresh reconnect.
+        if (!ReferenceEquals(sender, _bleDevice) ||
+            sender.ConnectionStatus != BluetoothConnectionStatus.Disconnected)
+        {
             return;
+        }
 
         Log("WARN", "Bluetooth disconnected");
         LinkError?.Invoke("Bluetooth disconnected");
@@ -648,17 +657,21 @@ public sealed class SerialLink : IDeviceLink
             _port = null;
         }
 
+        BluetoothLEDevice? bleDevice = _bleDevice;
+        GattDeviceService? bleService = _bleService;
+
+        // Clear active references first so any callback racing with disposal is
+        // recognized as stale by OnBleConnectionStatusChanged.
         _bleCharacteristic = null;
+        _bleService = null;
+        _bleDevice = null;
         _blePayloadSize = 20;
 
-        if (_bleDevice is not null)
-            _bleDevice.ConnectionStatusChanged -= OnBleConnectionStatusChanged;
+        if (bleDevice is not null)
+            bleDevice.ConnectionStatusChanged -= OnBleConnectionStatusChanged;
 
-        _bleService?.Dispose();
-        _bleService = null;
-
-        _bleDevice?.Dispose();
-        _bleDevice = null;
+        bleService?.Dispose();
+        bleDevice?.Dispose();
 
         if (!string.IsNullOrWhiteSpace(_connectionName))
             Log("INFO", $"Disconnected {_connectionName}");
@@ -1893,7 +1906,7 @@ public sealed class SerialLink : IDeviceLink
 
     public void SetRgbProfile(int index, int effect, byte r, byte g, byte b) =>
         _ = SendLineAsync(
-            $"RGB|PROFILE|{Math.Clamp(index, 0, 7)}|" +
+            $"RGB|PROFILE|{Math.Clamp(index, 0, 9)}|" +
             $"{Math.Clamp(effect, 0, 4)}|{r}|{g}|{b}");
 
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
@@ -1998,7 +2011,7 @@ public sealed class SerialLink : IDeviceLink
             return null;
         }
 
-        index = Math.Clamp(index, 0, 7);
+        index = Math.Clamp(index, 0, 9);
         string name =
             parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])
                 ? parts[2].Trim()
@@ -2012,7 +2025,7 @@ public sealed class SerialLink : IDeviceLink
         if (!SupportsProfileSwitch)
             return;
 
-        _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 7)}");
+        _ = SendLineAsync($"CFG|PROFILE|{Math.Clamp(profile, 0, 9)}");
     }
 
     public Task RestartKeyboardAsync() =>
