@@ -800,6 +800,9 @@
                                     <Button x:Name="PixelMenuSaveButton"
                                             Content="Save to PIXEL PRO"
                                             Click="PixelMenuSave_Click"/>
+                                    <Button Content="Restore Main Menu"
+                                            ToolTip="Force restore the cached/recovery Main Menu to PIXEL PRO"
+                                            Click="PixelMenuRestore_Click"/>
                                     <Button Content="Show now"
                                             Click="PixelMenuShowNow_Click"/>
                                 </WrapPanel>
