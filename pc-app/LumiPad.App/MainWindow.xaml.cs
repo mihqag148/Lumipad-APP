@@ -3386,7 +3386,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RestoreScreensaverAfterReconnectAsync();
+        try
+        {
+            await RestoreScreensaverAfterReconnectAsync();
+        }
+        catch (OperationCanceledException ex)
+        {
+            AddLog(
+                "WARN",
+                "PIXEL CDC",
+                $"Screensaver sync retry after serial cancellation: {ex.Message}");
+
+            await Task.Delay(250);
+            await RestoreScreensaverAfterReconnectAsync();
+        }
 
         // A merged firmware flash does not include user LittleFS assets.
         // Always push the locally saved Main Menu profile again after the
@@ -9832,6 +9845,14 @@ try {{
 
                 PixelProStoredMediaInfo? verifiedStored =
                     await pixel.GetStoredScreensaverInfoAsync();
+
+                if (verifiedStored is null)
+                {
+                    await Task.Delay(250);
+
+                    verifiedStored =
+                        await pixel.GetStoredScreensaverInfoAsync();
+                }
 
                 bool nowCustom =
                     verifiedStored is not null &&
