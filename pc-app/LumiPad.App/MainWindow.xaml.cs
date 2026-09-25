@@ -11521,9 +11521,16 @@ try {{
             return;
         }
 
-        pixel.SetProfileLayer(
-            _pixelSelectedProfile,
-            _pixelSelectedLayer);
+        if (!await pixel.SetProfileLayerAsync(
+                _pixelSelectedProfile,
+                _pixelSelectedLayer))
+        {
+            PixelKeymapStatusText.Text =
+                L(
+                    "PIXEL PRO did not confirm the active profile/layer.",
+                    "PIXEL PRO chưa xác nhận profile/layer đang hoạt động.");
+            return;
+        }
 
         PixelKeymapSaveButton.IsEnabled = true;
         PixelKeymapStatusText.Text =
