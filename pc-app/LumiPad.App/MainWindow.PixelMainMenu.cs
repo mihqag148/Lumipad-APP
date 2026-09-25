@@ -1590,6 +1590,13 @@ public partial class MainWindow
 
         try
         {
+            if (!await pixel.EnsureStorageReadyAsync())
+            {
+                throw new InvalidOperationException(
+                    pixel.LastScreensaverError ??
+                    "PIXEL PRO media storage is not ready.");
+            }
+
             PixelMenuStatusText.Text =
                 L(
                     $"Preparing Main Menu for Keymap Profile {profileIndex + 1:00}…",
