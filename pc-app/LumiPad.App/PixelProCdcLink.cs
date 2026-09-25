@@ -367,16 +367,52 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     private void StartReader()
     {
-        SerialPort? port = _port;
-        if (port is null)
-            return;
+        SerialPort? port =
+            _port;
 
-        _readCts?.Cancel();
+        if (port is null ||
+            !port.IsOpen)
+        {
+            return;
+        }
+
+        // Command transactions stop and await this reader before touching the
+        // serial stream. Keep the idle timeout short because SerialPort.ReadLine
+        // itself is blocking and cannot observe CancellationToken directly.
+        if (_readTask is
+            {
+                IsCompleted: false
+            })
+        {
+            Log(
+                "WARN",
+                "PIXEL PRO CDC reader start skipped because a previous reader is still active.");
+            return;
+        }
+
         _readCts?.Dispose();
 
-        _readCts = new CancellationTokenSource();
-        CancellationToken token = _readCts.Token;
-        _readTask = Task.Run(() => ReadLoop(port, token), token);
+        try
+        {
+            port.ReadTimeout = 120;
+            port.WriteTimeout = 1500;
+        }
+        catch
+        {
+        }
+
+        _readCts =
+            new CancellationTokenSource();
+
+        CancellationToken token =
+            _readCts.Token;
+
+        _readTask =
+            Task.Run(
+                () => ReadLoop(
+                    port,
+                    token),
+                token);
     }
 
     private void ReadLoop(SerialPort port, CancellationToken token)
@@ -557,15 +593,51 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     private async Task StopReaderAsync()
     {
-        _readCts?.Cancel();
+        CancellationTokenSource? cts =
+            _readCts;
 
-        Task? task = _readTask;
+        Task? task =
+            _readTask;
+
+        cts?.Cancel();
+
         if (task is not null)
-            await Task.WhenAny(task, Task.Delay(700));
+        {
+            Task completed =
+                await Task.WhenAny(
+                        task,
+                        Task.Delay(2000))
+                    .ConfigureAwait(false);
 
-        _readCts?.Dispose();
-        _readCts = null;
-        _readTask = null;
+            if (!ReferenceEquals(
+                    completed,
+                    task))
+            {
+                Log(
+                    "ERROR",
+                    "PIXEL PRO CDC background reader did not stop within 2 seconds.");
+
+                throw new IOException(
+                    "PIXEL PRO USB reader did not stop cleanly. Reconnect the USB cable and retry.");
+            }
+
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        if (ReferenceEquals(
+                _readCts,
+                cts))
+        {
+            _readCts?.Dispose();
+            _readCts = null;
+            _readTask = null;
+        }
     }
 
     private async Task<string?> RequestLineAsync(
@@ -573,47 +645,103 @@ public sealed class PixelProCdcLink : IDeviceLink
         string expectedPrefix,
         CancellationToken cancellationToken = default)
     {
-        await _commandGate.WaitAsync(cancellationToken);
+        await _commandGate
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+
         try
         {
-            SerialPort? port = _port;
+            SerialPort? port =
+                _port;
+
             if (port?.IsOpen != true)
                 return null;
 
-            await StopReaderAsync();
+            await StopReaderAsync()
+                .ConfigureAwait(false);
 
             try
             {
                 port.ReadTimeout = 300;
-                port.WriteTimeout = 1000;
-                try { port.DiscardInBuffer(); } catch { }
+                port.WriteTimeout = 1500;
 
-                Log("TX", command);
-                port.WriteLine(command);
-
-                DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-
-                while (DateTime.UtcNow < deadline)
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    port.DiscardInBuffer();
+                }
+                catch
+                {
+                }
+
+                Log(
+                    "TX",
+                    command);
+
+                port.WriteLine(
+                    command);
+
+                DateTime deadline =
+                    DateTime.UtcNow +
+                    TimeSpan.FromSeconds(5);
+
+                while (DateTime.UtcNow <
+                       deadline)
+                {
+                    cancellationToken
+                        .ThrowIfCancellationRequested();
 
                     try
                     {
-                        string line = port.ReadLine().Trim('\0', '\r', '\n', ' ');
-                        if (string.IsNullOrWhiteSpace(line))
+                        string line =
+                            port.ReadLine()
+                                .Trim(
+                                    '\0',
+                                    '\r',
+                                    '\n',
+                                    ' ');
+
+                        if (string.IsNullOrWhiteSpace(
+                                line))
+                        {
                             continue;
+                        }
 
-                        Log("CDC", line);
+                        Log(
+                            "CDC",
+                            line);
 
-                        if (line.StartsWith(expectedPrefix, StringComparison.Ordinal))
+                        if (line.StartsWith(
+                                expectedPrefix,
+                                StringComparison.Ordinal))
+                        {
                             return line;
+                        }
 
-                        if (line.StartsWith("ERR|", StringComparison.Ordinal))
+                        if (line.StartsWith(
+                                "ERR|",
+                                StringComparison.Ordinal))
+                        {
                             return line;
+                        }
                     }
                     catch (TimeoutException)
                     {
-                        await Task.Delay(20, cancellationToken);
+                        await Task.Delay(
+                                20,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                        when (!cancellationToken
+                            .IsCancellationRequested)
+                    {
+                        // Windows usbser can report a transient aborted read
+                        // while ownership moves from the background reader to
+                        // this command transaction.
+                        await Task.Delay(
+                                25,
+                                cancellationToken)
+                            .ConfigureAwait(false);
                     }
                 }
 
@@ -1919,20 +2047,32 @@ public sealed class PixelProCdcLink : IDeviceLink
         string expectedPrefix,
         TimeSpan timeout)
     {
-        DateTime deadline = DateTime.UtcNow + timeout;
+        DateTime deadline =
+            DateTime.UtcNow +
+            timeout;
 
-        while (DateTime.UtcNow < deadline)
+        while (DateTime.UtcNow <
+               deadline)
         {
             try
             {
                 string line =
                     port.ReadLine()
-                        .Trim('\0', '\r', '\n', ' ');
+                        .Trim(
+                            '\0',
+                            '\r',
+                            '\n',
+                            ' ');
 
-                if (string.IsNullOrWhiteSpace(line))
+                if (string.IsNullOrWhiteSpace(
+                        line))
+                {
                     continue;
+                }
 
-                Log("CDC", line);
+                Log(
+                    "CDC",
+                    line);
 
                 if (line.StartsWith(
                         expectedPrefix,
@@ -1950,7 +2090,15 @@ public sealed class PixelProCdcLink : IDeviceLink
             }
             catch (TimeoutException)
             {
-                await Task.Delay(5);
+                await Task.Delay(5)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Treat a transient Windows serial ERROR_OPERATION_ABORTED as
+                // a missed read, not as cancellation of the upload itself.
+                await Task.Delay(15)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -2500,12 +2648,36 @@ public sealed class PixelProCdcLink : IDeviceLink
     public async Task<PixelProStoredMediaInfo?> GetStoredScreensaverInfoAsync(
         CancellationToken cancellationToken = default)
     {
-        string? line =
-            await RequestLineAsync(
-                    "SAVMEDIA",
+        string? line = null;
+
+        for (int attempt = 0;
+             attempt < 4;
+             attempt++)
+        {
+            line =
+                await RequestLineAsync(
+                        "SAVMEDIA",
+                        "SAVMEDIA|",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(
+                    line) &&
+                line.StartsWith(
                     "SAVMEDIA|",
-                    cancellationToken)
-                .ConfigureAwait(false);
+                    StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (attempt < 3)
+            {
+                await Task.Delay(
+                        120 * (attempt + 1),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
 
         if (line is null ||
             !line.StartsWith(
