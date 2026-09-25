@@ -679,6 +679,29 @@
                                         </ComboBox>
                                     </StackPanel>
                                 </Grid>
+
+                                <StackPanel x:Name="RynorDeepSleepPanel"
+                                            Margin="0,10,0,0">
+                                    <TextBlock Text="Deep sleep after"
+                                               Foreground="{DynamicResource Muted}"
+                                               Margin="0,0,0,5"/>
+                                    <ComboBox x:Name="DeepSleepDelayCombo"
+                                              SelectedValuePath="Tag"
+                                              SelectionChanged="DeepSleepDelayCombo_SelectionChanged">
+                                        <ComboBoxItem Content="2 minutes" Tag="120"/>
+                                        <ComboBoxItem Content="5 minutes" Tag="300"/>
+                                        <ComboBoxItem Content="10 minutes" Tag="600"/>
+                                        <ComboBoxItem Content="15 minutes" Tag="900" IsSelected="True"/>
+                                        <ComboBoxItem Content="30 minutes" Tag="1800"/>
+                                        <ComboBoxItem Content="1 hour" Tag="3600"/>
+                                        <ComboBoxItem Content="Never" Tag="0"/>
+                                    </ComboBox>
+                                    <TextBlock Text="Deep sleep disconnects Bluetooth and wakes from physical input."
+                                               Foreground="{DynamicResource Muted}"
+                                               FontSize="10"
+                                               TextWrapping="Wrap"
+                                               Margin="0,5,0,0"/>
+                                </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
                     </Border>
@@ -2066,6 +2089,8 @@
                                     <ComboBoxItem Content="DELTA FORCE" Tag="5"/>
                                     <ComboBoxItem Content="WUWA" Tag="6"/>
                                     <ComboBoxItem Content="PC MONITOR" Tag="7"/>
+                                    <ComboBoxItem Content="RESERVED" Tag="8"/>
+                                    <ComboBoxItem Content="CONNECTION" Tag="9"/>
                                 </ComboBox>
                                 <Button x:Name="RgbSaveProfileButton"
                                         Content="Save to profile"
