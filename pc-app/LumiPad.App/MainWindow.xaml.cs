@@ -174,18 +174,9 @@ public partial class MainWindow : Window
     private int _rynorActiveProfile = -1;
     private string _rynorActiveProfileName = "OFFICE";
     private readonly string[] _rynorProfileNames =
-    [
-        "OFFICE",
-        "MEDIA",
-        "BAMBU STUDIO",
-        "FUSION 360",
-        "CAPCUT",
-        "DELTA FORCE",
-        "WUWA",
-        "PC MONITOR",
-        "RESERVED",
-        "CONNECTION"
-    ];
+        RynorProfiles.DefaultNames.ToArray();
+    private DateTimeOffset _nextRynorProfileCatalogPoll =
+        DateTimeOffset.MinValue;
     private NowPlayingData? _currentNowPlaying;
     private bool _mediaSeekDragging;
     private bool _syncingMediaUi;
@@ -6141,6 +6132,65 @@ try {{
             SaveAppSettings();
     }
 
+    private async Task RefreshRynorProfileCatalogAsync(
+        SerialLink rynor,
+        bool force = false)
+    {
+        if (!rynor.SupportsProfileCatalog)
+            return;
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (!force && now < _nextRynorProfileCatalogPoll)
+            return;
+
+        _nextRynorProfileCatalogPoll =
+            now.AddSeconds(force ? 5 : 30);
+
+        string[]? names =
+            await rynor.ReadProfileCatalogAsync();
+
+        if (names is null ||
+            names.Length != RynorProfiles.Count)
+        {
+            return;
+        }
+
+        bool changed = false;
+
+        for (int i = 0; i < RynorProfiles.Count; i++)
+        {
+            string name =
+                string.IsNullOrWhiteSpace(names[i])
+                    ? RynorProfiles.DefaultName(i)
+                    : names[i].Trim();
+
+            if (string.Equals(
+                    _rynorProfileNames[i],
+                    name,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            _rynorProfileNames[i] = name;
+            changed = true;
+        }
+
+        _nextRynorProfileCatalogPoll =
+            now.AddSeconds(30);
+
+        if (changed)
+        {
+            UpdateRynorProfileCatalogUi();
+
+            if (_rynorActiveProfile >= 0)
+            {
+                _rynorActiveProfileName =
+                    RynorProfileName(_rynorActiveProfile);
+            }
+        }
+    }
+
     private async Task PollRynorProfileAsync(bool force = false)
     {
         if (_rynorProfilePollBusy ||
@@ -6154,11 +6204,13 @@ try {{
         _rynorProfilePollBusy = true;
         try
         {
+            await RefreshRynorProfileCatalogAsync(rynor, force);
+
             var state = await rynor.ReadActiveProfileAsync();
             if (state is null)
                 return;
 
-            int index = Math.Clamp(state.Value.Index, 0, 9);
+            int index = RynorProfiles.Clamp(state.Value.Index);
             string name = string.IsNullOrWhiteSpace(state.Value.Name)
                 ? RynorProfileName(index)
                 : state.Value.Name.Trim();
@@ -6195,7 +6247,7 @@ try {{
 
     private void ApplyRynorActiveProfile(int index, string name)
     {
-        index = Math.Clamp(index, 0, 9);
+        index = RynorProfiles.Clamp(index);
         _rynorActiveProfile = index;
         _rynorActiveProfileName =
             string.IsNullOrWhiteSpace(name)
@@ -6304,28 +6356,12 @@ try {{
         }
     }
 
-    private static string ProfileName(int index) =>
-        index switch
-        {
-            0 => "OFFICE",
-            1 => "MEDIA",
-            2 => "BAMBU STUDIO",
-            3 => "FUSION 360",
-            4 => "CAPCUT",
-            5 => "DELTA FORCE",
-            6 => "WUWA",
-            7 => "PC MONITOR",
-            8 => "RESERVED",
-            9 => "CONNECTION",
-            _ => $"PROFILE {index + 1}"
-        };
-
     private string RynorProfileName(int index)
     {
-        index = Math.Clamp(index, 0, 9);
+        index = RynorProfiles.Clamp(index);
         string name = _rynorProfileNames[index];
         return string.IsNullOrWhiteSpace(name)
-            ? ProfileName(index)
+            ? RynorProfiles.DefaultName(index)
             : name;
     }
 
@@ -6339,7 +6375,7 @@ try {{
                     int.TryParse(
                         item.Tag?.ToString(),
                         out int index) &&
-                    index is >= 0 and < 10)
+                    index is >= 0 and < RynorProfiles.Count)
                 {
                     item.Content = RynorProfileName(index);
                 }
@@ -6407,7 +6443,7 @@ try {{
             }
             else
             {
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i < RynorProfiles.Count; i++)
                 {
                     AutoProfileDefaultCombo.Items.Add(new ComboBoxItem
                     {
@@ -6417,10 +6453,8 @@ try {{
                 }
 
                 AutoProfileDefaultCombo.SelectedValue =
-                    Math.Clamp(
-                        _autoProfileSettings.DefaultProfile,
-                        0,
-                        9)
+                    RynorProfiles.Clamp(
+                        _autoProfileSettings.DefaultProfile)
                     .ToString();
 
                 if (AutoProfileDefaultLayerCombo is not null)
@@ -6482,7 +6516,7 @@ try {{
         else
         {
             _autoProfileSettings.DefaultProfile =
-                Math.Clamp(profile, 0, 9);
+                RynorProfiles.Clamp(profile);
         }
 
         if (_uiReady)
@@ -6601,7 +6635,7 @@ try {{
                         : name,
                 ExecutablePath = path,
                 ProfileIndex =
-                    Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 9),
+                    RynorProfiles.Clamp(_autoProfileSettings.DefaultProfile),
                 PixelProfileIndex =
                     Math.Clamp(
                         _autoProfileSettings.DefaultPixelProfile,
@@ -6632,7 +6666,7 @@ try {{
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < RynorProfiles.Count; i++)
         {
             combo.Items.Add(new ComboBoxItem
             {
@@ -6642,7 +6676,7 @@ try {{
         }
 
         combo.SelectedValue =
-            Math.Clamp(selectedProfile, 0, 9).ToString();
+            RynorProfiles.Clamp(selectedProfile).ToString();
         return combo;
     }
 
@@ -6835,7 +6869,7 @@ try {{
                 else
                 {
                     current.ProfileIndex =
-                        Math.Clamp(index, 0, 9);
+                        RynorProfiles.Clamp(index);
                 }
 
                 AutoProfileService.Save(_autoProfileSettings);
@@ -7144,17 +7178,15 @@ try {{
                   0,
                   Math.Max(0, _pixelProfileCatalog.Count - 1))
             : mapping?.ProfileIndex ??
-              Math.Clamp(
-                  _autoProfileSettings.DefaultProfile,
-                  0,
-                  9);
+              RynorProfiles.Clamp(
+                  _autoProfileSettings.DefaultProfile);
 
         targetProfile = pixel
             ? Math.Clamp(
                 targetProfile,
                 0,
                 Math.Max(0, _pixelProfileCatalog.Count - 1))
-            : Math.Clamp(targetProfile, 0, 9);
+            : RynorProfiles.Clamp(targetProfile);
 
         int targetLayer = pixel
             ? Math.Clamp(
