@@ -366,17 +366,6 @@ public partial class MainWindow : Window
                 ScreensaverMediaService.MinFrameIntervalMs);
         _screensaverPreviewTimer.Tick += (_, _) =>
         {
-            if (_pixelFactoryScreensaverPreview &&
-                IsPixelProActive)
-            {
-                ScreensaverPreviewImage.Source =
-                    CreateBitmapFromEncodedImage(
-                        PixelProFactoryVisual.CreatePng(
-                            _screensaverPreviewClock.ElapsedMilliseconds,
-                            animated: true));
-                return;
-            }
-
             if (_screensaverAnimation is null ||
                 _screensaverAnimation.PixelFormat != ScreensaverPixelFormat.Rgb332 ||
                 _screensaverAnimation.Frames.Count < 2)
@@ -9364,13 +9353,8 @@ try {{
             pcMonitor
                 ? L("Showing PC Monitor screensaver now.",
                     "Đang bật PC Monitor làm bảo vệ màn hình.")
-                : _pixelFactoryScreensaverPreview &&
-                  IsPixelProActive
-                    ? L(
-                        "Showing the PIXEL PRO factory screensaver now.",
-                        "Đang hiển thị bảo vệ màn hình mặc định của PIXEL PRO.")
-                    : L("Showing the uploaded GIF / image now.",
-                        "Đang hiển thị GIF / ảnh đã tải lên ngay.");
+                : L("Showing the uploaded GIF / image now.",
+                    "Đang hiển thị GIF / ảnh đã tải lên ngay.");
     }
 
     private async void ClearScreensaverMedia_Click(
@@ -9419,7 +9403,7 @@ try {{
 
                     await pixel.SetScreensaverSourceAsync(false);
                     await RestorePixelStoredMediaPreviewAsync(pixel);
-                    await pixel.ShowScreensaverNowAsync(false);
+                    await pixel.ShowMainMenuAsync();
                     await UpdateMemoryUsageAsync();
 
                     SendScreensaverButton.IsEnabled = false;
@@ -9430,9 +9414,9 @@ try {{
                     AddLog(
                         "ERROR",
                         "PIXEL",
-                        $"Factory screensaver restore failed: {ex}");
+                        $"Screensaver clear failed: {ex}");
 
-                    ShowPixelFactoryScreensaverPreview(
+                    ShowPixelNoScreensaverPreview(
                         L(
                             $"PIXEL PRO clear failed to confirm: {ex.Message}",
                             $"PIXEL PRO chưa xác nhận thao tác xóa: {ex.Message}"));
@@ -9442,10 +9426,10 @@ try {{
                 }
             }
 
-            ShowPixelFactoryScreensaverPreview(
+            ShowPixelNoScreensaverPreview(
                 L(
-                    "Factory screensaver selected. Connect PIXEL PRO to sync it.",
-                    "Đã chọn bảo vệ màn hình mặc định. Kết nối PIXEL PRO để đồng bộ."));
+                    "No screensaver selected. Connect PIXEL PRO to apply the empty state.",
+                    "Đã chọn không dùng bảo vệ màn hình. Kết nối PIXEL PRO để áp dụng."));
 
             SendScreensaverButton.IsEnabled = false;
             return;
@@ -9489,69 +9473,61 @@ try {{
         SendScreensaverButton.IsEnabled = false;
     }
 
-    private void ShowPixelFactoryScreensaverPreview(
+    private void ShowPixelNoScreensaverPreview(
         string? status = null)
     {
         if (!IsPixelProActive)
             return;
 
-        _pixelFactoryScreensaverPreview = true;
+        _pixelFactoryScreensaverPreview = false;
         _screensaverAnimation = null;
         _screensaverPreviewIndex = 0;
+        _screensaverPreviewTimer.Stop();
+        _screensaverPreviewClock.Reset();
 
-        _screensaverPreviewTimer.Interval =
-            TimeSpan.FromMilliseconds(
-                1000.0 /
-                PixelProFactoryVisual.Fps);
-
-        _screensaverPreviewClock.Restart();
-
-        ScreensaverPreviewImage.Source =
-            CreateBitmapFromEncodedImage(
-                PixelProFactoryVisual.CreatePng(
-                    0,
-                    animated: true));
-
+        ScreensaverPreviewImage.Source = null;
         ScreensaverPreviewImage.Visibility =
-            Visibility.Visible;
+            Visibility.Collapsed;
 
         ScreensaverPreviewHint.Visibility =
-            Visibility.Collapsed;
+            Visibility.Visible;
 
         if (PixelHomePreviewHint is not null)
         {
             PixelHomePreviewHint.Visibility =
-                Visibility.Collapsed;
+                Visibility.Visible;
         }
 
         ScreensaverFileName.Text =
             L(
-                "Factory Dune Animation",
-                "Factory Dune Animation");
+                "No screensaver",
+                "Không có bảo vệ màn hình");
 
         ScreensaverMediaInfo.Text =
             L(
-                $"Built into firmware · {PixelProFactoryVisual.Width}×{PixelProFactoryVisual.Height} · {PixelProFactoryVisual.Fps} FPS · protected fallback",
-                $"Tích hợp trong firmware · {PixelProFactoryVisual.Width}×{PixelProFactoryVisual.Height} · {PixelProFactoryVisual.Fps} FPS · mặc định không thể xóa");
+                "Nothing stored on PIXEL PRO.",
+                "PIXEL PRO không lưu bảo vệ màn hình nào.");
 
-        ScreensaverSendProgress.Value = 100;
+        ScreensaverSendProgress.Value = 0;
 
         SetScreensaverUploadState(
             L(
-                "Factory default active",
-                "Đang dùng mặc định"),
+                "Empty",
+                "Trống"),
             MediaColor.FromRgb(
-                48,
-                209,
-                88));
+                99,
+                99,
+                102));
 
         ScreensaverSendStatus.Text =
             status ??
             L(
-                "PIXEL PRO Factory Dune Animation is active. Uploading custom media will override it.",
-                "Factory Dune Animation của PIXEL PRO đang hoạt động. Tải media riêng sẽ ghi đè lên nó.");
+                "No screensaver is stored. PIXEL PRO will stay on Main Menu.",
+                "Không có bảo vệ màn hình. PIXEL PRO sẽ giữ ở Main Menu.");
 
-        _screensaverPreviewTimer.Start();
+        SendScreensaverButton.IsEnabled =
+            _serial.IsConnected &&
+            _screensaverAnimation is not null;
     }
 
     private static BitmapSource? CreateBitmapFromEncodedImage(
@@ -9604,6 +9580,7 @@ try {{
             if (info is null ||
                 !info.Ready)
             {
+                ShowPixelNoScreensaverPreview();
                 return;
             }
 
@@ -9611,25 +9588,10 @@ try {{
                     "DEFAULT",
                     StringComparison.OrdinalIgnoreCase))
             {
-                string factoryStatus =
-                    info.AssetId.Equals(
-                        PixelProFactoryVisual.AssetId,
-                        StringComparison.OrdinalIgnoreCase)
-                        ? L(
-                            "PIXEL PRO reports Factory Dune Animation active on the device.",
-                            "PIXEL PRO báo Factory Dune Animation đang hoạt động trên mạch.")
-                        : L(
-                            "PIXEL PRO reports a firmware factory screensaver.",
-                            "PIXEL PRO báo đang dùng bảo vệ màn hình mặc định của firmware.");
-
-                ShowPixelFactoryScreensaverPreview(
-                    factoryStatus);
-
-                AddLog(
-                    "INFO",
-                    "PIXEL",
-                    $"PIXEL PRO factory screensaver: {info.AssetId}");
-
+                ShowPixelNoScreensaverPreview(
+                    L(
+                        "This PIXEL PRO firmware still reports an obsolete factory screensaver. Update firmware to remove it.",
+                        "Firmware PIXEL PRO này vẫn báo screensaver mặc định cũ. Hãy cập nhật firmware để xóa nó."));
                 return;
             }
 
