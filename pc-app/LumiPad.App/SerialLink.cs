@@ -1911,7 +1911,7 @@ public sealed class SerialLink : IDeviceLink
 
     public void SetRgbProfile(int index, int effect, byte r, byte g, byte b) =>
         _ = SendLineAsync(
-            $"RGB|PROFILE|{Math.Clamp(index, 0, 9)}|" +
+            $"RGB|PROFILE|{RynorProfiles.Clamp(index)}|" +
             $"{Math.Clamp(effect, 0, 4)}|{r}|{g}|{b}");
 
     public void SetEnabled(bool enabled) => _ = SendLineAsync($"RGB|EN|{(enabled ? 1 : 0)}");
