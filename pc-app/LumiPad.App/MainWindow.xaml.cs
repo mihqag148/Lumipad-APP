@@ -9208,7 +9208,7 @@ try {{
                             stored.Kind,
                             "DEFAULT",
                             StringComparison.OrdinalIgnoreCase) &&
-                        stored.Bytes > 0;
+                        stored.StoredBytes > 0;
 
                     if (!storedCustom)
                     {
