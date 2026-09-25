@@ -2621,6 +2621,99 @@ public partial class MainWindow
         }
     }
 
+    private async void PixelMenuRestore_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsPixelProActive ||
+            _serial is not PixelProCdcLink pixel ||
+            !pixel.IsConnected)
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    "Connect PIXEL PRO by USB first.",
+                    "Hãy kết nối PIXEL PRO bằng USB trước.");
+            return;
+        }
+
+        int profileIndex =
+            PixelMenuProfileIndex;
+
+        PixelProMainMenuConfig recovery =
+            PixelProMainMenuStore.LoadRecoveryBackup();
+
+        PixelProMainMenuProfile recoveryProfile =
+            recovery.Profiles[
+                profileIndex];
+
+        PixelProMainMenuProfile candidate =
+            PixelProMainMenuStore.HasRecoverableProfile(
+                recoveryProfile)
+                ? recoveryProfile
+                : _pixelMainMenu.Profiles[
+                    profileIndex];
+
+        int recoveredActions =
+            RecoverPixelMenuActionsFromAppPaths(
+                candidate);
+
+        recoveredActions +=
+            await RecoverPixelMenuActionsFromKeymapAsync(
+                pixel,
+                profileIndex,
+                candidate);
+
+        bool hasUsableContent =
+            candidate.Slots.Any(
+                slot =>
+                    slot.ActionId > 0) ||
+            PixelMenuHasLocalAssets(
+                candidate);
+
+        if (!hasUsableContent)
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    "No recoverable Main Menu artwork/actions remain on this PC. The device can only show its keymap fallback until new icons/background are assigned.",
+                    "PC không còn bản Main Menu có thể khôi phục. Thiết bị chỉ có thể hiện giao diện keymap dự phòng cho tới khi gán lại icon/ảnh nền.");
+            return;
+        }
+
+        _pixelMainMenu.Profiles[
+            profileIndex] =
+            candidate;
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
+        RefreshPixelMainMenuUi();
+
+        // Explicit user restore must always be allowed even if an automatic
+        // reconnect restore already failed once in this app session.
+        _pixelMenuReconnectRestoreAttempted.Remove(
+            profileIndex);
+
+        PixelMenuStatusText.Text =
+            L(
+                $"Restoring cached Main Menu Profile {profileIndex + 1:00}…",
+                $"Đang khôi phục Main Menu Profile {profileIndex + 1:00}…");
+
+        bool restored =
+            await RestorePixelMainMenuProfileFromCacheAsync(
+                pixel,
+                profileIndex,
+                candidate);
+
+        if (!restored &&
+            recoveredActions > 0)
+        {
+            AddLog(
+                "WARN",
+                "PIXEL MENU",
+                $"Force restore recovered {recoveredActions} action(s) but the upload did not verify.");
+        }
+    }
+
     private void PixelMenuShowNow_Click(
         object sender,
         RoutedEventArgs e)
