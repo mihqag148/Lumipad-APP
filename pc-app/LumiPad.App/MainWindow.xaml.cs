@@ -13053,6 +13053,9 @@ try {{
         SetDeviceControlsEnabled(_serial.IsConnected);
         UpdateDeviceConfiguratorUi();
 
+        if (!IsPixelProActive && _serial.IsConnected)
+            await PollRynorProfileAsync(force: true);
+
         if (ConfiguratorTab.IsSelected)
         {
             if (_activeProduct.Driver == DeviceDriverKind.PixelProCdc)
