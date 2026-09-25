@@ -1690,36 +1690,15 @@ public partial class MainWindow
         }
     }
 
-    private async void PixelMenuShowNow_Click(
+    private void PixelMenuShowNow_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (_serial is not PixelProCdcLink pixel ||
-            !pixel.IsConnected)
-        {
-            PixelMenuStatusText.Text =
-                L(
-                    "Connect PIXEL PRO first.",
-                    "Hãy kết nối PIXEL PRO trước.");
-            return;
-        }
-
-        SetPixelHomePreviewMode(true);
-
-        pixel.SetProfileLayer(
-            PixelMenuProfileIndex,
-            _pixelSelectedLayer);
-
-        bool ok =
-            await pixel.ShowMainMenuAsync();
-
-        PixelMenuStatusText.Text =
-            ok
-                ? L(
-                    $"Showing Main Menu for Keymap Profile {PixelMenuProfileIndex + 1:00}.",
-                    $"Đang hiển thị Main Menu của Keymap Profile {PixelMenuProfileIndex + 1:00}.")
-                : L(
-                    "PIXEL PRO did not confirm the main menu.",
-                    "PIXEL PRO chưa xác nhận Main Menu.");
+        // "Show now" must reflect the editor, not stale LittleFS content.
+        // Reuse the full Save path so MENUCFG, background and all eight icon
+        // assets are synchronized before firmware switches to Main Menu.
+        PixelMenuSave_Click(
+            sender,
+            e);
     }
 }
