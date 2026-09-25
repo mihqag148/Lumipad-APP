@@ -29,6 +29,91 @@ public partial class MainWindow
     private bool _pixelMenuBackgroundStateRequestActive;
     private bool _pixelMenuAutoSyncPending;
 
+    private async Task SyncPixelMainMenuFromDeviceAsync(
+        PixelProCdcLink pixel)
+    {
+        if (!IsPixelProActive ||
+            !pixel.IsConnected)
+        {
+            return;
+        }
+
+        PixelProActiveProfileState? active =
+            await pixel.GetActiveProfileStateAsync();
+
+        if (active is null)
+        {
+            AddLog(
+                "WARN",
+                "PIXEL MENU",
+                "PIXEL PRO did not return its active profile state.");
+
+            return;
+        }
+
+        int profileIndex =
+            Math.Clamp(
+                active.Profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        PixelProDeviceMainMenuProfile? deviceMenu =
+            await pixel.GetMainMenuProfileAsync(
+                profileIndex);
+
+        if (deviceMenu is null)
+        {
+            AddLog(
+                "WARN",
+                "PIXEL MENU",
+                $"PIXEL PRO did not return Main Menu Profile {profileIndex + 1:00}.");
+
+            return;
+        }
+
+        _pixelSelectedProfile =
+            profileIndex;
+
+        _pixelSelectedLayer =
+            Math.Clamp(
+                active.Layer,
+                0,
+                3);
+
+        PixelProMainMenuProfile localCache =
+            _pixelMainMenu.Profiles[
+                profileIndex];
+
+        for (int slot = 0;
+             slot < PixelProMainMenuStore.SlotCount;
+             slot++)
+        {
+            // Action mapping is device-owned. Icon/background paths remain local
+            // cache references because the binary assets themselves are already
+            // stored in PIXEL PRO LittleFS and are not downloaded just to edit.
+            localCache.Slots[slot].ActionId =
+                deviceMenu.Actions[slot];
+        }
+
+        PixelProMainMenuStore.Save(
+            _pixelMainMenu);
+
+        RefreshPixelMainMenuUi();
+
+        int? iconMask =
+            await pixel.GetMainMenuIconMaskAsync(
+                profileIndex);
+
+        PixelProMainMenuBackgroundInfo? background =
+            await pixel.GetMainMenuBackgroundInfoAsync(
+                profileIndex);
+
+        PixelMenuStatusText.Text =
+            L(
+                $"Loaded Main Menu from PIXEL PRO · Profile {profileIndex + 1:00} · BG {(background?.IsCustom == true ? "CUSTOM" : "FACTORY")} · Icons {(iconMask ?? 0):X2}.",
+                $"Đã đọc Main Menu từ PIXEL PRO · Profile {profileIndex + 1:00} · Nền {(background?.IsCustom == true ? "CUSTOM" : "FACTORY")} · Icon {(iconMask ?? 0):X2}.");
+    }
+
     private void QueuePixelMainMenuAutoSync()
     {
         if (!IsPixelProActive ||
@@ -1830,8 +1915,8 @@ public partial class MainWindow
 
             PixelMenuStatusText.Text =
                 L(
-                    $"Main Menu saved for Keymap Profile {profileIndex + 1:00}.",
-                    $"Đã lưu Main Menu cho Keymap Profile {profileIndex + 1:00}.");
+                    $"Main Menu committed to PIXEL PRO Profile {profileIndex + 1:00}. App data is only an editor cache.",
+                    $"Main Menu đã được ghi vào PIXEL PRO Profile {profileIndex + 1:00}. Dữ liệu trong app chỉ là cache chỉnh sửa.");
 
             await UpdateMemoryUsageAsync();
         }
