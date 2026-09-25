@@ -261,7 +261,14 @@ public partial class MainWindow
                 return;
             }
 
-            QueuePixelMainMenuAutoSync();
+            // Reconnect recovery must finish as one awaited transaction.
+            // Queueing the async-void Save click let normal PIXEL traffic
+            // continue while the menu was only partially restored.
+            await RestorePixelMainMenuProfileFromCacheAsync(
+                pixel,
+                profileIndex,
+                localCache);
+
             return;
         }
 
@@ -313,6 +320,311 @@ public partial class MainWindow
                     PixelMenuSave_Click(
                         PixelMenuSaveButton,
                         new RoutedEventArgs())));
+    }
+
+    private async Task<bool> RestorePixelMainMenuProfileFromCacheAsync(
+        PixelProCdcLink pixel,
+        int profileIndex,
+        PixelProMainMenuProfile profile)
+    {
+        bool menuBatchStarted = false;
+
+        try
+        {
+            if (!pixel.IsConnected)
+                return false;
+
+            if (!await pixel.EnsureStorageReadyAsync())
+            {
+                throw new InvalidOperationException(
+                    pixel.LastScreensaverError ??
+                    "PIXEL PRO media storage is not ready.");
+            }
+
+            // Rebuild auto-extracted app icons if the cache image disappeared
+            // but the original application still exists.
+            for (int slot = 0;
+                 slot < PixelProMainMenuStore.SlotCount;
+                 slot++)
+            {
+                PixelProMainMenuSlot item =
+                    profile.Slots[slot];
+
+                bool iconMissing =
+                    string.IsNullOrWhiteSpace(
+                        item.IconPath) ||
+                    !IO.File.Exists(
+                        item.IconPath);
+
+                if (iconMissing &&
+                    !string.IsNullOrWhiteSpace(
+                        item.AppPath) &&
+                    IO.File.Exists(
+                        item.AppPath))
+                {
+                    string? rebuilt =
+                        ExtractPixelMenuAppIcon(
+                            item.AppPath);
+
+                    if (!string.IsNullOrWhiteSpace(
+                            rebuilt))
+                    {
+                        item.IconPath =
+                            rebuilt;
+                        item.AutoIcon =
+                            true;
+                    }
+                }
+            }
+
+            PixelProMainMenuStore.Save(
+                _pixelMainMenu);
+
+            menuBatchStarted =
+                await pixel.BeginMainMenuBatchAsync(
+                    profileIndex);
+
+            bool expectsCustomBackground =
+                !string.IsNullOrWhiteSpace(
+                    profile.BackgroundPath) &&
+                IO.File.Exists(
+                    profile.BackgroundPath);
+
+            if (expectsCustomBackground)
+            {
+                byte[] background =
+                    await Task.Run(
+                        () =>
+                            PixelProMainMenuMediaService
+                                .CreateBackgroundJpeg(
+                                    profile.BackgroundPath!,
+                                    profile.BlurPercent,
+                                    profile.OpacityPercent,
+                                    profile.ScaleMode));
+
+                if (!await pixel.UploadMainMenuBackgroundAsync(
+                        profileIndex,
+                        background))
+                {
+                    throw new InvalidOperationException(
+                        "PIXEL PRO rejected the cached Main Menu background.");
+                }
+            }
+            else if (!await pixel.ClearMainMenuBackgroundAsync(
+                         profileIndex))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO could not clear the Main Menu background.");
+            }
+
+            PixelProMainMenuBackgroundInfo? backgroundState =
+                await pixel.GetMainMenuBackgroundInfoAsync(
+                    profileIndex);
+
+            bool backgroundVerified =
+                backgroundState is not null &&
+                backgroundState.Profile == profileIndex &&
+                (expectsCustomBackground
+                    ? backgroundState.IsCustom &&
+                      backgroundState.StoredBytes > 0
+                    : backgroundState.IsEmpty);
+
+            if (!backgroundVerified)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not verify the cached Main Menu background.");
+            }
+
+            int[] actions =
+                profile.Slots
+                    .Select(slot =>
+                        Math.Clamp(
+                            slot.ActionId,
+                            0,
+                            32))
+                    .ToArray();
+
+            string[] labels =
+                profile.Slots
+                    .Select(slot =>
+                    {
+                        ActionScriptDefinition? action =
+                            _actionScripts.FirstOrDefault(
+                                item =>
+                                    item.ActionId ==
+                                    slot.ActionId);
+
+                        return action?.Name ??
+                               (slot.ActionId > 0
+                                   ? $"A{slot.ActionId:00}"
+                                   : "");
+                    })
+                    .ToArray();
+
+            if (!await pixel.SetMainMenuProfileAsync(
+                    profileIndex,
+                    actions,
+                    labels))
+            {
+                throw new InvalidOperationException(
+                    $"PIXEL PRO rejected cached Main Menu Profile {profileIndex + 1:00}.");
+            }
+
+            int expectedIconMask = 0;
+            var iconCache =
+                new Dictionary<string, byte[]>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            for (int slot = 0;
+                 slot < PixelProMainMenuStore.SlotCount;
+                 slot++)
+            {
+                string? iconPath =
+                    profile.Slots[slot].IconPath;
+
+                if (!string.IsNullOrWhiteSpace(
+                        iconPath) &&
+                    IO.File.Exists(
+                        iconPath))
+                {
+                    if (!iconCache.TryGetValue(
+                            iconPath,
+                            out byte[]? iconBytes))
+                    {
+                        iconBytes =
+                            await Task.Run(
+                                () =>
+                                    PixelProMainMenuMediaService
+                                        .CreateIconAsset(
+                                            iconPath));
+
+                        iconCache[iconPath] =
+                            iconBytes;
+                    }
+
+                    if (!await pixel.UploadMainMenuIconAsync(
+                            profileIndex,
+                            slot,
+                            iconBytes))
+                    {
+                        throw new InvalidOperationException(
+                            $"PIXEL PRO rejected cached icon {slot + 1}.");
+                    }
+
+                    expectedIconMask |=
+                        1 << slot;
+                }
+                else if (!await pixel.ClearMainMenuIconAsync(
+                             profileIndex,
+                             slot))
+                {
+                    throw new InvalidOperationException(
+                        $"PIXEL PRO could not clear icon {slot + 1}.");
+                }
+            }
+
+            if (!await pixel.SetProfileLayerAsync(
+                    profileIndex,
+                    _pixelSelectedLayer))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not confirm the restored profile.");
+            }
+
+            PixelProDeviceMainMenuProfile? verifiedMenu =
+                await pixel.GetMainMenuProfileAsync(
+                    profileIndex);
+
+            if (verifiedMenu is null ||
+                !verifiedMenu.Actions.SequenceEqual(
+                    actions))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO Main Menu action verify failed after reconnect restore.");
+            }
+
+            int? deviceIconMask =
+                await pixel.GetMainMenuIconMaskAsync(
+                    profileIndex);
+
+            if (deviceIconMask is null ||
+                deviceIconMask.Value !=
+                    expectedIconMask)
+            {
+                throw new InvalidOperationException(
+                    $"PIXEL PRO icon verify failed after reconnect restore: app={expectedIconMask:X2}, device={(deviceIconMask ?? -1):X2}.");
+            }
+
+            if (menuBatchStarted)
+            {
+                if (!await pixel.EndMainMenuBatchAsync(
+                        profileIndex))
+                {
+                    throw new InvalidOperationException(
+                        "PIXEL PRO did not finish the reconnect Main Menu batch.");
+                }
+
+                menuBatchStarted = false;
+            }
+            else if (!await pixel.ShowMainMenuAsync())
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not show the restored Main Menu.");
+            }
+
+            _pixelMenuReconnectRestoreAttempted.Remove(
+                profileIndex);
+
+            PixelProMainMenuStore.Save(
+                _pixelMainMenu);
+
+            RefreshPixelMainMenuUi();
+
+            PixelMenuStatusText.Text =
+                L(
+                    $"Restored cached Main Menu to PIXEL PRO Profile {profileIndex + 1:00}.",
+                    $"Đã khôi phục Main Menu đã lưu vào PIXEL PRO Profile {profileIndex + 1:00}.");
+
+            AddLog(
+                "INFO",
+                "PIXEL MENU",
+                $"Reconnect restore verified for Profile {profileIndex + 1:00}: actions={string.Join(",", actions)}, icons={expectedIconMask:X2}.");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    $"Automatic Main Menu restore failed: {ex.Message}",
+                    $"Tự khôi phục Main Menu lỗi: {ex.Message}");
+
+            AddLog(
+                "ERROR",
+                "PIXEL MENU",
+                $"Reconnect restore failed for Profile {profileIndex + 1:00}: {ex}");
+
+            return false;
+        }
+        finally
+        {
+            if (menuBatchStarted &&
+                pixel.IsConnected)
+            {
+                try
+                {
+                    await pixel.EndMainMenuBatchAsync(
+                        profileIndex);
+                }
+                catch (Exception ex)
+                {
+                    AddLog(
+                        "WARN",
+                        "PIXEL MENU",
+                        $"Could not close reconnect Main Menu batch: {ex.Message}");
+                }
+            }
+        }
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
