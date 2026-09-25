@@ -182,7 +182,9 @@ public partial class MainWindow : Window
         "CAPCUT",
         "DELTA FORCE",
         "WUWA",
-        "PC MONITOR"
+        "PC MONITOR",
+        "RESERVED",
+        "CONNECTION"
     ];
     private NowPlayingData? _currentNowPlaying;
     private bool _mediaSeekDragging;
@@ -198,6 +200,7 @@ public partial class MainWindow : Window
     private bool _rgbAuto = true;
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
+    private int _deepSleepDelaySeconds = 900;
     private int _rgbIdleDelaySeconds = 60;
     private int _rgbBrightness = 25;
     private int _rgbSpeed = 50;
@@ -1367,6 +1370,12 @@ public partial class MainWindow : Window
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
+        if (RynorDeepSleepPanel is not null)
+            RynorDeepSleepPanel.Visibility =
+                pixel
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
         _screensaverPreviewTimer.Interval =
             TimeSpan.FromMilliseconds(
                 pixel
@@ -1437,7 +1446,7 @@ public partial class MainWindow : Window
                         ? _rynorActiveProfile
                         : _rgbProfileIndex,
                     0,
-                    7);
+                    9);
 
             RgbProfileTitle.Text =
                 pixel
@@ -1939,6 +1948,8 @@ public partial class MainWindow : Window
         new() { Effect = 4, R = 80, G = 255, B = 100 },  // P6 DELTA FORCE
         new() { Effect = 3, R = 155, G = 95, B = 255 },  // P7 WUWA
         new() { Effect = 3, R = 230, G = 230, B = 230 }, // P8 PC MONITOR
+        new() { Effect = 3, R = 120, G = 120, B = 120 }, // P9 RESERVED
+        new() { Effect = 3, R = 0, G = 170, B = 255 },   // P10 CONNECTION
     ];
 
     private static PixelRgbColor[] CreateDefaultPixelRgbProfile(
@@ -2008,6 +2019,7 @@ public partial class MainWindow : Window
         public int PixelRgbSpeed { get; set; } = 50;
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
+        public int DeepSleepDelaySeconds { get; set; } = 900;
         public int RgbIdleDelaySeconds { get; set; } = 60;
         public string? ScreensaverMediaPath { get; set; }
         public string? PixelScreensaverMediaPath { get; set; }
@@ -2047,7 +2059,7 @@ public partial class MainWindow : Window
             RgbProfileSetting[] migratedRgb = CreateDefaultRgbProfiles();
             if (settings.RgbProfiles is { Length: > 0 })
             {
-                for (int i = 0; i < Math.Min(8, settings.RgbProfiles.Length); i++)
+                for (int i = 0; i < Math.Min(10, settings.RgbProfiles.Length); i++)
                 {
                     RgbProfileSetting p = settings.RgbProfiles[i];
                     migratedRgb[i] = new RgbProfileSetting
@@ -2114,6 +2126,7 @@ public partial class MainWindow : Window
 
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
+            _deepSleepDelaySeconds = Math.Max(0, settings.DeepSleepDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
             _rynorScreensaverMediaPath =
                 settings.ScreensaverMediaPath;
@@ -2200,6 +2213,7 @@ public partial class MainWindow : Window
                 PixelRgbSpeed = _pixelRgbSpeed,
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
+                DeepSleepDelaySeconds = _deepSleepDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
                 ScreensaverMediaPath = _rynorScreensaverMediaPath,
                 PixelScreensaverMediaPath = _pixelScreensaverMediaPath,
@@ -2236,6 +2250,7 @@ public partial class MainWindow : Window
         SelectComboTag(RgbProfileCombo, _rgbProfileIndex.ToString());
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
+        SelectComboTag(DeepSleepDelayCombo, _deepSleepDelaySeconds.ToString());
         SelectComboTag(RgbIdleDelayCombo, _rgbIdleDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
         if (PixelGifFpsCombo is not null)
@@ -2959,6 +2974,8 @@ public partial class MainWindow : Window
             ScreensaverDelayCombo.IsEnabled = true;
         if (SleepDelayCombo is not null)
             SleepDelayCombo.IsEnabled = true;
+        if (DeepSleepDelayCombo is not null)
+            DeepSleepDelayCombo.IsEnabled = !IsPixelProActive;
 
         if (SendScreensaverButton is not null)
         {
@@ -3691,6 +3708,8 @@ public partial class MainWindow : Window
                 "PcMonitor",
                 StringComparison.Ordinal));
         _serial.SetSleepTimeout(_sleepDelaySeconds);
+        if (!IsPixelProActive)
+            _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
         _serial.SetRgbIdleTimeout(_rgbIdleDelaySeconds);
 
     }
@@ -3786,6 +3805,31 @@ public partial class MainWindow : Window
             BottomStatus.Text = L(
                 _sleepDelaySeconds == 0 ? "Sleep: Never" : $"Sleep: {_sleepDelaySeconds}s",
                 _sleepDelaySeconds == 0 ? "Ngủ: Không bao giờ" : $"Ngủ: {_sleepDelaySeconds} giây");
+        }
+    }
+
+    private void DeepSleepDelayCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        _deepSleepDelaySeconds =
+            ComboSeconds(sender, _deepSleepDelaySeconds);
+
+        if (_uiReady)
+            SaveAppSettings();
+
+        if (_uiReady &&
+            !IsPixelProActive &&
+            _serial.IsConnected)
+        {
+            _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
+            BottomStatus.Text = L(
+                _deepSleepDelaySeconds == 0
+                    ? "Deep sleep: Never"
+                    : $"Deep sleep: {_deepSleepDelaySeconds}s",
+                _deepSleepDelaySeconds == 0
+                    ? "Ngủ sâu: Không bao giờ"
+                    : $"Ngủ sâu: {_deepSleepDelaySeconds} giây");
         }
     }
 
@@ -6114,7 +6158,7 @@ try {{
             if (state is null)
                 return;
 
-            int index = Math.Clamp(state.Value.Index, 0, 7);
+            int index = Math.Clamp(state.Value.Index, 0, 9);
             string name = string.IsNullOrWhiteSpace(state.Value.Name)
                 ? RynorProfileName(index)
                 : state.Value.Name.Trim();
@@ -6151,7 +6195,7 @@ try {{
 
     private void ApplyRynorActiveProfile(int index, string name)
     {
-        index = Math.Clamp(index, 0, 7);
+        index = Math.Clamp(index, 0, 9);
         _rynorActiveProfile = index;
         _rynorActiveProfileName =
             string.IsNullOrWhiteSpace(name)
@@ -6271,12 +6315,14 @@ try {{
             5 => "DELTA FORCE",
             6 => "WUWA",
             7 => "PC MONITOR",
+            8 => "RESERVED",
+            9 => "CONNECTION",
             _ => $"PROFILE {index + 1}"
         };
 
     private string RynorProfileName(int index)
     {
-        index = Math.Clamp(index, 0, 7);
+        index = Math.Clamp(index, 0, 9);
         string name = _rynorProfileNames[index];
         return string.IsNullOrWhiteSpace(name)
             ? ProfileName(index)
@@ -6293,7 +6339,7 @@ try {{
                     int.TryParse(
                         item.Tag?.ToString(),
                         out int index) &&
-                    index is >= 0 and < 8)
+                    index is >= 0 and < 10)
                 {
                     item.Content = RynorProfileName(index);
                 }
@@ -6361,7 +6407,7 @@ try {{
             }
             else
             {
-                for (int i = 0; i < 8; i++)
+                for (int i = 0; i < 10; i++)
                 {
                     AutoProfileDefaultCombo.Items.Add(new ComboBoxItem
                     {
@@ -6374,7 +6420,7 @@ try {{
                     Math.Clamp(
                         _autoProfileSettings.DefaultProfile,
                         0,
-                        7)
+                        9)
                     .ToString();
 
                 if (AutoProfileDefaultLayerCombo is not null)
@@ -6436,7 +6482,7 @@ try {{
         else
         {
             _autoProfileSettings.DefaultProfile =
-                Math.Clamp(profile, 0, 7);
+                Math.Clamp(profile, 0, 9);
         }
 
         if (_uiReady)
@@ -6555,7 +6601,7 @@ try {{
                         : name,
                 ExecutablePath = path,
                 ProfileIndex =
-                    Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 7),
+                    Math.Clamp(_autoProfileSettings.DefaultProfile, 0, 9),
                 PixelProfileIndex =
                     Math.Clamp(
                         _autoProfileSettings.DefaultPixelProfile,
@@ -6586,7 +6632,7 @@ try {{
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 10; i++)
         {
             combo.Items.Add(new ComboBoxItem
             {
@@ -6596,7 +6642,7 @@ try {{
         }
 
         combo.SelectedValue =
-            Math.Clamp(selectedProfile, 0, 7).ToString();
+            Math.Clamp(selectedProfile, 0, 9).ToString();
         return combo;
     }
 
@@ -6789,7 +6835,7 @@ try {{
                 else
                 {
                     current.ProfileIndex =
-                        Math.Clamp(index, 0, 7);
+                        Math.Clamp(index, 0, 9);
                 }
 
                 AutoProfileService.Save(_autoProfileSettings);
@@ -7101,14 +7147,14 @@ try {{
               Math.Clamp(
                   _autoProfileSettings.DefaultProfile,
                   0,
-                  7);
+                  9);
 
         targetProfile = pixel
             ? Math.Clamp(
                 targetProfile,
                 0,
                 Math.Max(0, _pixelProfileCatalog.Count - 1))
-            : Math.Clamp(targetProfile, 0, 7);
+            : Math.Clamp(targetProfile, 0, 9);
 
         int targetLayer = pixel
             ? Math.Clamp(
