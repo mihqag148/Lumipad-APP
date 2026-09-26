@@ -237,14 +237,137 @@ public partial class MainWindow
             return;
         }
 
-        _pixelSelectedProfile =
-            profileIndex;
-
         _pixelSelectedLayer =
             Math.Clamp(
                 active.Layer,
                 0,
                 3);
+
+        PixelProMainMenuBackgroundInfo? initialBackground =
+            await pixel.GetMainMenuBackgroundInfoAsync(
+                profileIndex);
+
+        bool? initialCompositeMode =
+            await pixel.GetMainMenuCompositeModeAsync(
+                profileIndex);
+
+        bool deviceHasRenderableMainMenu =
+            deviceMenu.Actions.Any(
+                action => action > 0) ||
+            (initialCompositeMode == true &&
+             initialBackground?.IsCustom == true &&
+             initialBackground.StoredBytes > 0);
+
+        if (!deviceHasRenderableMainMenu)
+        {
+            int preferredProfile =
+                Math.Clamp(
+                    _pixelSelectedProfile,
+                    0,
+                    PixelProMainMenuStore.ProfileCount - 1);
+
+            int recoverableProfile = -1;
+
+            if (PixelProMainMenuStore.HasRecoverableProfile(
+                    _pixelMainMenu.Profiles[
+                        preferredProfile]))
+            {
+                recoverableProfile =
+                    preferredProfile;
+            }
+            else
+            {
+                for (int candidate = 0;
+                     candidate <
+                     PixelProMainMenuStore.ProfileCount;
+                     candidate++)
+                {
+                    if (PixelProMainMenuStore.HasRecoverableProfile(
+                            _pixelMainMenu.Profiles[
+                                candidate]))
+                    {
+                        recoverableProfile =
+                            candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (recoverableProfile < 0)
+            {
+                PixelProMainMenuConfig recovery =
+                    PixelProMainMenuStore.LoadRecoveryBackup();
+
+                for (int candidate = 0;
+                     candidate <
+                     PixelProMainMenuStore.ProfileCount;
+                     candidate++)
+                {
+                    if (!PixelProMainMenuStore.HasRecoverableProfile(
+                            recovery.Profiles[
+                                candidate]))
+                    {
+                        continue;
+                    }
+
+                    _pixelMainMenu.Profiles[
+                        candidate] =
+                        recovery.Profiles[
+                            candidate];
+
+                    recoverableProfile =
+                        candidate;
+
+                    AddLog(
+                        "INFO",
+                        "PIXEL MENU",
+                        $"Recovered Main Menu Profile {candidate + 1:00} from the shadow backup because the active device profile is empty.");
+
+                    break;
+                }
+            }
+
+            if (recoverableProfile >= 0 &&
+                recoverableProfile !=
+                    profileIndex)
+            {
+                int oldProfile =
+                    profileIndex;
+
+                profileIndex =
+                    recoverableProfile;
+
+                if (!await pixel.SetProfileLayerAsync(
+                        profileIndex,
+                        _pixelSelectedLayer))
+                {
+                    AddLog(
+                        "WARN",
+                        "PIXEL MENU",
+                        $"Could not switch empty device Profile {oldProfile + 1:00} to recoverable Profile {profileIndex + 1:00}.");
+                }
+                else
+                {
+                    PixelProDeviceMainMenuProfile? redirected =
+                        await pixel.GetMainMenuProfileAsync(
+                            profileIndex);
+
+                    if (redirected is not null)
+                    {
+                        deviceMenu =
+                            redirected;
+                    }
+
+                    AddLog(
+                        "INFO",
+                        "PIXEL MENU",
+                        $"Empty device Profile {oldProfile + 1:00} redirected to recoverable Main Menu Profile {profileIndex + 1:00}.");
+                }
+            }
+        }
+
+        _pixelSelectedProfile =
+            profileIndex;
 
         PixelProMainMenuProfile localCache =
             _pixelMainMenu.Profiles[
@@ -625,6 +748,12 @@ public partial class MainWindow
 
             menuBatchStarted =
                 false;
+
+            if (!await pixel.ShowMainMenuAsync())
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO stored the composite Main Menu but did not confirm MENUSHOW.");
+            }
 
             _pixelMenuReconnectRestoreAttempted.Remove(
                 profileIndex);
@@ -2367,6 +2496,12 @@ public partial class MainWindow
 
             menuBatchStarted = false;
             ReportOperation();
+
+            if (!await pixel.ShowMainMenuAsync())
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO stored the composite Main Menu but did not confirm MENUSHOW.");
+            }
 
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
