@@ -78,20 +78,46 @@ public partial class MainWindow : Window
         set => _sleepingByProduct[_activeProduct.Id] = value;
     }
 
+    private string _rynorPowerState = "AWAKE";
+
     private bool RynorSleeping =>
         _sleepingByProduct.TryGetValue(
             ProductCatalog.RynorOne.Id,
             out bool sleeping) && sleeping;
 
-    private void SetRynorSleeping(bool sleeping)
+    private bool RynorDeepSleeping =>
+        string.Equals(
+            _rynorPowerState,
+            "DEEP",
+            StringComparison.Ordinal);
+
+    private void SetRynorPowerState(string state)
     {
-        bool changed = RynorSleeping != sleeping;
+        state = string.IsNullOrWhiteSpace(state)
+            ? "AWAKE"
+            : state.Trim().ToUpperInvariant();
+
+        if (state is not ("AWAKE" or "SLEEP" or "DEEP"))
+            state = "AWAKE";
+
+        bool sleeping =
+            !string.Equals(state, "AWAKE", StringComparison.Ordinal);
+        bool changed =
+            !string.Equals(
+                _rynorPowerState,
+                state,
+                StringComparison.Ordinal);
+
+        _rynorPowerState = state;
         _sleepingByProduct[ProductCatalog.RynorOne.Id] = sleeping;
 
         _rynorProfileTimer.Interval =
-            sleeping
-                ? TimeSpan.FromSeconds(5)
-                : TimeSpan.FromMilliseconds(700);
+            state switch
+            {
+                "DEEP" => TimeSpan.FromSeconds(30),
+                "SLEEP" => TimeSpan.FromSeconds(5),
+                _ => TimeSpan.FromMilliseconds(700)
+            };
 
         if (!IsPixelProActive)
             UpdateSleepButtonUi();
@@ -101,9 +127,15 @@ public partial class MainWindow : Window
             AddLog(
                 "INFO",
                 "POWER",
-                sleeping
-                    ? "RYNOR ONE entered BLE eco sleep; background BLE polling throttled."
-                    : "RYNOR ONE woke; normal RYNOR polling resumed.");
+                state switch
+                {
+                    "DEEP" =>
+                        "RYNOR ONE entered connected deep sleep; BLE stays connected and background polling is minimized.",
+                    "SLEEP" =>
+                        "RYNOR ONE entered BLE eco sleep; background BLE polling throttled.",
+                    _ =>
+                        "RYNOR ONE woke; normal RYNOR polling resumed."
+                });
         }
     }
 
