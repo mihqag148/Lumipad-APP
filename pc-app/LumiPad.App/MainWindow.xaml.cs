@@ -3918,7 +3918,12 @@ public partial class MainWindow : Window
             if (_keyboardSleeping)
             {
                 await _serial.WakeKeyboardAsync();
-                _keyboardSleeping = false;
+
+                if (IsPixelProActive)
+                    _keyboardSleeping = false;
+                else
+                    SetRynorSleeping(false);
+
                 BottomStatus.Text =
                     L("Keyboard display and RGB are awake.",
                       "Màn hình và RGB của bàn phím đã bật lại.");
@@ -3926,7 +3931,12 @@ public partial class MainWindow : Window
             else
             {
                 await _serial.SleepKeyboardAsync();
-                _keyboardSleeping = true;
+
+                if (IsPixelProActive)
+                    _keyboardSleeping = true;
+                else
+                    SetRynorSleeping(true);
+
                 BottomStatus.Text =
                     L("Keyboard display and RGB are sleeping. Press again to wake.",
                       "Màn hình và RGB đang ngủ. Nhấn lại để bật lên.");
