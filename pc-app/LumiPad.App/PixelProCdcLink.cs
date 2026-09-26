@@ -1577,6 +1577,182 @@ public sealed class PixelProCdcLink : IDeviceLink
         }
     }
 
+    private static uint ComputeRawMediaCrc32(
+        byte[] bytes)
+    {
+        uint crc = 0xFFFFFFFFu;
+
+        foreach (byte value in bytes)
+        {
+            crc ^= value;
+
+            for (int bit = 0;
+                 bit < 8;
+                 bit++)
+            {
+                crc =
+                    (crc & 1u) != 0
+                        ? (crc >> 1) ^
+                          0xEDB88320u
+                        : crc >> 1;
+            }
+        }
+
+        return crc ^ 0xFFFFFFFFu;
+    }
+
+    private async Task<bool> UploadRawMediaAsync(
+        string beginWithoutCrc,
+        string kind,
+        byte[] bytes,
+        IProgress<int>? progress = null)
+    {
+        if (!IsConnected ||
+            bytes.Length == 0)
+        {
+            return false;
+        }
+
+        const int RawChunkSize = 8192;
+        uint crc =
+            ComputeRawMediaCrc32(
+                bytes);
+
+        string begin =
+            $"{beginWithoutCrc}|{crc:X8}";
+
+        string beginAck =
+            $"OK|MEDIA_RAW_BEGIN|{kind}|{bytes.Length}";
+
+        string doneAck =
+            $"OK|MEDIA_RAW_DONE|{kind}|{bytes.Length}|{crc:X8}";
+
+        await _commandGate.WaitAsync();
+        try
+        {
+            SerialPort? port =
+                _port;
+
+            if (port?.IsOpen != true)
+                return false;
+
+            await StopReaderAsync();
+
+            try
+            {
+                port.ReadTimeout = 1000;
+                port.WriteTimeout = 15000;
+
+                try
+                {
+                    port.DiscardInBuffer();
+                }
+                catch
+                {
+                }
+
+                Log(
+                    "TX",
+                    begin);
+
+                port.WriteLine(
+                    begin);
+
+                string? start =
+                    await ReadExpectedLineAsync(
+                        port,
+                        beginAck,
+                        TimeSpan.FromSeconds(12));
+
+                if (!string.Equals(
+                        start,
+                        beginAck,
+                        StringComparison.Ordinal))
+                {
+                    LastScreensaverError =
+                        string.IsNullOrWhiteSpace(
+                            start)
+                            ? "PIXEL PRO did not accept raw media mode."
+                            : $"PIXEL PRO rejected raw media start: {start}";
+
+                    return false;
+                }
+
+                for (int offset = 0;
+                     offset < bytes.Length;
+                     offset += RawChunkSize)
+                {
+                    int length =
+                        Math.Min(
+                            RawChunkSize,
+                            bytes.Length -
+                            offset);
+
+                    port.Write(
+                        bytes,
+                        offset,
+                        length);
+
+                    int nextOffset =
+                        offset +
+                        length;
+
+                    string expected =
+                        nextOffset ==
+                        bytes.Length
+                            ? doneAck
+                            : $"OK|MEDIA_RAW_DATA|{nextOffset}";
+
+                    string? ack =
+                        await ReadExpectedLineAsync(
+                            port,
+                            expected,
+                            nextOffset ==
+                            bytes.Length
+                                ? TimeSpan.FromSeconds(25)
+                                : TimeSpan.FromSeconds(12));
+
+                    if (!string.Equals(
+                            ack,
+                            expected,
+                            StringComparison.Ordinal))
+                    {
+                        LastScreensaverError =
+                            string.IsNullOrWhiteSpace(
+                                ack)
+                                ? $"PIXEL PRO raw transfer stopped near {nextOffset / 1024.0:0.0} KiB."
+                                : $"PIXEL PRO raw transfer failed: {ack}";
+
+                        return false;
+                    }
+
+                    progress?.Report(
+                        nextOffset ==
+                        bytes.Length
+                            ? 100
+                            : (int)Math.Clamp(
+                                nextOffset * 95L /
+                                Math.Max(
+                                    1,
+                                    bytes.Length),
+                                0,
+                                95));
+                }
+
+                return true;
+            }
+            finally
+            {
+                if (port.IsOpen)
+                    StartReader();
+            }
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
     private async Task<bool> SendPackedAnimationAsync(
         byte[] packedBytes,
         IProgress<int>? progress)
@@ -1596,301 +1772,26 @@ public sealed class PixelProCdcLink : IDeviceLink
         {
             LastScreensaverError =
                 "PIXEL packed animation must stay at or below 2000 KiB.";
-
             return false;
         }
 
-        await _commandGate.WaitAsync();
-        try
+        bool ok =
+            await UploadRawMediaAsync(
+                    $"MEDIA_RAW_BEGIN|PX|{packedBytes.Length}",
+                    "PX",
+                    packedBytes,
+                    progress)
+                .ConfigureAwait(false);
+
+        if (!ok &&
+            string.IsNullOrWhiteSpace(
+                LastScreensaverError))
         {
-            SerialPort? port =
-                _port;
-
-            if (port?.IsOpen != true)
-                return false;
-
-            await StopReaderAsync();
-
-            try
-            {
-                port.ReadTimeout = 750;
-                port.WriteTimeout = 10000;
-
-                try
-                {
-                    port.DiscardInBuffer();
-                }
-                catch
-                {
-                }
-
-                string begin =
-                    $"SAVPXBEGIN|{packedBytes.Length}";
-
-                string? beginAck =
-                    null;
-
-                for (int attempt = 0;
-                     attempt < 2;
-                     attempt++)
-                {
-                    Log(
-                        "TX",
-                        attempt == 0
-                            ? begin
-                            : $"{begin} (retry {attempt})");
-
-                    port.WriteLine(
-                        begin);
-
-                    beginAck =
-                        await ReadExpectedLineAsync(
-                            port,
-                            "OK|SAVPXBEGIN",
-                            TimeSpan.FromSeconds(10));
-
-                    if (string.Equals(
-                            beginAck,
-                            "OK|SAVPXBEGIN",
-                            StringComparison.Ordinal))
-                    {
-                        break;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(beginAck) &&
-                        !beginAck.StartsWith(
-                            "ERR|",
-                            StringComparison.Ordinal))
-                    {
-                        beginAck = null;
-                    }
-
-                    if (beginAck?.StartsWith(
-                            "ERR|",
-                            StringComparison.Ordinal) == true)
-                    {
-                        break;
-                    }
-                }
-
-                if (!string.Equals(
-                        beginAck,
-                        "OK|SAVPXBEGIN",
-                        StringComparison.Ordinal))
-                {
-                    if (beginAck?.StartsWith(
-                            "ERR|NO_SPACE",
-                            StringComparison.Ordinal) == true)
-                    {
-                        long free = 0;
-                        long need =
-                            packedBytes.LongLength;
-
-                        foreach (string part in
-                                 beginAck.Split('|').Skip(2))
-                        {
-                            string[] kv =
-                                part.Split(
-                                    '=',
-                                    2);
-
-                            if (kv.Length == 2 &&
-                                long.TryParse(
-                                    kv[1],
-                                    out long value))
-                            {
-                                if (kv[0] == "FREE")
-                                    free = value;
-
-                                if (kv[0] == "NEED")
-                                    need = value;
-                            }
-                        }
-
-                        LastScreensaverError =
-                            $"PIXEL PRO needs {need / 1024.0:0} KiB but only " +
-                            $"{free / 1024.0:0} KiB is free in media flash.";
-                    }
-                    else if (string.Equals(
-                                 beginAck,
-                                 "ERR|FS_NOT_READY",
-                                 StringComparison.Ordinal))
-                    {
-                        LastScreensaverError =
-                            "PIXEL PRO media storage is not ready.";
-                    }
-                    else
-                    {
-                        LastScreensaverError =
-                            string.IsNullOrWhiteSpace(
-                                beginAck)
-                                ? "PIXEL PRO did not answer packed animation upload start."
-                                : $"PIXEL PRO rejected packed animation: {beginAck}";
-                    }
-
-                    return false;
-                }
-
-                // Use smaller acknowledged chunks for long ~2 MB transfers.
-                // This is slower than fire-and-forget but is substantially more
-                // tolerant of Windows usbser/TinyUSB scheduling stalls.
-                const int RawChunkSize = 384;
-                const int MaxChunkAttempts = 5;
-
-                for (int offset = 0;
-                     offset < packedBytes.Length;
-                     offset += RawChunkSize)
-                {
-                    int length =
-                        Math.Min(
-                            RawChunkSize,
-                            packedBytes.Length -
-                            offset);
-
-                    string encoded =
-                        Convert.ToBase64String(
-                            packedBytes,
-                            offset,
-                            length);
-
-                    int nextOffset =
-                        offset +
-                        length;
-
-                    string expected =
-                        $"OK|SAVPXDATA|{nextOffset}";
-
-                    string? ack =
-                        null;
-
-                    for (int attempt = 0;
-                         attempt < MaxChunkAttempts;
-                         attempt++)
-                    {
-                        port.WriteLine(
-                            $"SAVPXDATA|{offset}|{encoded}");
-
-                        ack =
-                            await ReadExpectedLineAsync(
-                                port,
-                                expected,
-                                TimeSpan.FromSeconds(10));
-
-                        if (string.Equals(
-                                ack,
-                                expected,
-                                StringComparison.Ordinal))
-                        {
-                            break;
-                        }
-
-                        bool retryable =
-                            string.IsNullOrWhiteSpace(
-                                ack) ||
-                            string.Equals(
-                                ack,
-                                "ERR|SAVPXDATA",
-                                StringComparison.Ordinal);
-
-                        if (!retryable)
-                            break;
-
-                        await Task.Delay(
-                            30 * (attempt + 1));
-                    }
-
-                    if (!string.Equals(
-                            ack,
-                            expected,
-                            StringComparison.Ordinal))
-                    {
-                        LastScreensaverError =
-                            string.IsNullOrWhiteSpace(
-                                ack)
-                                ? $"PIXEL PRO stopped answering near {offset / 1024.0:0.0} KiB of the packed upload."
-                                : $"PIXEL PRO rejected packed animation data near {offset / 1024.0:0.0} KiB: {ack}";
-
-                        return false;
-                    }
-
-                    progress?.Report(
-                        (int)Math.Clamp(
-                            nextOffset *
-                            95L /
-                            Math.Max(
-                                1,
-                                packedBytes.Length),
-                            0,
-                            95));
-
-                    if (((offset / RawChunkSize) & 0x1F) == 0x1F)
-                        await Task.Yield();
-                }
-
-                port.WriteLine(
-                    "SAVPXEND");
-
-                string? finalAck =
-                    await ReadExpectedLineAsync(
-                        port,
-                        "OK|SAVER|READY",
-                        TimeSpan.FromSeconds(20));
-
-                bool ready =
-                    string.Equals(
-                        finalAck,
-                        "OK|SAVER|READY",
-                        StringComparison.Ordinal);
-
-                // If only the final ACK was lost, the file can already be
-                // committed in LittleFS. Verify SAVERSTATE before reporting a
-                // false failure to the user.
-                if (!ready &&
-                    string.IsNullOrWhiteSpace(
-                        finalAck))
-                {
-                    port.WriteLine(
-                        "SAVERSTATE");
-
-                    string? state =
-                        await ReadExpectedLineAsync(
-                            port,
-                            "SAVERSTATE|",
-                            TimeSpan.FromSeconds(5));
-
-                    ready =
-                        string.Equals(
-                            state,
-                            "SAVERSTATE|READY",
-                            StringComparison.Ordinal);
-                }
-
-                if (ready)
-                {
-                    progress?.Report(
-                        100);
-                }
-                else
-                {
-                    LastScreensaverError =
-                        string.IsNullOrWhiteSpace(
-                            finalAck)
-                            ? "PIXEL PRO did not confirm packed animation storage."
-                            : $"PIXEL PRO rejected packed animation storage: {finalAck}";
-                }
-
-                return ready;
-            }
-            finally
-            {
-                if (port.IsOpen)
-                    StartReader();
-            }
+            LastScreensaverError =
+                "PIXEL PRO rejected the raw packed-animation transfer.";
         }
-        finally
-        {
-            _commandGate.Release();
-        }
+
+        return ok;
     }
 
     private async Task<bool> SendEncodedGifAsync(
@@ -1924,129 +1825,27 @@ public sealed class PixelProCdcLink : IDeviceLink
                 "PIXEL PRO GIF canvas must be between 1×1 and 1024×1024.");
         }
 
-        string scaleToken =
-            scaleMode.ToString().ToUpperInvariant();
+        // Firmware deliberately keeps uploaded GIFs pixel-sized/centered.
+        // The host-side scale selector is retained for UI compatibility.
+        _ = scaleMode;
 
-        await _commandGate.WaitAsync();
-        try
+        bool ok =
+            await UploadRawMediaAsync(
+                    $"MEDIA_RAW_BEGIN|GIF|{gifBytes.Length}|{sourceWidth}|{sourceHeight}",
+                    "GIF",
+                    gifBytes,
+                    progress)
+                .ConfigureAwait(false);
+
+        if (!ok &&
+            string.IsNullOrWhiteSpace(
+                LastScreensaverError))
         {
-            SerialPort? port = _port;
-            if (port?.IsOpen != true)
-                return false;
-
-            await StopReaderAsync();
-
-            try
-            {
-                port.ReadTimeout = 500;
-                port.WriteTimeout = 5000;
-
-                try { port.DiscardInBuffer(); } catch { }
-
-                string begin =
-                    $"SAVGIFBEGIN|{gifBytes.Length}|" +
-                    $"{sourceWidth}|{sourceHeight}|" +
-                    $"{scaleToken}";
-
-                Log("TX", begin);
-                port.WriteLine(begin);
-
-                string? beginAck =
-                    await ReadExpectedLineAsync(
-                        port,
-                        "OK|SAVGIFBEGIN",
-                        TimeSpan.FromSeconds(8));
-
-                if (!string.Equals(
-                        beginAck,
-                        "OK|SAVGIFBEGIN",
-                        StringComparison.Ordinal))
-                {
-                    SetSaverProtocolError(
-                        beginAck,
-                        gifBytes);
-                    return false;
-                }
-
-                const int RawChunkSize = 1024;
-
-                for (int offset = 0;
-                     offset < gifBytes.Length;
-                     offset += RawChunkSize)
-                {
-                    int len =
-                        Math.Min(
-                            RawChunkSize,
-                            gifBytes.Length - offset);
-
-                    string encoded =
-                        Convert.ToBase64String(
-                            gifBytes,
-                            offset,
-                            len);
-
-                    port.WriteLine(
-                        $"SAVGIFDATA|{offset}|{encoded}");
-
-                    int nextOffset = offset + len;
-
-                    string expected =
-                        $"OK|SAVGIFDATA|{nextOffset}";
-
-                    string? ack =
-                        await ReadExpectedLineAsync(
-                            port,
-                            expected,
-                            TimeSpan.FromSeconds(5));
-
-                    if (!string.Equals(
-                            ack,
-                            expected,
-                            StringComparison.Ordinal))
-                    {
-                        SetSaverProtocolError(
-                            ack,
-                            gifBytes);
-                        return false;
-                    }
-
-                    progress?.Report(
-                        (int)Math.Clamp(
-                            nextOffset * 95L /
-                            Math.Max(1, gifBytes.Length),
-                            0,
-                            95));
-                }
-
-                port.WriteLine("SAVGIFEND");
-
-                string? finalAck =
-                    await ReadExpectedLineAsync(
-                        port,
-                        "OK|SAVER|READY",
-                        TimeSpan.FromSeconds(10));
-
-                bool ready =
-                    string.Equals(
-                        finalAck,
-                        "OK|SAVER|READY",
-                        StringComparison.Ordinal);
-
-                if (ready)
-                    progress?.Report(100);
-
-                return ready;
-            }
-            finally
-            {
-                if (port.IsOpen)
-                    StartReader();
-            }
+            LastScreensaverError =
+                "PIXEL PRO rejected the raw GIF transfer.";
         }
-        finally
-        {
-            _commandGate.Release();
-        }
+
+        return ok;
     }
 
     private async Task<bool> SendEncodedJpegAsync(
@@ -2063,174 +1862,23 @@ public sealed class PixelProCdcLink : IDeviceLink
                 "Invalid JPEG payload.");
         }
 
-        await _commandGate.WaitAsync();
-        try
+        bool ok =
+            await UploadRawMediaAsync(
+                    $"MEDIA_RAW_BEGIN|JPG|{jpegBytes.Length}|{width}|{height}",
+                    "JPG",
+                    jpegBytes,
+                    progress)
+                .ConfigureAwait(false);
+
+        if (!ok &&
+            string.IsNullOrWhiteSpace(
+                LastScreensaverError))
         {
-            SerialPort? port = _port;
-            if (port?.IsOpen != true)
-                return false;
-
-            await StopReaderAsync();
-
-            try
-            {
-                port.ReadTimeout = 500;
-                port.WriteTimeout = 5000;
-                try { port.DiscardInBuffer(); } catch { }
-
-                string begin =
-                    $"SAVJPGBEGIN|{jpegBytes.Length}|{width}|{height}";
-
-                Log("TX", begin);
-                port.WriteLine(begin);
-
-                string? beginAck =
-                    await ReadExpectedLineAsync(
-                        port,
-                        "OK|SAVJPGBEGIN",
-                        TimeSpan.FromSeconds(8));
-
-                if (!string.Equals(
-                        beginAck,
-                        "OK|SAVJPGBEGIN",
-                        StringComparison.Ordinal))
-                {
-                    LastScreensaverError =
-                        string.IsNullOrWhiteSpace(beginAck)
-                            ? "PIXEL PRO did not answer JPEG upload start."
-                            : $"PIXEL PRO rejected JPEG upload: {beginAck}";
-                    return false;
-                }
-
-                const int RawChunkSize = 1024;
-
-                for (int offset = 0;
-                     offset < jpegBytes.Length;
-                     offset += RawChunkSize)
-                {
-                    int len =
-                        Math.Min(
-                            RawChunkSize,
-                            jpegBytes.Length - offset);
-
-                    string encoded =
-                        Convert.ToBase64String(
-                            jpegBytes,
-                            offset,
-                            len);
-
-                    port.WriteLine(
-                        $"SAVJPGDATA|{offset}|{encoded}");
-
-                    int nextOffset =
-                        offset + len;
-
-                    string expected =
-                        $"OK|SAVJPGDATA|{nextOffset}";
-
-                    string? ack =
-                        await ReadExpectedLineAsync(
-                            port,
-                            expected,
-                            TimeSpan.FromSeconds(5));
-
-                    if (!string.Equals(
-                            ack,
-                            expected,
-                            StringComparison.Ordinal))
-                    {
-                        LastScreensaverError =
-                            string.IsNullOrWhiteSpace(ack)
-                                ? "PIXEL PRO stopped answering during JPEG upload."
-                                : $"PIXEL PRO rejected JPEG data: {ack}";
-                        return false;
-                    }
-
-                    progress?.Report(
-                        (int)Math.Clamp(
-                            nextOffset * 95L /
-                            Math.Max(1, jpegBytes.Length),
-                            0,
-                            95));
-                }
-
-                port.WriteLine("SAVJPGEND");
-
-                string? finalAck =
-                    await ReadExpectedLineAsync(
-                        port,
-                        "OK|SAVER|READY",
-                        TimeSpan.FromSeconds(10));
-
-                bool ready =
-                    string.Equals(
-                        finalAck,
-                        "OK|SAVER|READY",
-                        StringComparison.Ordinal);
-
-                if (ready)
-                    progress?.Report(100);
-                else
-                    LastScreensaverError =
-                        string.IsNullOrWhiteSpace(finalAck)
-                            ? "PIXEL PRO did not confirm JPEG storage."
-                            : $"PIXEL PRO rejected JPEG storage: {finalAck}";
-
-                return ready;
-            }
-            finally
-            {
-                if (port.IsOpen)
-                    StartReader();
-            }
-        }
-        finally
-        {
-            _commandGate.Release();
-        }
-    }
-
-    private async Task<(long Total, long Used, long Free, long Flash)?>
-        ReadSaverCapacityAsync()
-    {
-        string? line =
-            await RequestLineAsync(
-                "SAVERINFO",
-                "SAVERINFO|");
-
-        if (line is null ||
-            !line.StartsWith(
-                "SAVERINFO|",
-                StringComparison.Ordinal))
-        {
-            return null;
+            LastScreensaverError =
+                "PIXEL PRO rejected the raw JPEG transfer.";
         }
 
-        long total = 0;
-        long used = 0;
-        long free = 0;
-        long flash = 0;
-
-        foreach (string part in line.Split('|').Skip(1))
-        {
-            string[] kv = part.Split('=', 2);
-
-            if (kv.Length != 2 ||
-                !long.TryParse(kv[1], out long value))
-            {
-                continue;
-            }
-
-            switch (kv[0])
-            {
-                case "TOTAL": total = value; break;
-                case "USED": used = value; break;
-                case "FREE": free = value; break;
-                case "FLASH": flash = value; break;
-            }
-        }
-
-        return (total, used, free, flash);
+        return ok;
     }
 
     private void SetSaverProtocolError(
@@ -2515,13 +2163,9 @@ public sealed class PixelProCdcLink : IDeviceLink
             return Task.FromResult(false);
         }
 
-        return UploadMainMenuAssetAsync(
-            $"MENUBGBEGIN|{profile}|{jpegBytes.Length}",
-            "OK|MENUBGBEGIN",
-            "MENUBGDATA",
-            "OK|MENUBGDATA",
-            "MENUBGEND",
-            "OK|MENUBGEND",
+        return UploadRawMediaAsync(
+            $"MEDIA_RAW_BEGIN|MENUBG|{profile}|{jpegBytes.Length}",
+            "MENUBG",
             jpegBytes,
             progress);
     }
@@ -2675,13 +2319,9 @@ public sealed class PixelProCdcLink : IDeviceLink
             return Task.FromResult(false);
         }
 
-        return UploadMainMenuAssetAsync(
-            $"MENUICONBEGIN|{profile}|{slot}|{iconBytes.Length}",
-            "OK|MENUICONBEGIN",
-            "MENUICONDATA",
-            "OK|MENUICONDATA",
-            "MENUICONEND",
-            "OK|MENUICONEND",
+        return UploadRawMediaAsync(
+            $"MEDIA_RAW_BEGIN|ICON|{profile}|{slot}|{iconBytes.Length}",
+            "ICON",
             iconBytes,
             progress);
     }
@@ -2955,13 +2595,9 @@ public sealed class PixelProCdcLink : IDeviceLink
                     96 * 1024)
             {
                 bool thumbnailOk =
-                    await UploadMainMenuAssetAsync(
-                            $"SAVTHBEGIN|{thumbnail.Length}",
-                            "OK|SAVTHBEGIN",
-                            "SAVTHDATA",
-                            "OK|SAVTHDATA",
-                            "SAVTHEND",
-                            "OK|SAVTHEND",
+                    await UploadRawMediaAsync(
+                            $"MEDIA_RAW_BEGIN|THUMB|{thumbnail.Length}",
+                            "THUMB",
                             thumbnail)
                         .ConfigureAwait(false);
 
