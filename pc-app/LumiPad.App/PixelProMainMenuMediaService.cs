@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -151,6 +152,316 @@ public static class PixelProMainMenuMediaService
             BackgroundMaxBytes,
             [90, 84, 78, 72, 66, 60, 54, 48],
             "Main-menu background cannot be reduced below 96 KiB.");
+    }
+
+    public static byte[] CreateCompositeMenuJpeg(
+        PixelProMainMenuProfile profile,
+        IReadOnlyList<string> labels)
+    {
+        if (profile.Slots.Length <
+            PixelProMainMenuStore.SlotCount)
+        {
+            throw new InvalidOperationException(
+                "PIXEL PRO Main Menu profile is incomplete.");
+        }
+
+        using var output =
+            new Bitmap(
+                BackgroundWidth,
+                BackgroundHeight,
+                PixelFormat.Format24bppRgb);
+
+        using (Graphics g = Graphics.FromImage(output))
+        {
+            g.Clear(Color.Black);
+            ConfigureHighQuality(g);
+
+            if (!string.IsNullOrWhiteSpace(
+                    profile.BackgroundPath) &&
+                File.Exists(
+                    profile.BackgroundPath))
+            {
+                ValidateStaticImage(
+                    profile.BackgroundPath);
+
+                int blurPercent =
+                    Math.Clamp(
+                        profile.BlurPercent,
+                        0,
+                        100);
+
+                int opacityPercent =
+                    Math.Clamp(
+                        profile.OpacityPercent,
+                        0,
+                        100);
+
+                ScreensaverScaleMode scaleMode =
+                    profile.ScaleMode;
+
+                if (scaleMode is not (
+                    ScreensaverScaleMode.Fill or
+                    ScreensaverScaleMode.Fit or
+                    ScreensaverScaleMode.Stretch))
+                {
+                    scaleMode =
+                        ScreensaverScaleMode.Fill;
+                }
+
+                using var source =
+                    new Bitmap(
+                        profile.BackgroundPath);
+
+                using var composed =
+                    new Bitmap(
+                        BackgroundWidth,
+                        BackgroundHeight,
+                        PixelFormat.Format24bppRgb);
+
+                using (Graphics backgroundGraphics =
+                           Graphics.FromImage(
+                               composed))
+                {
+                    backgroundGraphics.Clear(
+                        Color.Black);
+
+                    ConfigureHighQuality(
+                        backgroundGraphics);
+
+                    if (scaleMode ==
+                        ScreensaverScaleMode.Stretch)
+                    {
+                        backgroundGraphics.DrawImage(
+                            source,
+                            new Rectangle(
+                                0,
+                                0,
+                                BackgroundWidth,
+                                BackgroundHeight));
+                    }
+                    else if (scaleMode ==
+                             ScreensaverScaleMode.Fit)
+                    {
+                        backgroundGraphics.DrawImage(
+                            source,
+                            FitRect(
+                                source.Width,
+                                source.Height,
+                                BackgroundWidth,
+                                BackgroundHeight));
+                    }
+                    else
+                    {
+                        Rectangle sourceRect =
+                            SourceCropRect(
+                                source.Width,
+                                source.Height,
+                                BackgroundWidth,
+                                BackgroundHeight);
+
+                        backgroundGraphics.DrawImage(
+                            source,
+                            new Rectangle(
+                                0,
+                                0,
+                                BackgroundWidth,
+                                BackgroundHeight),
+                            sourceRect,
+                            GraphicsUnit.Pixel);
+                    }
+                }
+
+                using Bitmap blurred =
+                    CreateBlurredBitmap(
+                        composed,
+                        blurPercent);
+
+                float alpha =
+                    opacityPercent /
+                    100f;
+
+                using var attributes =
+                    new ImageAttributes();
+
+                attributes.SetColorMatrix(
+                    new ColorMatrix(
+                        new[]
+                        {
+                            new[] { 1f, 0f, 0f, 0f, 0f },
+                            new[] { 0f, 1f, 0f, 0f, 0f },
+                            new[] { 0f, 0f, 1f, 0f, 0f },
+                            new[] { 0f, 0f, 0f, alpha, 0f },
+                            new[] { 0f, 0f, 0f, 0f, 1f }
+                        }));
+
+                g.DrawImage(
+                    blurred,
+                    new Rectangle(
+                        0,
+                        0,
+                        BackgroundWidth,
+                        BackgroundHeight),
+                    0,
+                    0,
+                    BackgroundWidth,
+                    BackgroundHeight,
+                    GraphicsUnit.Pixel,
+                    attributes);
+            }
+
+            const int marginX = 10;
+            const int marginY = 6;
+            const int gapX = 6;
+            const int gapY = 4;
+
+            int cellWidth =
+                (BackgroundWidth -
+                 marginX * 2 -
+                 gapX * 3) /
+                4;
+
+            int cellHeight =
+                (BackgroundHeight -
+                 marginY * 2 -
+                 gapY) /
+                2;
+
+            using var labelFont =
+                new Font(
+                    FontFamily.GenericSansSerif,
+                    10f,
+                    FontStyle.Bold,
+                    GraphicsUnit.Point);
+
+            using var shadowBrush =
+                new SolidBrush(
+                    Color.FromArgb(
+                        210,
+                        0,
+                        0,
+                        0));
+
+            using var textBrush =
+                new SolidBrush(
+                    Color.White);
+
+            using var textFormat =
+                new StringFormat
+                {
+                    Alignment =
+                        StringAlignment.Center,
+                    LineAlignment =
+                        StringAlignment.Center,
+                    Trimming =
+                        StringTrimming.EllipsisCharacter,
+                    FormatFlags =
+                        StringFormatFlags.NoWrap
+                };
+
+            for (int slot = 0;
+                 slot <
+                 PixelProMainMenuStore.SlotCount;
+                 slot++)
+            {
+                int col =
+                    slot % 4;
+
+                int row =
+                    slot / 4;
+
+                int cellX =
+                    marginX +
+                    col *
+                        (cellWidth + gapX);
+
+                int cellY =
+                    marginY +
+                    row *
+                        (cellHeight + gapY);
+
+                int iconX =
+                    cellX +
+                    (cellWidth -
+                     IconWidth) /
+                    2;
+
+                int iconY =
+                    cellY +
+                    (cellHeight -
+                     IconHeight) /
+                    2;
+
+                string? iconPath =
+                    profile.Slots[
+                        slot].IconPath;
+
+                bool drewIcon =
+                    !string.IsNullOrWhiteSpace(
+                        iconPath) &&
+                    File.Exists(
+                        iconPath);
+
+                if (drewIcon)
+                {
+                    using Bitmap icon =
+                        CreateNormalizedAppIcon(
+                            iconPath!);
+
+                    g.DrawImage(
+                        icon,
+                        new Rectangle(
+                            iconX,
+                            iconY,
+                            IconWidth,
+                            IconHeight));
+                }
+                else
+                {
+                    string label =
+                        slot < labels.Count
+                            ? labels[slot] ?? ""
+                            : "";
+
+                    if (!string.IsNullOrWhiteSpace(
+                            label))
+                    {
+                        RectangleF textRect =
+                            new(
+                                cellX + 4,
+                                cellY + 4,
+                                cellWidth - 8,
+                                cellHeight - 8);
+
+                        RectangleF shadowRect =
+                            new(
+                                textRect.X + 1,
+                                textRect.Y + 1,
+                                textRect.Width,
+                                textRect.Height);
+
+                        g.DrawString(
+                            label,
+                            labelFont,
+                            shadowBrush,
+                            shadowRect,
+                            textFormat);
+
+                        g.DrawString(
+                            label,
+                            labelFont,
+                            textBrush,
+                            textRect,
+                            textFormat);
+                    }
+                }
+            }
+        }
+
+        return EncodeJpegWithinLimit(
+            output,
+            BackgroundMaxBytes,
+            [90, 84, 78, 72, 66, 60, 54, 48, 42, 36],
+            "Composite Main Menu cannot be reduced below 96 KiB.");
     }
 
     private static GraphicsPath RoundedRectPath(

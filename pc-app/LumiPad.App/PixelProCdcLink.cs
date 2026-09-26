@@ -2526,6 +2526,87 @@ public sealed class PixelProCdcLink : IDeviceLink
             progress);
     }
 
+    public async Task<bool?> GetMainMenuCompositeModeAsync(
+        int profile,
+        CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string prefix =
+            $"MENUMODESTATE|PROFILE={profile}|MODE=";
+
+        string? line =
+            await RequestLineAsync(
+                    $"MENUMODESTATE|{profile}",
+                    prefix,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (line is null ||
+            !line.StartsWith(
+                prefix,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string mode =
+            line[prefix.Length..]
+                .Trim();
+
+        if (mode.Equals(
+                "COMPOSITE",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (mode.Equals(
+                "LEGACY",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return null;
+    }
+
+    public async Task<bool> SetMainMenuCompositeModeAsync(
+        int profile,
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        profile =
+            Math.Clamp(
+                profile,
+                0,
+                PixelProMainMenuStore.ProfileCount - 1);
+
+        string mode =
+            enabled
+                ? "COMPOSITE"
+                : "LEGACY";
+
+        string expected =
+            $"OK|MENUMODE|{profile}|{mode}";
+
+        string? line =
+            await RequestLineAsync(
+                    $"MENUMODE|{profile}|{mode}",
+                    expected,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        return string.Equals(
+            line,
+            expected,
+            StringComparison.Ordinal);
+    }
+
     public async Task<int?> GetMainMenuIconMaskAsync(
         int profile,
         CancellationToken cancellationToken = default)

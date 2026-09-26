@@ -310,38 +310,25 @@ public partial class MainWindow
             await pixel.GetMainMenuBackgroundInfoAsync(
                 profileIndex);
 
-        bool deviceMissingLocalIcons =
-            localCache.Slots
-                .Select((slot, index) =>
-                    new
-                    {
-                        Slot = slot,
-                        Index = index
-                    })
-                .Any(
-                    item =>
-                        !string.IsNullOrWhiteSpace(
-                            item.Slot.IconPath) &&
-                        IO.File.Exists(
-                            item.Slot.IconPath) &&
-                        ((iconMask ?? 0) &
-                         (1 << item.Index)) == 0);
+        bool? compositeMode =
+            await pixel.GetMainMenuCompositeModeAsync(
+                profileIndex);
 
-        bool localHasBackground =
-            !string.IsNullOrWhiteSpace(
-                localCache.BackgroundPath) &&
-            IO.File.Exists(
-                localCache.BackgroundPath);
+        bool deviceCompositeReady =
+            compositeMode == true &&
+            background?.IsCustom == true &&
+            background.StoredBytes > 0;
 
-        bool deviceMissingLocalBackground =
-            localHasBackground &&
-            background?.IsCustom != true;
+        bool localHasRenderableContent =
+            localHasActions ||
+            PixelMenuHasLocalAssets(
+                localCache);
 
         bool shouldRestoreFromLocal =
-            (!deviceHasActions &&
-             localHasActions) ||
-            deviceMissingLocalIcons ||
-            deviceMissingLocalBackground;
+            localHasRenderableContent &&
+            (!deviceCompositeReady ||
+             (!deviceHasActions &&
+              localHasActions));
 
         if (shouldRestoreFromLocal &&
             (localHasActions ||
@@ -424,8 +411,8 @@ public partial class MainWindow
 
         PixelMenuStatusText.Text =
             L(
-                $"Loaded Main Menu from PIXEL PRO · Profile {profileIndex + 1:00} · BG {(background?.IsCustom == true ? "CUSTOM" : "EMPTY")} · Icons {(iconMask ?? 0):X2}.",
-                $"Đã đọc Main Menu từ PIXEL PRO · Profile {profileIndex + 1:00} · Nền {(background?.IsCustom == true ? "CUSTOM" : "EMPTY")} · Icon {(iconMask ?? 0):X2}.");
+                $"Loaded Main Menu from PIXEL PRO · Profile {profileIndex + 1:00} · {(deviceCompositeReady ? "COMPOSITE 480×320" : "LEGACY")} · BG {(background?.IsCustom == true ? "CUSTOM" : "EMPTY")} · Legacy icons {(iconMask ?? 0):X2}.",
+                $"Đã đọc Main Menu từ PIXEL PRO · Profile {profileIndex + 1:00} · {(deviceCompositeReady ? "COMPOSITE 480×320" : "LEGACY")} · Nền {(background?.IsCustom == true ? "CUSTOM" : "EMPTY")} · Icon cũ {(iconMask ?? 0):X2}.");
     }
 
     private void QueuePixelMainMenuAutoSync()
@@ -471,8 +458,6 @@ public partial class MainWindow
                     "PIXEL PRO media storage is not ready.");
             }
 
-            // Rebuild auto-extracted app icons if the cache image disappeared
-            // but the original application still exists.
             for (int slot = 0;
                  slot < PixelProMainMenuStore.SlotCount;
                  slot++)
@@ -510,80 +495,6 @@ public partial class MainWindow
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
-            menuBatchStarted =
-                await pixel.BeginMainMenuBatchAsync(
-                    profileIndex);
-
-            bool backgroundPathSpecified =
-                !string.IsNullOrWhiteSpace(
-                    profile.BackgroundPath);
-
-            bool backgroundSourceAvailable =
-                backgroundPathSpecified &&
-                IO.File.Exists(
-                    profile.BackgroundPath);
-
-            bool preserveDeviceBackground =
-                backgroundPathSpecified &&
-                !backgroundSourceAvailable;
-
-            if (backgroundSourceAvailable)
-            {
-                byte[] background =
-                    await Task.Run(
-                        () =>
-                            PixelProMainMenuMediaService
-                                .CreateBackgroundJpeg(
-                                    profile.BackgroundPath!,
-                                    profile.BlurPercent,
-                                    profile.OpacityPercent,
-                                    profile.ScaleMode));
-
-                if (!await pixel.UploadMainMenuBackgroundAsync(
-                        profileIndex,
-                        background))
-                {
-                    throw new InvalidOperationException(
-                        "PIXEL PRO rejected the cached Main Menu background.");
-                }
-            }
-            else if (!backgroundPathSpecified)
-            {
-                if (!await pixel.ClearMainMenuBackgroundAsync(
-                        profileIndex))
-                {
-                    throw new InvalidOperationException(
-                        "PIXEL PRO could not clear the Main Menu background.");
-                }
-            }
-            else
-            {
-                AddLog(
-                    "WARN",
-                    "PIXEL MENU",
-                    $"Background source is missing on this PC; preserving the existing PIXEL PRO background for Profile {profileIndex + 1:00}.");
-            }
-
-            PixelProMainMenuBackgroundInfo? backgroundState =
-                await pixel.GetMainMenuBackgroundInfoAsync(
-                    profileIndex);
-
-            bool backgroundVerified =
-                backgroundState is not null &&
-                backgroundState.Profile == profileIndex &&
-                (backgroundSourceAvailable
-                    ? backgroundState.IsCustom &&
-                      backgroundState.StoredBytes > 0
-                    : preserveDeviceBackground
-                        ? true
-                        : backgroundState.IsEmpty);
-
-            if (!backgroundVerified)
-            {
-                throw new InvalidOperationException(
-                    "PIXEL PRO did not verify the cached Main Menu background.");
-            }
-
             int[] actions =
                 profile.Slots
                     .Select(slot =>
@@ -610,6 +521,40 @@ public partial class MainWindow
                     })
                     .ToArray();
 
+            byte[] composite =
+                await Task.Run(
+                    () =>
+                        PixelProMainMenuMediaService
+                            .CreateCompositeMenuJpeg(
+                                profile,
+                                labels));
+
+            menuBatchStarted =
+                await pixel.BeginMainMenuBatchAsync(
+                    profileIndex);
+
+            if (!menuBatchStarted)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO firmware is too old for composite Main Menu sync.");
+            }
+
+            if (!await pixel.UploadMainMenuBackgroundAsync(
+                    profileIndex,
+                    composite))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO rejected the 480×320 composite Main Menu image.");
+            }
+
+            if (!await pixel.SetMainMenuCompositeModeAsync(
+                    profileIndex,
+                    true))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not enable composite Main Menu mode.");
+            }
+
             if (!await pixel.SetMainMenuProfileAsync(
                     profileIndex,
                     actions,
@@ -619,84 +564,19 @@ public partial class MainWindow
                     $"PIXEL PRO rejected cached Main Menu Profile {profileIndex + 1:00}.");
             }
 
-            int? existingIconMask =
-                await pixel.GetMainMenuIconMaskAsync(
-                    profileIndex);
-
-            if (existingIconMask is null)
-            {
-                throw new InvalidOperationException(
-                    "PIXEL PRO did not report the existing Main Menu icon state.");
-            }
-
-            int expectedIconMask =
-                existingIconMask.Value;
-
-            var iconCache =
-                new Dictionary<string, byte[]>(
-                    StringComparer.OrdinalIgnoreCase);
-
+            // Composite mode contains the whole visual in one JPEG. Remove
+            // obsolete per-slot files so they cannot consume flash or redraw
+            // on top of the exact app preview.
             for (int slot = 0;
                  slot < PixelProMainMenuStore.SlotCount;
                  slot++)
             {
-                string? iconPath =
-                    profile.Slots[slot].IconPath;
-
-                bool iconPathSpecified =
-                    !string.IsNullOrWhiteSpace(
-                        iconPath);
-
-                if (iconPathSpecified &&
-                    IO.File.Exists(
-                        iconPath))
+                if (!await pixel.ClearMainMenuIconAsync(
+                        profileIndex,
+                        slot))
                 {
-                    if (!iconCache.TryGetValue(
-                            iconPath!,
-                            out byte[]? iconBytes))
-                    {
-                        iconBytes =
-                            await Task.Run(
-                                () =>
-                                    PixelProMainMenuMediaService
-                                        .CreateIconAsset(
-                                            iconPath!));
-
-                        iconCache[iconPath!] =
-                            iconBytes;
-                    }
-
-                    if (!await pixel.UploadMainMenuIconAsync(
-                            profileIndex,
-                            slot,
-                            iconBytes))
-                    {
-                        throw new InvalidOperationException(
-                            $"PIXEL PRO rejected cached icon {slot + 1}.");
-                    }
-
-                    expectedIconMask |=
-                        1 << slot;
-                }
-                else if (!iconPathSpecified)
-                {
-                    if (!await pixel.ClearMainMenuIconAsync(
-                            profileIndex,
-                            slot))
-                    {
-                        throw new InvalidOperationException(
-                            $"PIXEL PRO could not clear icon {slot + 1}.");
-                    }
-
-                    expectedIconMask &=
-                        ~(1 << slot);
-                }
-                else
-                {
-                    AddLog(
-                        "WARN",
-                        "PIXEL MENU",
-                        $"Icon source for Slot {slot + 1} is missing on this PC; preserving the existing icon stored on PIXEL PRO.");
+                    throw new InvalidOperationException(
+                        $"PIXEL PRO could not clear obsolete legacy icon {slot + 1}.");
                 }
             }
 
@@ -712,42 +592,39 @@ public partial class MainWindow
                 await pixel.GetMainMenuProfileAsync(
                     profileIndex);
 
-            if (verifiedMenu is null ||
-                !verifiedMenu.Actions.SequenceEqual(
-                    actions))
-            {
-                throw new InvalidOperationException(
-                    "PIXEL PRO Main Menu action verify failed after reconnect restore.");
-            }
+            PixelProMainMenuBackgroundInfo? verifiedBackground =
+                await pixel.GetMainMenuBackgroundInfoAsync(
+                    profileIndex);
+
+            bool? verifiedComposite =
+                await pixel.GetMainMenuCompositeModeAsync(
+                    profileIndex);
 
             int? deviceIconMask =
                 await pixel.GetMainMenuIconMaskAsync(
                     profileIndex);
 
-            if (deviceIconMask is null ||
-                deviceIconMask.Value !=
-                    expectedIconMask)
+            if (verifiedMenu is null ||
+                !verifiedMenu.Actions.SequenceEqual(
+                    actions) ||
+                verifiedBackground?.IsCustom != true ||
+                verifiedBackground.StoredBytes <= 0 ||
+                verifiedComposite != true ||
+                deviceIconMask != 0)
             {
                 throw new InvalidOperationException(
-                    $"PIXEL PRO icon verify failed after reconnect restore: app={expectedIconMask:X2}, device={(deviceIconMask ?? -1):X2}.");
+                    "PIXEL PRO composite Main Menu verification failed after reconnect restore.");
             }
 
-            if (menuBatchStarted)
-            {
-                if (!await pixel.EndMainMenuBatchAsync(
-                        profileIndex))
-                {
-                    throw new InvalidOperationException(
-                        "PIXEL PRO did not finish the reconnect Main Menu batch.");
-                }
-
-                menuBatchStarted = false;
-            }
-            else if (!await pixel.ShowMainMenuAsync())
+            if (!await pixel.EndMainMenuBatchAsync(
+                    profileIndex))
             {
                 throw new InvalidOperationException(
-                    "PIXEL PRO did not show the restored Main Menu.");
+                    "PIXEL PRO did not finish the composite Main Menu batch.");
             }
+
+            menuBatchStarted =
+                false;
 
             _pixelMenuReconnectRestoreAttempted.Remove(
                 profileIndex);
@@ -759,13 +636,13 @@ public partial class MainWindow
 
             PixelMenuStatusText.Text =
                 L(
-                    $"Restored cached Main Menu to PIXEL PRO Profile {profileIndex + 1:00}.",
-                    $"Đã khôi phục Main Menu đã lưu vào PIXEL PRO Profile {profileIndex + 1:00}.");
+                    $"Restored 480×320 composite Main Menu to PIXEL PRO Profile {profileIndex + 1:00}.",
+                    $"Đã khôi phục Main Menu composite 480×320 vào PIXEL PRO Profile {profileIndex + 1:00}.");
 
             AddLog(
                 "INFO",
                 "PIXEL MENU",
-                $"Reconnect restore verified for Profile {profileIndex + 1:00}: actions={string.Join(",", actions)}, icons={expectedIconMask:X2}.");
+                $"Composite reconnect restore verified for Profile {profileIndex + 1:00}: actions={string.Join(",", actions)}, jpeg={composite.Length} bytes.");
 
             return true;
         }
@@ -2273,12 +2150,8 @@ public partial class MainWindow
         SetPixelHomePreviewMode(true);
 
         _pixelMenuAutoSyncPending = false;
-
-        PixelMenuSaveButton.IsEnabled =
-            false;
-
-        PixelMenuUploadProgress.Value =
-            0;
+        PixelMenuSaveButton.IsEnabled = false;
+        PixelMenuUploadProgress.Value = 0;
 
         int profileIndex =
             PixelMenuProfileIndex;
@@ -2286,9 +2159,6 @@ public partial class MainWindow
         PixelProMainMenuProfile profile =
             PixelMenuProfile;
 
-        // Auto-extracted app icons live in the LumiPad cache. If an update or
-        // cleanup removed a cached PNG, rebuild it from the stored AppPath
-        // instead of interpreting the missing cache file as "clear icon".
         for (int slot = 0;
              slot < PixelProMainMenuStore.SlotCount;
              slot++)
@@ -2326,11 +2196,8 @@ public partial class MainWindow
         PixelProMainMenuStore.Save(
             _pixelMainMenu);
 
-        bool menuBatchStarted =
-            false;
-
-        bool menuCommitSucceeded =
-            false;
+        bool menuBatchStarted = false;
+        bool menuCommitSucceeded = false;
 
         try
         {
@@ -2343,127 +2210,8 @@ public partial class MainWindow
 
             PixelMenuStatusText.Text =
                 L(
-                    $"Preparing Main Menu for Keymap Profile {profileIndex + 1:00}…",
-                    $"Đang xử lý Main Menu cho Keymap Profile {profileIndex + 1:00}…");
-
-            // Firmware 1.10.11 defers all Main Menu redraws until the whole
-            // profile transaction is complete. Older firmware simply falls
-            // back to the previous per-operation behavior.
-            menuBatchStarted =
-                await pixel.BeginMainMenuBatchAsync(
-                    profileIndex);
-
-            if (!menuBatchStarted)
-            {
-                AddLog(
-                    "WARN",
-                    "PIXEL MENU",
-                    "Firmware does not support MENUBATCH; continuing with legacy menu sync.");
-            }
-
-            const int TotalOperations =
-                11;
-
-            int completed =
-                0;
-
-            void ReportOperation()
-            {
-                completed++;
-
-                PixelMenuUploadProgress.Value =
-                    Math.Clamp(
-                        completed * 100.0 /
-                        TotalOperations,
-                        0,
-                        100);
-            }
-
-            bool backgroundPathSpecified =
-                !string.IsNullOrWhiteSpace(
-                    profile.BackgroundPath);
-
-            bool backgroundSourceAvailable =
-                backgroundPathSpecified &&
-                IO.File.Exists(
-                    profile.BackgroundPath);
-
-            bool preserveDeviceBackground =
-                backgroundPathSpecified &&
-                !backgroundSourceAvailable;
-
-            if (backgroundSourceAvailable)
-            {
-                byte[] background =
-                    await Task.Run(
-                        () =>
-                            PixelProMainMenuMediaService
-                                .CreateBackgroundJpeg(
-                                    profile.BackgroundPath!,
-                                    profile.BlurPercent,
-                                    profile.OpacityPercent,
-                                    profile.ScaleMode));
-
-                if (!await pixel
-                        .UploadMainMenuBackgroundAsync(
-                            profileIndex,
-                            background))
-                {
-                    throw new InvalidOperationException(
-                        "PIXEL PRO rejected the profile background.");
-                }
-            }
-            else if (!backgroundPathSpecified)
-            {
-                if (!await pixel
-                        .ClearMainMenuBackgroundAsync(
-                            profileIndex))
-                {
-                    throw new InvalidOperationException(
-                        "PIXEL PRO could not clear the profile background.");
-                }
-            }
-            else
-            {
-                AddLog(
-                    "WARN",
-                    "PIXEL MENU",
-                    $"Background source is missing on this PC; preserving the background already stored on PIXEL PRO Profile {profileIndex + 1:00}.");
-            }
-
-            PixelProMainMenuBackgroundInfo? backgroundState =
-                await pixel
-                    .GetMainMenuBackgroundInfoAsync(
-                        profileIndex);
-
-            bool backgroundVerified =
-                backgroundState is not null &&
-                backgroundState.Profile ==
-                    profileIndex &&
-                (backgroundSourceAvailable
-                    ? string.Equals(
-                          backgroundState.State,
-                          "CUSTOM",
-                          StringComparison.OrdinalIgnoreCase) &&
-                      backgroundState.StoredBytes > 0
-                    : preserveDeviceBackground
-                        ? true
-                        : string.Equals(
-                              backgroundState.State,
-                              "EMPTY",
-                              StringComparison.OrdinalIgnoreCase));
-
-            if (!backgroundVerified)
-            {
-                throw new InvalidOperationException(
-                    backgroundSourceAvailable
-                        ? "PIXEL PRO did not confirm the custom Main Menu background after upload."
-                        : preserveDeviceBackground
-                            ? "PIXEL PRO could not verify the existing Main Menu background while preserving the missing local source."
-                            : "PIXEL PRO did not confirm that the Main Menu background is empty.");
-            }
-
-            ReportOperation();
+                    $"Building exact 480×320 Main Menu for Profile {profileIndex + 1:00}…",
+                    $"Đang ghép Main Menu đúng 480×320 cho Profile {profileIndex + 1:00}…");
 
             string[] labels =
                 profile.Slots
@@ -2482,13 +2230,71 @@ public partial class MainWindow
                     })
                     .ToArray();
 
-            if (!await pixel
-                    .SetMainMenuProfileAsync(
-                        profileIndex,
-                        profile.Slots
-                            .Select(x => x.ActionId)
-                            .ToArray(),
-                        labels))
+            int[] actions =
+                profile.Slots
+                    .Select(slot =>
+                        Math.Clamp(
+                            slot.ActionId,
+                            0,
+                            32))
+                    .ToArray();
+
+            byte[] composite =
+                await Task.Run(
+                    () =>
+                        PixelProMainMenuMediaService
+                            .CreateCompositeMenuJpeg(
+                                profile,
+                                labels));
+
+            menuBatchStarted =
+                await pixel.BeginMainMenuBatchAsync(
+                    profileIndex);
+
+            if (!menuBatchStarted)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO firmware is too old. Update firmware before saving the composite Main Menu.");
+            }
+
+            const int TotalOperations = 13;
+            int completed = 0;
+
+            void ReportOperation()
+            {
+                completed++;
+                PixelMenuUploadProgress.Value =
+                    Math.Clamp(
+                        completed * 100.0 /
+                        TotalOperations,
+                        0,
+                        100);
+            }
+
+            if (!await pixel.UploadMainMenuBackgroundAsync(
+                    profileIndex,
+                    composite))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO rejected the exact 480×320 Main Menu image.");
+            }
+
+            ReportOperation();
+
+            if (!await pixel.SetMainMenuCompositeModeAsync(
+                    profileIndex,
+                    true))
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not enable composite Main Menu mode.");
+            }
+
+            ReportOperation();
+
+            if (!await pixel.SetMainMenuProfileAsync(
+                    profileIndex,
+                    actions,
+                    labels))
             {
                 throw new InvalidOperationException(
                     $"PIXEL PRO rejected Main Menu Profile {profileIndex + 1:00}.");
@@ -2496,154 +2302,85 @@ public partial class MainWindow
 
             ReportOperation();
 
-            int? existingIconMask =
-                await pixel.GetMainMenuIconMaskAsync(
-                    profileIndex);
-
-            if (existingIconMask is null)
-            {
-                throw new InvalidOperationException(
-                    "PIXEL PRO did not report the existing Main Menu icon state.");
-            }
-
-            int expectedIconMask =
-                existingIconMask.Value;
-
-            var iconCache =
-                new Dictionary<string, byte[]>(
-                    StringComparer.OrdinalIgnoreCase);
-
             for (int slot = 0;
                  slot < PixelProMainMenuStore.SlotCount;
                  slot++)
             {
-                string? iconPath =
-                    profile.Slots[slot].IconPath;
-
-                bool iconPathSpecified =
-                    !string.IsNullOrWhiteSpace(
-                        iconPath);
-
-                if (iconPathSpecified &&
-                    IO.File.Exists(
-                        iconPath))
+                if (!await pixel.ClearMainMenuIconAsync(
+                        profileIndex,
+                        slot))
                 {
-                    if (!iconCache.TryGetValue(
-                            iconPath!,
-                            out byte[]? iconBytes))
-                    {
-                        iconBytes =
-                            await Task.Run(
-                                () =>
-                                    PixelProMainMenuMediaService
-                                        .CreateIconAsset(
-                                            iconPath!));
-
-                        iconCache[iconPath!] =
-                            iconBytes;
-                    }
-
-                    if (!await pixel
-                            .UploadMainMenuIconAsync(
-                                profileIndex,
-                                slot,
-                                iconBytes))
-                    {
-                        throw new InvalidOperationException(
-                            $"PIXEL PRO rejected icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
-                    }
-
-                    expectedIconMask |=
-                        1 << slot;
-                }
-                else if (!iconPathSpecified)
-                {
-                    if (!await pixel
-                            .ClearMainMenuIconAsync(
-                                profileIndex,
-                                slot))
-                    {
-                        throw new InvalidOperationException(
-                            $"PIXEL PRO could not clear icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
-                    }
-
-                    expectedIconMask &=
-                        ~(1 << slot);
-                }
-                else
-                {
-                    AddLog(
-                        "WARN",
-                        "PIXEL MENU",
-                        $"Icon source for Slot {slot + 1} is missing on this PC; preserving the icon already stored on PIXEL PRO.");
+                    throw new InvalidOperationException(
+                        $"PIXEL PRO could not clear obsolete legacy icon {slot + 1}.");
                 }
 
                 ReportOperation();
             }
 
-            if (!await pixel
-                    .SetProfileLayerAsync(
-                        profileIndex,
-                        _pixelSelectedLayer))
+            if (!await pixel.SetProfileLayerAsync(
+                    profileIndex,
+                    _pixelSelectedLayer))
             {
                 throw new InvalidOperationException(
                     "PIXEL PRO did not confirm the selected Main Menu profile.");
             }
 
+            ReportOperation();
+
+            PixelProMainMenuBackgroundInfo? backgroundState =
+                await pixel.GetMainMenuBackgroundInfoAsync(
+                    profileIndex);
+
+            bool? compositeState =
+                await pixel.GetMainMenuCompositeModeAsync(
+                    profileIndex);
+
             int? deviceIconMask =
-                await pixel
-                    .GetMainMenuIconMaskAsync(
-                        profileIndex);
+                await pixel.GetMainMenuIconMaskAsync(
+                    profileIndex);
 
-            if (deviceIconMask is null)
+            PixelProDeviceMainMenuProfile? verifiedMenu =
+                await pixel.GetMainMenuProfileAsync(
+                    profileIndex);
+
+            bool verified =
+                backgroundState?.IsCustom == true &&
+                backgroundState.StoredBytes > 0 &&
+                compositeState == true &&
+                deviceIconMask == 0 &&
+                verifiedMenu is not null &&
+                verifiedMenu.Actions.SequenceEqual(
+                    actions);
+
+            if (!verified)
             {
                 throw new InvalidOperationException(
-                    "PIXEL PRO did not report Main Menu icon storage state.");
+                    "PIXEL PRO did not verify the new composite Main Menu state.");
             }
 
-            if (deviceIconMask.Value !=
-                expectedIconMask)
+            if (!await pixel.EndMainMenuBatchAsync(
+                    profileIndex))
             {
                 throw new InvalidOperationException(
-                    $"Main Menu icon verify failed: app={expectedIconMask:X2}, device={deviceIconMask.Value:X2}.");
+                    "PIXEL PRO did not finish the composite Main Menu batch.");
             }
 
-            if (menuBatchStarted)
-            {
-                if (!await pixel.EndMainMenuBatchAsync(
-                        profileIndex))
-                {
-                    throw new InvalidOperationException(
-                        "PIXEL PRO did not finish the Main Menu batch.");
-                }
-
-                menuBatchStarted =
-                    false;
-            }
-            else if (!await pixel.ShowMainMenuAsync())
-            {
-                throw new InvalidOperationException(
-                    "PIXEL PRO did not show the main menu.");
-            }
-
+            menuBatchStarted = false;
             ReportOperation();
 
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
-            menuCommitSucceeded =
-                true;
-
+            menuCommitSucceeded = true;
             _pixelMenuReconnectRestoreAttempted.Remove(
                 profileIndex);
 
-            PixelMenuUploadProgress.Value =
-                100;
+            PixelMenuUploadProgress.Value = 100;
 
             PixelMenuStatusText.Text =
                 L(
-                    $"Main Menu committed to PIXEL PRO Profile {profileIndex + 1:00}. App data is only an editor cache.",
-                    $"Main Menu đã được ghi vào PIXEL PRO Profile {profileIndex + 1:00}. Dữ liệu trong app chỉ là cache chỉnh sửa.");
+                    $"480×320 Main Menu committed to PIXEL PRO Profile {profileIndex + 1:00} · {composite.Length / 1024.0:0.0} KiB.",
+                    $"Đã ghi Main Menu 480×320 vào PIXEL PRO Profile {profileIndex + 1:00} · {composite.Length / 1024.0:0.0} KiB.");
 
             await UpdateMemoryUsageAsync();
         }
@@ -2678,17 +2415,12 @@ public partial class MainWindow
                 }
             }
 
-            PixelMenuSaveButton.IsEnabled =
-                true;
+            PixelMenuSaveButton.IsEnabled = true;
 
             if (_pixelMenuAutoSyncPending)
             {
-                _pixelMenuAutoSyncPending =
-                    false;
+                _pixelMenuAutoSyncPending = false;
 
-                // Only coalesce another editor change after a successful
-                // transaction. After a disconnect/reset, automatic retry is
-                // deliberately stopped until the link is stable.
                 if (menuCommitSucceeded &&
                     pixel.IsConnected)
                 {
