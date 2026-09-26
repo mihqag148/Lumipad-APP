@@ -78,6 +78,35 @@ public partial class MainWindow : Window
         set => _sleepingByProduct[_activeProduct.Id] = value;
     }
 
+    private bool RynorSleeping =>
+        _sleepingByProduct.TryGetValue(
+            ProductCatalog.RynorOne.Id,
+            out bool sleeping) && sleeping;
+
+    private void SetRynorSleeping(bool sleeping)
+    {
+        bool changed = RynorSleeping != sleeping;
+        _sleepingByProduct[ProductCatalog.RynorOne.Id] = sleeping;
+
+        _rynorProfileTimer.Interval =
+            sleeping
+                ? TimeSpan.FromSeconds(5)
+                : TimeSpan.FromMilliseconds(700);
+
+        if (!IsPixelProActive)
+            UpdateSleepButtonUi();
+
+        if (changed)
+        {
+            AddLog(
+                "INFO",
+                "POWER",
+                sleeping
+                    ? "RYNOR ONE entered BLE eco sleep; background BLE polling throttled."
+                    : "RYNOR ONE woke; normal RYNOR polling resumed.");
+        }
+    }
+
     private uint _lastActionEventSeq
     {
         get => _actionEventSeqByProduct.TryGetValue(
@@ -448,7 +477,7 @@ public partial class MainWindow : Window
         _autoProfileTimer.Interval = TimeSpan.FromMilliseconds(700);
         _autoProfileTimer.Tick += (_, _) => PollAutoProfile();
 
-        _rynorProfileTimer.Interval = TimeSpan.FromMilliseconds(450);
+        _rynorProfileTimer.Interval = TimeSpan.FromMilliseconds(700);
         _rynorProfileTimer.Tick += async (_, _) =>
             await PollRynorProfileAsync();
 
@@ -1579,7 +1608,12 @@ public partial class MainWindow : Window
                 LinkFor(product);
 
             if (!link.IsConnected ||
-                !product.SupportsBattery)
+                !product.SupportsBattery ||
+                (string.Equals(
+                     product.Id,
+                     ProductCatalog.RynorOne.Id,
+                     StringComparison.OrdinalIgnoreCase) &&
+                 RynorSleeping))
             {
                 _batteryByProduct[product.Id] = null;
                 continue;
@@ -2628,10 +2662,19 @@ public partial class MainWindow : Window
             _syncingMediaUi = false;
         }
 
-        foreach (IDeviceLink link in _deviceLinks.Values)
+        foreach (KeyValuePair<string, IDeviceLink> entry in _deviceLinks)
         {
-            if (!link.IsConnected)
+            IDeviceLink link = entry.Value;
+
+            if (!link.IsConnected ||
+                (string.Equals(
+                     entry.Key,
+                     ProductCatalog.RynorOne.Id,
+                     StringComparison.OrdinalIgnoreCase) &&
+                 RynorSleeping))
+            {
                 continue;
+            }
 
             try
             {
@@ -2686,10 +2729,19 @@ public partial class MainWindow : Window
             _syncingMediaUi = false;
         }
 
-        foreach (IDeviceLink link in _deviceLinks.Values)
+        foreach (KeyValuePair<string, IDeviceLink> entry in _deviceLinks)
         {
-            if (!link.IsConnected)
+            IDeviceLink link = entry.Value;
+
+            if (!link.IsConnected ||
+                (string.Equals(
+                     entry.Key,
+                     ProductCatalog.RynorOne.Id,
+                     StringComparison.OrdinalIgnoreCase) &&
+                 RynorSleeping))
+            {
                 continue;
+            }
 
             try
             {
@@ -3082,6 +3134,9 @@ public partial class MainWindow : Window
         if (!_serial.IsConnected)
             return;
 
+        if (!IsPixelProActive && RynorSleeping)
+            return;
+
         if (!_serial.SupportsDiagnostics)
             return;
 
@@ -3189,7 +3244,8 @@ public partial class MainWindow : Window
             }
         }
 
-        if (!_serial.IsConnected)
+        if (!_serial.IsConnected ||
+            (!pixel && RynorSleeping))
         {
             ResetActiveMemoryText();
             return;
@@ -3862,7 +3918,12 @@ public partial class MainWindow : Window
             if (_keyboardSleeping)
             {
                 await _serial.WakeKeyboardAsync();
-                _keyboardSleeping = false;
+
+                if (IsPixelProActive)
+                    _keyboardSleeping = false;
+                else
+                    SetRynorSleeping(false);
+
                 BottomStatus.Text =
                     L("Keyboard display and RGB are awake.",
                       "Màn hình và RGB của bàn phím đã bật lại.");
@@ -3870,7 +3931,12 @@ public partial class MainWindow : Window
             else
             {
                 await _serial.SleepKeyboardAsync();
-                _keyboardSleeping = true;
+
+                if (IsPixelProActive)
+                    _keyboardSleeping = true;
+                else
+                    SetRynorSleeping(true);
+
                 BottomStatus.Text =
                     L("Keyboard display and RGB are sleeping. Press again to wake.",
                       "Màn hình và RGB đang ngủ. Nhấn lại để bật lên.");
@@ -5859,9 +5925,13 @@ try {{
             ApplyPcMonitorUi(snapshot);
             UpdatePcMonitorConfigSummary(snapshot);
 
+            bool suppressRynorTraffic =
+                !IsPixelProActive && RynorSleeping;
+
             if (_pcMonitorEnabled &&
                 _serial.IsConnected &&
-                _serial.SupportsPcMonitor)
+                _serial.SupportsPcMonitor &&
+                !suppressRynorTraffic)
             {
                 bool configSent =
                     await _serial.SendPcMonitorConfigAsync(
@@ -5894,6 +5964,15 @@ try {{
                                 "USB telemetry send failed",
                                 "Gửi dữ liệu USB thất bại");
                 }
+            }
+            else if (_pcMonitorEnabled &&
+                     _serial.IsConnected &&
+                     suppressRynorTraffic)
+            {
+                PcMonitorLinkText.Text =
+                    L(
+                        "RYNOR ONE sleeping · telemetry paused",
+                        "RYNOR ONE đang ngủ · đã dừng dữ liệu");
             }
             else if (_pcMonitorEnabled && _serial.IsConnected)
             {
@@ -6194,8 +6273,7 @@ try {{
     private async Task PollRynorProfileAsync(bool force = false)
     {
         if (_rynorProfilePollBusy ||
-            IsPixelProActive ||
-            _serial is not SerialLink rynor ||
+            LinkFor(ProductCatalog.RynorOne) is not SerialLink rynor ||
             !rynor.IsConnected)
         {
             return;
@@ -6204,6 +6282,27 @@ try {{
         _rynorProfilePollBusy = true;
         try
         {
+            if (rynor.SupportsPowerState)
+            {
+                bool? sleeping =
+                    await rynor.ReadSoftSleepStateAsync();
+
+                if (sleeping.HasValue)
+                {
+                    SetRynorSleeping(sleeping.Value);
+
+                    if (sleeping.Value)
+                        return;
+                }
+            }
+
+            /* Keep polling the RYNOR power state even while PIXEL PRO is the
+             * active app page, but do not mutate RYNOR profile UI until the
+             * RYNOR product is selected.
+             */
+            if (IsPixelProActive)
+                return;
+
             await RefreshRynorProfileCatalogAsync(rynor, force);
 
             var state = await rynor.ReadActiveProfileAsync();
@@ -7226,6 +7325,15 @@ try {{
         if (!changed || !_serial.IsConnected)
             return;
 
+        if (!pixel && RynorSleeping)
+        {
+            AutoProfileStatusText.Text =
+                L(
+                    "RYNOR ONE sleeping · keeping current profile",
+                    "RYNOR ONE đang ngủ · giữ nguyên profile");
+            return;
+        }
+
         if (pixel && _serial is PixelProCdcLink pixelLink)
         {
             pixelLink.SetProfileLayer(targetProfile, targetLayer);
@@ -7261,7 +7369,12 @@ try {{
                 LinkFor(product);
 
             if (!link.IsConnected ||
-                !link.SupportsActions)
+                !link.SupportsActions ||
+                (string.Equals(
+                     product.Id,
+                     ProductCatalog.RynorOne.Id,
+                     StringComparison.OrdinalIgnoreCase) &&
+                 RynorSleeping))
             {
                 continue;
             }

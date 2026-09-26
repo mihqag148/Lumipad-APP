@@ -63,6 +63,8 @@ public sealed class SerialLink : IDeviceLink
         SupportsCapability("PROFILE");
     public bool SupportsProfileCatalog =>
         SupportsCapability("PROFILECAT");
+    public bool SupportsPowerState =>
+        SupportsCapability("POWERSTATE");
     public bool SupportsActions =>
         SupportsCapability("ACTION");
     public bool SupportsVariableArtwork =>
@@ -129,6 +131,9 @@ public sealed class SerialLink : IDeviceLink
 
             if (_protocolVersion >= 5)
                 _capabilities.Add("PROFILECAT");
+
+            if (_protocolVersion >= 6)
+                _capabilities.Add("POWERSTATE");
         }
 
         Log(
@@ -2011,6 +2016,34 @@ public sealed class SerialLink : IDeviceLink
         }
 
         return response;
+    }
+
+    public async Task<bool?> ReadSoftSleepStateAsync()
+    {
+        if (!SupportsPowerState)
+            return null;
+
+        string? response = await RequestProfileMetadataAsync(
+            "POWER",
+            "Read power state");
+
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+
+        string[] parts = response.Split('|', 2);
+        if (parts.Length != 2 ||
+            !string.Equals(parts[0], "POWER", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (string.Equals(parts[1], "SLEEP", StringComparison.Ordinal))
+            return true;
+
+        if (string.Equals(parts[1], "AWAKE", StringComparison.Ordinal))
+            return false;
+
+        return null;
     }
 
     public async Task<string[]?> ReadProfileCatalogAsync()
