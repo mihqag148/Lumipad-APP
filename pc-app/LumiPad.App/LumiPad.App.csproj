@@ -22,6 +22,7 @@
   <!-- LumiPad v1.23.39 · RYNOR ZMK profile catalog synchronization -->
   <!-- LumiPad v1.23.40 · RYNOR low-power sleep/deep-sleep traffic reduction -->
   <!-- LumiPad v1.23.41 · move RYNOR Deep Sleep control to Settings -->
+  <!-- LumiPad v1.23.42 · PIXEL preserve device Main Menu assets when local cache sources disappear -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -36,9 +37,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.23.41</Version>
-    <AssemblyVersion>1.23.41.0</AssemblyVersion>
-    <FileVersion>1.23.41.0</FileVersion>
+    <Version>1.23.42</Version>
+    <AssemblyVersion>1.23.42.0</AssemblyVersion>
+    <FileVersion>1.23.42.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Products\pixel-pro.png" LogicalName="Assets/Products/pixel-pro.png" />
