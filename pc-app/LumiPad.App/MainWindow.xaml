@@ -3029,7 +3029,26 @@
                                             <ComboBoxItem Content="1 hour" Tag="3600"/>
                                             <ComboBoxItem Content="Never" Tag="0"/>
                                         </ComboBox>
-                                        <TextBlock Text="Deep sleep disconnects Bluetooth and wakes from physical input."
+                                        <TextBlock Text="Keeps Bluetooth connected. Display/RGB stay off and a key or encoder wakes immediately."
+                                                   Foreground="{DynamicResource Muted}"
+                                                   FontSize="10"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,5,0,0"/>
+
+                                        <TextBlock Text="Hibernate after"
+                                                   Foreground="{DynamicResource Muted}"
+                                                   Margin="0,14,0,5"/>
+                                        <ComboBox x:Name="HibernateDelayCombo"
+                                                  SelectedValuePath="Tag"
+                                                  SelectionChanged="HibernateDelayCombo_SelectionChanged">
+                                            <ComboBoxItem Content="1 hour" Tag="3600"/>
+                                            <ComboBoxItem Content="3 hours" Tag="10800"/>
+                                            <ComboBoxItem Content="6 hours" Tag="21600"/>
+                                            <ComboBoxItem Content="12 hours" Tag="43200"/>
+                                            <ComboBoxItem Content="24 hours" Tag="86400"/>
+                                            <ComboBoxItem Content="Never" Tag="0" IsSelected="True"/>
+                                        </ComboBox>
+                                        <TextBlock Text="Hibernate uses System OFF for minimum battery drain. Bluetooth disconnects and wake performs a full boot."
                                                    Foreground="{DynamicResource Muted}"
                                                    FontSize="10"
                                                    TextWrapping="Wrap"
