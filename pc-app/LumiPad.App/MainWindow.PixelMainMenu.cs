@@ -458,56 +458,25 @@ public partial class MainWindow
              PixelMenuHasLocalAssets(
                  localCache)))
         {
+            // Do not write media automatically during reconnect. A reconnect
+            // can be caused by a USB reset while a previous transfer is still
+            // being recovered; immediately starting another Main Menu upload
+            // creates a reconnect -> upload -> reset loop. Keep the local
+            // cache intact and require the explicit Save/Apply button.
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
             RefreshPixelMainMenuUi();
 
-            // A failed restore must never become a reconnect -> upload ->
-            // reset -> reconnect loop. Try at most once for this profile until
-            // a complete save succeeds.
-            if (!_pixelMenuReconnectRestoreAttempted.Add(
-                    profileIndex))
-            {
-                PixelMenuStatusText.Text =
-                    L(
-                        $"Automatic Main Menu restore paused for Profile {profileIndex + 1:00} after a reconnect. The link must stay stable before another save.",
-                        $"Đã dừng tự khôi phục Main Menu Profile {profileIndex + 1:00} sau khi kết nối lại để tránh vòng lặp reset. Hãy để kết nối ổn định trước lần lưu tiếp theo.");
-
-                AddLog(
-                    "WARN",
-                    "PIXEL MENU",
-                    $"Skipped repeated reconnect restore for Profile {profileIndex + 1:00}.");
-
-                return;
-            }
-
             PixelMenuStatusText.Text =
                 L(
-                    $"PIXEL PRO Main Menu is incomplete after firmware flash. Restoring cached Profile {profileIndex + 1:00} once…",
-                    $"Main Menu trên PIXEL PRO bị thiếu sau khi flash firmware. Đang khôi phục Profile {profileIndex + 1:00} một lần…");
+                    $"PIXEL PRO Main Menu differs from the local cache for Profile {profileIndex + 1:00}. Press Save Main Menu to apply it when the USB link is stable.",
+                    $"Main Menu trên PIXEL PRO khác dữ liệu trong app ở Profile {profileIndex + 1:00}. Hãy bấm Lưu Main Menu khi kết nối USB đã ổn định.");
 
             AddLog(
-                "INFO",
+                "WARN",
                 "PIXEL MENU",
-                $"One-shot rehydrate Profile {profileIndex + 1:00}: deviceActions={(deviceHasActions ? "YES" : "EMPTY")}, icons={(iconMask ?? 0):X2}, recoveredActions={recoveredActions}.");
-
-            // Avoid hammering a CDC interface during the first milliseconds
-            // after Windows has just enumerated it.
-            await Task.Delay(900);
-
-            if (!pixel.IsConnected)
-            {
-                return;
-            }
-
-            // Reconnect recovery must finish as one awaited transaction.
-            // Queueing the async-void Save click let normal PIXEL traffic
-            // continue while the menu was only partially restored.
-            await RestorePixelMainMenuProfileFromCacheAsync(
-                pixel,
-                profileIndex,
-                localCache);
+                $"Reconnect media restore suppressed for Profile {profileIndex + 1:00}; waiting for explicit user Save.");
 
             return;
         }
@@ -540,26 +509,10 @@ public partial class MainWindow
 
     private void QueuePixelMainMenuAutoSync()
     {
-        if (!IsPixelProActive ||
-            _serial is not PixelProCdcLink pixel ||
-            !pixel.IsConnected ||
-            PixelMenuSaveButton is null)
-        {
-            return;
-        }
-
-        if (!PixelMenuSaveButton.IsEnabled)
-        {
-            _pixelMenuAutoSyncPending = true;
-            return;
-        }
-
-        Dispatcher.BeginInvoke(
-            new Action(
-                () =>
-                    PixelMenuSave_Click(
-                        PixelMenuSaveButton,
-                        new RoutedEventArgs())));
+        // PIXEL PRO media writes are intentionally never started by reconnect,
+        // selection changes, or background UI events. Only an explicit user
+        // Save/Apply may upload Main Menu media.
+        _pixelMenuAutoSyncPending = false;
     }
 
     private async Task<bool> RestorePixelMainMenuProfileFromCacheAsync(
