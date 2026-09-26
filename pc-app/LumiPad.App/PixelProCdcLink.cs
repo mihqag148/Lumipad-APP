@@ -803,6 +803,39 @@ public sealed class PixelProCdcLink : IDeviceLink
             StringComparison.Ordinal);
     }
 
+
+    public async Task<bool> StartTouchPixelTestAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? response =
+            await RequestLineAsync(
+                    "TOUCH_TEST_START",
+                    "OK|TOUCH_TEST_START|480|320",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        return string.Equals(
+            response,
+            "OK|TOUCH_TEST_START|480|320",
+            StringComparison.Ordinal);
+    }
+
+    public async Task<bool> StopTouchPixelTestAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? response =
+            await RequestLineAsync(
+                    "TOUCH_TEST_STOP",
+                    "OK|TOUCH_TEST_STOP",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        return string.Equals(
+            response,
+            "OK|TOUCH_TEST_STOP",
+            StringComparison.Ordinal);
+    }
+
     public async Task<IReadOnlyList<PixelProKeyBinding>?> GetKeymapAsync(
         int profile,
         int layer,
