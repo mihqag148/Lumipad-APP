@@ -74,6 +74,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     private readonly ProductDefinition _product;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly SemaphoreSlim _commandGate = new(1, 1);
+    private int _backgroundTrafficSuppressionCount;
 
     private SerialPort? _port;
     private CancellationTokenSource? _readCts;
@@ -117,6 +118,31 @@ public sealed class PixelProCdcLink : IDeviceLink
     public bool SupportsVariableArtwork => false;
     public bool SupportsBatteryInfo => false;
     public bool SupportsPcMonitor => true;
+
+
+    public void BeginCriticalIo()
+    {
+        System.Threading.Interlocked.Increment(
+            ref _backgroundTrafficSuppressionCount);
+    }
+
+    public void EndCriticalIo()
+    {
+        int next =
+            System.Threading.Interlocked.Decrement(
+                ref _backgroundTrafficSuppressionCount);
+
+        if (next < 0)
+        {
+            System.Threading.Interlocked.Exchange(
+                ref _backgroundTrafficSuppressionCount,
+                0);
+        }
+    }
+
+    private bool IsBackgroundTrafficSuppressed =>
+        System.Threading.Volatile.Read(
+            ref _backgroundTrafficSuppressionCount) > 0;
 
     private void Log(string level, string message) =>
         Diagnostic?.Invoke(level, message);
@@ -655,14 +681,27 @@ public sealed class PixelProCdcLink : IDeviceLink
     private async Task<string?> RequestLineAsync(
         string command,
         string expectedPrefix,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool backgroundRequest = false)
     {
+        if (backgroundRequest &&
+            IsBackgroundTrafficSuppressed)
+        {
+            return null;
+        }
+
         await _commandGate
             .WaitAsync(cancellationToken)
             .ConfigureAwait(false);
 
         try
         {
+            if (backgroundRequest &&
+                IsBackgroundTrafficSuppressed)
+            {
+                return null;
+            }
+
             SerialPort? port =
                 _port;
 
@@ -3176,40 +3215,62 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
     {
-        if (!IsConnected)
-            return null;
-
-        string? line = await RequestLineAsync(
-            "MEM",
-            "MEM|");
-
-        if (line is null ||
-            !line.StartsWith("MEM|", StringComparison.Ordinal))
+        if (!IsConnected ||
+            IsBackgroundTrafficSuppressed)
         {
             return null;
         }
 
-        string[] parts = line.Split('|');
-        if (parts.Length != 7 ||
-            !long.TryParse(parts[1], out long flashUsed) ||
-            !long.TryParse(parts[2], out long flashTotal) ||
-            !long.TryParse(parts[3], out long sramUsed) ||
-            !long.TryParse(parts[4], out long sramTotal) ||
-            !long.TryParse(parts[5], out long psramUsed) ||
-            !long.TryParse(parts[6], out long psramTotal) ||
-            flashTotal <= 0 ||
-            sramTotal <= 0)
+        try
+        {
+            string? line =
+                await RequestLineAsync(
+                    "MEM",
+                    "MEM|",
+                    default,
+                    backgroundRequest: true)
+                    .ConfigureAwait(false);
+
+            if (line is null ||
+                !line.StartsWith(
+                    "MEM|",
+                    StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            string[] parts =
+                line.Split('|');
+
+            if (parts.Length != 7 ||
+                !long.TryParse(parts[1], out long flashUsed) ||
+                !long.TryParse(parts[2], out long flashTotal) ||
+                !long.TryParse(parts[3], out long sramUsed) ||
+                !long.TryParse(parts[4], out long sramTotal) ||
+                !long.TryParse(parts[5], out long psramUsed) ||
+                !long.TryParse(parts[6], out long psramTotal) ||
+                flashTotal <= 0 ||
+                sramTotal <= 0)
+            {
+                return null;
+            }
+
+            return new DeviceMemoryUsage(
+                flashUsed,
+                flashTotal,
+                sramUsed,
+                sramTotal,
+                Math.Max(0, psramUsed),
+                Math.Max(0, psramTotal));
+        }
+        catch (IOException)
         {
             return null;
         }
-
-        return new DeviceMemoryUsage(
-            flashUsed,
-            flashTotal,
-            sramUsed,
-            sramTotal,
-            Math.Max(0, psramUsed),
-            Math.Max(0, psramTotal));
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     public Task<(uint Seq, int ActionId, int Position)?>
@@ -3510,9 +3571,15 @@ public sealed class PixelProCdcLink : IDeviceLink
     private async Task<bool> SendPixelRealtimeLineAsync(
         string line)
     {
+        if (IsBackgroundTrafficSuppressed)
+            return true;
+
         await _commandGate.WaitAsync();
         try
         {
+            if (IsBackgroundTrafficSuppressed)
+                return true;
+
             SerialPort? port = _port;
             if (port?.IsOpen != true)
                 return false;

@@ -521,6 +521,7 @@ public partial class MainWindow
         PixelProMainMenuProfile profile)
     {
         bool menuBatchStarted = false;
+        pixel.BeginCriticalIo();
 
         try
         {
@@ -708,6 +709,11 @@ public partial class MainWindow
                     "PIXEL PRO stored the composite Main Menu but did not confirm MENUSHOW.");
             }
 
+            // Firmware ACKs MENUSHOW before the deferred 480x320 JPEG render.
+            // Keep PCMON/MEM/background traffic silent until that render has
+            // had time to finish and TinyUSB has returned to its normal loop.
+            await Task.Delay(900);
+
             _pixelMenuReconnectRestoreAttempted.Remove(
                 profileIndex);
 
@@ -760,6 +766,8 @@ public partial class MainWindow
                         $"Could not close reconnect Main Menu batch: {ex.Message}");
                 }
             }
+
+            pixel.EndCriticalIo();
         }
     }
 
@@ -2234,6 +2242,7 @@ public partial class MainWindow
         _pixelMenuAutoSyncPending = false;
         PixelMenuSaveButton.IsEnabled = false;
         PixelMenuUploadProgress.Value = 0;
+        pixel.BeginCriticalIo();
 
         int profileIndex =
             PixelMenuProfileIndex;
@@ -2456,6 +2465,8 @@ public partial class MainWindow
                     "PIXEL PRO stored the composite Main Menu but did not confirm MENUSHOW.");
             }
 
+            await Task.Delay(900);
+
             PixelProMainMenuStore.Save(
                 _pixelMainMenu);
 
@@ -2470,7 +2481,8 @@ public partial class MainWindow
                     $"480×320 Main Menu committed to PIXEL PRO Profile {profileIndex + 1:00} · {composite.Length / 1024.0:0.0} KiB.",
                     $"Đã ghi Main Menu 480×320 vào PIXEL PRO Profile {profileIndex + 1:00} · {composite.Length / 1024.0:0.0} KiB.");
 
-            await UpdateMemoryUsageAsync();
+            // Memory/FS telemetry refreshes on the next normal UI tick. Do not
+            // immediately inject MEM after a full-screen JPEG render.
         }
         catch (Exception ex)
         {
@@ -2503,6 +2515,7 @@ public partial class MainWindow
                 }
             }
 
+            pixel.EndCriticalIo();
             PixelMenuSaveButton.IsEnabled = true;
 
             if (_pixelMenuAutoSyncPending)
