@@ -2456,9 +2456,11 @@ public partial class MainWindow
             if (!backgroundVerified)
             {
                 throw new InvalidOperationException(
-                    expectsCustomBackground
+                    backgroundSourceAvailable
                         ? "PIXEL PRO did not confirm the custom Main Menu background after upload."
-                        : "PIXEL PRO did not confirm that the Main Menu background is empty.");
+                        : preserveDeviceBackground
+                            ? "PIXEL PRO could not verify the existing Main Menu background while preserving the missing local source."
+                            : "PIXEL PRO did not confirm that the Main Menu background is empty.");
             }
 
             ReportOperation();
