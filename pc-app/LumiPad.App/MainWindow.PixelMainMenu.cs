@@ -514,13 +514,20 @@ public partial class MainWindow
                 await pixel.BeginMainMenuBatchAsync(
                     profileIndex);
 
-            bool expectsCustomBackground =
+            bool backgroundPathSpecified =
                 !string.IsNullOrWhiteSpace(
-                    profile.BackgroundPath) &&
+                    profile.BackgroundPath);
+
+            bool backgroundSourceAvailable =
+                backgroundPathSpecified &&
                 IO.File.Exists(
                     profile.BackgroundPath);
 
-            if (expectsCustomBackground)
+            bool preserveDeviceBackground =
+                backgroundPathSpecified &&
+                !backgroundSourceAvailable;
+
+            if (backgroundSourceAvailable)
             {
                 byte[] background =
                     await Task.Run(
@@ -540,11 +547,21 @@ public partial class MainWindow
                         "PIXEL PRO rejected the cached Main Menu background.");
                 }
             }
-            else if (!await pixel.ClearMainMenuBackgroundAsync(
-                         profileIndex))
+            else if (!backgroundPathSpecified)
             {
-                throw new InvalidOperationException(
-                    "PIXEL PRO could not clear the Main Menu background.");
+                if (!await pixel.ClearMainMenuBackgroundAsync(
+                        profileIndex))
+                {
+                    throw new InvalidOperationException(
+                        "PIXEL PRO could not clear the Main Menu background.");
+                }
+            }
+            else
+            {
+                AddLog(
+                    "WARN",
+                    "PIXEL MENU",
+                    $"Background source is missing on this PC; preserving the existing PIXEL PRO background for Profile {profileIndex + 1:00}.");
             }
 
             PixelProMainMenuBackgroundInfo? backgroundState =
@@ -554,10 +571,12 @@ public partial class MainWindow
             bool backgroundVerified =
                 backgroundState is not null &&
                 backgroundState.Profile == profileIndex &&
-                (expectsCustomBackground
+                (backgroundSourceAvailable
                     ? backgroundState.IsCustom &&
                       backgroundState.StoredBytes > 0
-                    : backgroundState.IsEmpty);
+                    : preserveDeviceBackground
+                        ? true
+                        : backgroundState.IsEmpty);
 
             if (!backgroundVerified)
             {
@@ -600,7 +619,19 @@ public partial class MainWindow
                     $"PIXEL PRO rejected cached Main Menu Profile {profileIndex + 1:00}.");
             }
 
-            int expectedIconMask = 0;
+            int? existingIconMask =
+                await pixel.GetMainMenuIconMaskAsync(
+                    profileIndex);
+
+            if (existingIconMask is null)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not report the existing Main Menu icon state.");
+            }
+
+            int expectedIconMask =
+                existingIconMask.Value;
+
             var iconCache =
                 new Dictionary<string, byte[]>(
                     StringComparer.OrdinalIgnoreCase);
@@ -612,13 +643,16 @@ public partial class MainWindow
                 string? iconPath =
                     profile.Slots[slot].IconPath;
 
-                if (!string.IsNullOrWhiteSpace(
-                        iconPath) &&
+                bool iconPathSpecified =
+                    !string.IsNullOrWhiteSpace(
+                        iconPath);
+
+                if (iconPathSpecified &&
                     IO.File.Exists(
                         iconPath))
                 {
                     if (!iconCache.TryGetValue(
-                            iconPath,
+                            iconPath!,
                             out byte[]? iconBytes))
                     {
                         iconBytes =
@@ -626,9 +660,9 @@ public partial class MainWindow
                                 () =>
                                     PixelProMainMenuMediaService
                                         .CreateIconAsset(
-                                            iconPath));
+                                            iconPath!));
 
-                        iconCache[iconPath] =
+                        iconCache[iconPath!] =
                             iconBytes;
                     }
 
@@ -644,12 +678,25 @@ public partial class MainWindow
                     expectedIconMask |=
                         1 << slot;
                 }
-                else if (!await pixel.ClearMainMenuIconAsync(
-                             profileIndex,
-                             slot))
+                else if (!iconPathSpecified)
                 {
-                    throw new InvalidOperationException(
-                        $"PIXEL PRO could not clear icon {slot + 1}.");
+                    if (!await pixel.ClearMainMenuIconAsync(
+                            profileIndex,
+                            slot))
+                    {
+                        throw new InvalidOperationException(
+                            $"PIXEL PRO could not clear icon {slot + 1}.");
+                    }
+
+                    expectedIconMask &=
+                        ~(1 << slot);
+                }
+                else
+                {
+                    AddLog(
+                        "WARN",
+                        "PIXEL MENU",
+                        $"Icon source for Slot {slot + 1} is missing on this PC; preserving the existing icon stored on PIXEL PRO.");
                 }
             }
 
@@ -2332,17 +2379,27 @@ public partial class MainWindow
                         100);
             }
 
-            if (!string.IsNullOrWhiteSpace(
-                    profile.BackgroundPath) &&
+            bool backgroundPathSpecified =
+                !string.IsNullOrWhiteSpace(
+                    profile.BackgroundPath);
+
+            bool backgroundSourceAvailable =
+                backgroundPathSpecified &&
                 IO.File.Exists(
-                    profile.BackgroundPath))
+                    profile.BackgroundPath);
+
+            bool preserveDeviceBackground =
+                backgroundPathSpecified &&
+                !backgroundSourceAvailable;
+
+            if (backgroundSourceAvailable)
             {
                 byte[] background =
                     await Task.Run(
                         () =>
                             PixelProMainMenuMediaService
                                 .CreateBackgroundJpeg(
-                                    profile.BackgroundPath,
+                                    profile.BackgroundPath!,
                                     profile.BlurPercent,
                                     profile.OpacityPercent,
                                     profile.ScaleMode));
@@ -2356,12 +2413,22 @@ public partial class MainWindow
                         "PIXEL PRO rejected the profile background.");
                 }
             }
-            else if (!await pixel
-                         .ClearMainMenuBackgroundAsync(
-                             profileIndex))
+            else if (!backgroundPathSpecified)
             {
-                throw new InvalidOperationException(
-                    "PIXEL PRO could not clear the profile background.");
+                if (!await pixel
+                        .ClearMainMenuBackgroundAsync(
+                            profileIndex))
+                {
+                    throw new InvalidOperationException(
+                        "PIXEL PRO could not clear the profile background.");
+                }
+            }
+            else
+            {
+                AddLog(
+                    "WARN",
+                    "PIXEL MENU",
+                    $"Background source is missing on this PC; preserving the background already stored on PIXEL PRO Profile {profileIndex + 1:00}.");
             }
 
             PixelProMainMenuBackgroundInfo? backgroundState =
@@ -2369,33 +2436,31 @@ public partial class MainWindow
                     .GetMainMenuBackgroundInfoAsync(
                         profileIndex);
 
-            bool expectsCustomBackground =
-                !string.IsNullOrWhiteSpace(
-                    profile.BackgroundPath) &&
-                IO.File.Exists(
-                    profile.BackgroundPath);
-
             bool backgroundVerified =
                 backgroundState is not null &&
                 backgroundState.Profile ==
                     profileIndex &&
-                (expectsCustomBackground
+                (backgroundSourceAvailable
                     ? string.Equals(
                           backgroundState.State,
                           "CUSTOM",
                           StringComparison.OrdinalIgnoreCase) &&
                       backgroundState.StoredBytes > 0
-                    : string.Equals(
-                          backgroundState.State,
-                          "EMPTY",
-                          StringComparison.OrdinalIgnoreCase));
+                    : preserveDeviceBackground
+                        ? true
+                        : string.Equals(
+                              backgroundState.State,
+                              "EMPTY",
+                              StringComparison.OrdinalIgnoreCase));
 
             if (!backgroundVerified)
             {
                 throw new InvalidOperationException(
-                    expectsCustomBackground
+                    backgroundSourceAvailable
                         ? "PIXEL PRO did not confirm the custom Main Menu background after upload."
-                        : "PIXEL PRO did not confirm that the Main Menu background is empty.");
+                        : preserveDeviceBackground
+                            ? "PIXEL PRO could not verify the existing Main Menu background while preserving the missing local source."
+                            : "PIXEL PRO did not confirm that the Main Menu background is empty.");
             }
 
             ReportOperation();
@@ -2431,6 +2496,19 @@ public partial class MainWindow
 
             ReportOperation();
 
+            int? existingIconMask =
+                await pixel.GetMainMenuIconMaskAsync(
+                    profileIndex);
+
+            if (existingIconMask is null)
+            {
+                throw new InvalidOperationException(
+                    "PIXEL PRO did not report the existing Main Menu icon state.");
+            }
+
+            int expectedIconMask =
+                existingIconMask.Value;
+
             var iconCache =
                 new Dictionary<string, byte[]>(
                     StringComparer.OrdinalIgnoreCase);
@@ -2442,11 +2520,16 @@ public partial class MainWindow
                 string? iconPath =
                     profile.Slots[slot].IconPath;
 
-                if (!string.IsNullOrWhiteSpace(iconPath) &&
-                    IO.File.Exists(iconPath))
+                bool iconPathSpecified =
+                    !string.IsNullOrWhiteSpace(
+                        iconPath);
+
+                if (iconPathSpecified &&
+                    IO.File.Exists(
+                        iconPath))
                 {
                     if (!iconCache.TryGetValue(
-                            iconPath,
+                            iconPath!,
                             out byte[]? iconBytes))
                     {
                         iconBytes =
@@ -2454,9 +2537,9 @@ public partial class MainWindow
                                 () =>
                                     PixelProMainMenuMediaService
                                         .CreateIconAsset(
-                                            iconPath));
+                                            iconPath!));
 
-                        iconCache[iconPath] =
+                        iconCache[iconPath!] =
                             iconBytes;
                     }
 
@@ -2469,14 +2552,30 @@ public partial class MainWindow
                         throw new InvalidOperationException(
                             $"PIXEL PRO rejected icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
                     }
+
+                    expectedIconMask |=
+                        1 << slot;
                 }
-                else if (!await pixel
-                             .ClearMainMenuIconAsync(
-                                 profileIndex,
-                                 slot))
+                else if (!iconPathSpecified)
                 {
-                    throw new InvalidOperationException(
-                        $"PIXEL PRO could not clear icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
+                    if (!await pixel
+                            .ClearMainMenuIconAsync(
+                                profileIndex,
+                                slot))
+                    {
+                        throw new InvalidOperationException(
+                            $"PIXEL PRO could not clear icon Profile {profileIndex + 1:00} / Slot {slot + 1}.");
+                    }
+
+                    expectedIconMask &=
+                        ~(1 << slot);
+                }
+                else
+                {
+                    AddLog(
+                        "WARN",
+                        "PIXEL MENU",
+                        $"Icon source for Slot {slot + 1} is missing on this PC; preserving the icon already stored on PIXEL PRO.");
                 }
 
                 ReportOperation();
@@ -2489,23 +2588,6 @@ public partial class MainWindow
             {
                 throw new InvalidOperationException(
                     "PIXEL PRO did not confirm the selected Main Menu profile.");
-            }
-
-            int expectedIconMask = 0;
-
-            for (int slot = 0;
-                 slot < PixelProMainMenuStore.SlotCount;
-                 slot++)
-            {
-                string? path =
-                    profile.Slots[slot].IconPath;
-
-                if (!string.IsNullOrWhiteSpace(path) &&
-                    IO.File.Exists(path))
-                {
-                    expectedIconMask |=
-                        1 << slot;
-                }
             }
 
             int? deviceIconMask =

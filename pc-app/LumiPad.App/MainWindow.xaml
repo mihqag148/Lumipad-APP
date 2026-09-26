@@ -907,8 +907,8 @@
                                         Click="PixelKeymapImport_Click"/>
                                 <Button Content="Export"
                                         Click="PixelKeymapExport_Click"/>
-                                <Button Content="Calibrate Touch"
-                                        ToolTip="Calibrate PIXEL PRO resistive touch"
+                                <Button Content="Test Touch 480×320"
+                                        ToolTip="Show live PIXEL PRO touch crosshair on the physical 480×320 display"
                                         Click="PixelTouchCalibrate_Click"/>
                                 <Button Content="Reset"
                                         ToolTip="Reset current profile to default"

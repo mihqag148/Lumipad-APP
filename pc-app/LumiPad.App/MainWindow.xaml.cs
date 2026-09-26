@@ -11825,38 +11825,50 @@ try {{
         {
             PixelKeymapStatusText.Text =
                 L(
-                    "Connect PIXEL PRO before calibrating touch.",
-                    "Hãy kết nối PIXEL PRO trước khi cân chỉnh cảm ứng.");
+                    "Connect PIXEL PRO before testing touch.",
+                    "Hãy kết nối PIXEL PRO trước khi test cảm ứng.");
             return;
         }
 
         bool started =
-            await pixel.StartTouchCalibrationAsync();
+            await pixel.StartTouchPixelTestAsync();
 
         if (!started)
         {
             PixelKeymapStatusText.Text =
                 L(
-                    "Could not start touch calibration.",
-                    "Không thể bắt đầu cân chỉnh cảm ứng.");
+                    "Could not start the 480×320 touch test. Update PIXEL PRO firmware first.",
+                    "Không thể bắt đầu test cảm ứng 480×320. Hãy cập nhật firmware PIXEL PRO trước.");
             return;
         }
 
         PixelKeymapStatusText.Text =
             L(
-                "Touch the 4 targets shown on PIXEL PRO, in order.",
-                "Chạm lần lượt 4 dấu + đang hiện trên màn hình PIXEL PRO.");
+                "Touch the PIXEL PRO screen. The green crosshair should follow your finger in the 480×320 pixel grid.",
+                "Chạm lên màn hình PIXEL PRO. Dấu + xanh phải đi theo ngón tay trên lưới 480×320 pixel.");
 
         System.Windows.MessageBox.Show(
             this,
             L(
-                "PIXEL PRO is now in touch calibration mode.\n\nTouch each of the 4 crosshair targets shown on the device screen. After the fourth touch, the calibration is saved automatically and the Main Menu returns.",
-                "PIXEL PRO đang ở chế độ cân chỉnh cảm ứng.\n\nHãy chạm lần lượt 4 dấu + trên màn hình thiết bị. Sau điểm thứ 4, thông số sẽ tự lưu và Main Menu sẽ hiện lại."),
+                "Touch test is active on PIXEL PRO.\n\nTouch several places: all 4 corners, center, left/right edges and top/bottom edges. The device shows a green crosshair plus RAW and mapped X/Y.\n\nClose this message when testing is finished; LumiPad will return the device to Main Menu.",
+                "PIXEL PRO đang chạy test cảm ứng.\n\nHãy chạm nhiều vị trí: 4 góc, chính giữa, mép trái/phải và mép trên/dưới. Thiết bị sẽ hiện dấu + xanh cùng RAW và tọa độ X/Y đã map.\n\nĐóng thông báo này sau khi test xong; LumiPad sẽ đưa thiết bị về Main Menu."),
             L(
-                "PIXEL PRO Touch Calibration",
-                "Cân chỉnh cảm ứng PIXEL PRO"),
+                "PIXEL PRO Touch Test 480×320",
+                "Test cảm ứng PIXEL PRO 480×320"),
             System.Windows.MessageBoxButton.OK,
             System.Windows.MessageBoxImage.Information);
+
+        bool stopped =
+            await pixel.StopTouchPixelTestAsync();
+
+        PixelKeymapStatusText.Text =
+            stopped
+                ? L(
+                    "Touch test finished. Main Menu restored.",
+                    "Đã xong test cảm ứng. Main Menu đã được khôi phục.")
+                : L(
+                    "Touch test finished, but PIXEL PRO did not confirm the return to Main Menu.",
+                    "Đã xong test cảm ứng nhưng PIXEL PRO chưa xác nhận quay lại Main Menu.");
     }
 
     private async void PixelKeymapReset_Click(
