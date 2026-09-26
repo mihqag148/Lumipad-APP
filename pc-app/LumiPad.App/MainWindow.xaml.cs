@@ -78,20 +78,46 @@ public partial class MainWindow : Window
         set => _sleepingByProduct[_activeProduct.Id] = value;
     }
 
+    private string _rynorPowerState = "AWAKE";
+
     private bool RynorSleeping =>
         _sleepingByProduct.TryGetValue(
             ProductCatalog.RynorOne.Id,
             out bool sleeping) && sleeping;
 
-    private void SetRynorSleeping(bool sleeping)
+    private bool RynorDeepSleeping =>
+        string.Equals(
+            _rynorPowerState,
+            "DEEP",
+            StringComparison.Ordinal);
+
+    private void SetRynorPowerState(string state)
     {
-        bool changed = RynorSleeping != sleeping;
+        state = string.IsNullOrWhiteSpace(state)
+            ? "AWAKE"
+            : state.Trim().ToUpperInvariant();
+
+        if (state is not ("AWAKE" or "SLEEP" or "DEEP"))
+            state = "AWAKE";
+
+        bool sleeping =
+            !string.Equals(state, "AWAKE", StringComparison.Ordinal);
+        bool changed =
+            !string.Equals(
+                _rynorPowerState,
+                state,
+                StringComparison.Ordinal);
+
+        _rynorPowerState = state;
         _sleepingByProduct[ProductCatalog.RynorOne.Id] = sleeping;
 
         _rynorProfileTimer.Interval =
-            sleeping
-                ? TimeSpan.FromSeconds(5)
-                : TimeSpan.FromMilliseconds(700);
+            state switch
+            {
+                "DEEP" => TimeSpan.FromSeconds(30),
+                "SLEEP" => TimeSpan.FromSeconds(5),
+                _ => TimeSpan.FromMilliseconds(700)
+            };
 
         if (!IsPixelProActive)
             UpdateSleepButtonUi();
@@ -101,9 +127,15 @@ public partial class MainWindow : Window
             AddLog(
                 "INFO",
                 "POWER",
-                sleeping
-                    ? "RYNOR ONE entered BLE eco sleep; background BLE polling throttled."
-                    : "RYNOR ONE woke; normal RYNOR polling resumed.");
+                state switch
+                {
+                    "DEEP" =>
+                        "RYNOR ONE entered connected deep sleep; BLE stays connected and background polling is minimized.",
+                    "SLEEP" =>
+                        "RYNOR ONE entered BLE eco sleep; background BLE polling throttled.",
+                    _ =>
+                        "RYNOR ONE woke; normal RYNOR polling resumed."
+                });
         }
     }
 
@@ -221,6 +253,7 @@ public partial class MainWindow : Window
     private int _screensaverDelaySeconds = 60;
     private int _sleepDelaySeconds = 120;
     private int _deepSleepDelaySeconds = 900;
+    private int _hibernateDelaySeconds = 0;
     private int _rgbIdleDelaySeconds = 60;
     private int _rgbBrightness = 25;
     private int _rgbSpeed = 50;
@@ -2045,6 +2078,7 @@ public partial class MainWindow : Window
         public int ScreensaverDelaySeconds { get; set; } = 60;
         public int SleepDelaySeconds { get; set; } = 120;
         public int DeepSleepDelaySeconds { get; set; } = 900;
+        public int HibernateDelaySeconds { get; set; } = 0;
         public int RgbIdleDelaySeconds { get; set; } = 60;
         public string? ScreensaverMediaPath { get; set; }
         public string? PixelScreensaverMediaPath { get; set; }
@@ -2152,6 +2186,7 @@ public partial class MainWindow : Window
             _screensaverDelaySeconds = Math.Max(0, settings.ScreensaverDelaySeconds);
             _sleepDelaySeconds = Math.Max(0, settings.SleepDelaySeconds);
             _deepSleepDelaySeconds = Math.Max(0, settings.DeepSleepDelaySeconds);
+            _hibernateDelaySeconds = Math.Max(0, settings.HibernateDelaySeconds);
             _rgbIdleDelaySeconds = Math.Max(0, settings.RgbIdleDelaySeconds);
             _rynorScreensaverMediaPath =
                 settings.ScreensaverMediaPath;
@@ -2239,6 +2274,7 @@ public partial class MainWindow : Window
                 ScreensaverDelaySeconds = _screensaverDelaySeconds,
                 SleepDelaySeconds = _sleepDelaySeconds,
                 DeepSleepDelaySeconds = _deepSleepDelaySeconds,
+                HibernateDelaySeconds = _hibernateDelaySeconds,
                 RgbIdleDelaySeconds = _rgbIdleDelaySeconds,
                 ScreensaverMediaPath = _rynorScreensaverMediaPath,
                 PixelScreensaverMediaPath = _pixelScreensaverMediaPath,
@@ -2276,6 +2312,7 @@ public partial class MainWindow : Window
         SelectComboTag(ScreensaverDelayCombo, _screensaverDelaySeconds.ToString());
         SelectComboTag(SleepDelayCombo, _sleepDelaySeconds.ToString());
         SelectComboTag(DeepSleepDelayCombo, _deepSleepDelaySeconds.ToString());
+        SelectComboTag(HibernateDelayCombo, _hibernateDelaySeconds.ToString());
         SelectComboTag(RgbIdleDelayCombo, _rgbIdleDelaySeconds.ToString());
         SelectComboTag(ScreensaverScaleCombo, _screensaverScaleMode.ToString());
         if (PixelGifFpsCombo is not null)
@@ -3019,6 +3056,8 @@ public partial class MainWindow : Window
             SleepDelayCombo.IsEnabled = true;
         if (DeepSleepDelayCombo is not null)
             DeepSleepDelayCombo.IsEnabled = !IsPixelProActive;
+        if (HibernateDelayCombo is not null)
+            HibernateDelayCombo.IsEnabled = !IsPixelProActive;
 
         if (SendScreensaverButton is not null)
         {
@@ -3756,7 +3795,15 @@ public partial class MainWindow : Window
                 StringComparison.Ordinal));
         _serial.SetSleepTimeout(_sleepDelaySeconds);
         if (!IsPixelProActive)
+        {
             _serial.SetDeepSleepTimeout(_deepSleepDelaySeconds);
+
+            if (_serial is SerialLink rynor &&
+                rynor.SupportsHibernate)
+            {
+                rynor.SetHibernateTimeout(_hibernateDelaySeconds);
+            }
+        }
         _serial.SetRgbIdleTimeout(_rgbIdleDelaySeconds);
 
     }
@@ -3880,6 +3927,33 @@ public partial class MainWindow : Window
         }
     }
 
+    private void HibernateDelayCombo_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        _hibernateDelaySeconds =
+            ComboSeconds(sender, _hibernateDelaySeconds);
+
+        if (_uiReady)
+            SaveAppSettings();
+
+        if (_uiReady &&
+            !IsPixelProActive &&
+            _serial is SerialLink rynor &&
+            rynor.IsConnected &&
+            rynor.SupportsHibernate)
+        {
+            rynor.SetHibernateTimeout(_hibernateDelaySeconds);
+            BottomStatus.Text = L(
+                _hibernateDelaySeconds == 0
+                    ? "Hibernate: Never"
+                    : $"Hibernate: {_hibernateDelaySeconds}s",
+                _hibernateDelaySeconds == 0
+                    ? "Hibernate: Không bao giờ"
+                    : $"Hibernate: {_hibernateDelaySeconds} giây");
+        }
+    }
+
     private void RgbIdleDelayCombo_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -3922,7 +3996,7 @@ public partial class MainWindow : Window
                 if (IsPixelProActive)
                     _keyboardSleeping = false;
                 else
-                    SetRynorSleeping(false);
+                    SetRynorPowerState("AWAKE");
 
                 BottomStatus.Text =
                     L("Keyboard display and RGB are awake.",
@@ -3935,7 +4009,7 @@ public partial class MainWindow : Window
                 if (IsPixelProActive)
                     _keyboardSleeping = true;
                 else
-                    SetRynorSleeping(true);
+                    SetRynorPowerState("SLEEP");
 
                 BottomStatus.Text =
                     L("Keyboard display and RGB are sleeping. Press again to wake.",
@@ -6284,15 +6358,20 @@ try {{
         {
             if (rynor.SupportsPowerState)
             {
-                bool? sleeping =
-                    await rynor.ReadSoftSleepStateAsync();
+                string? powerState =
+                    await rynor.ReadPowerStateAsync();
 
-                if (sleeping.HasValue)
+                if (!string.IsNullOrWhiteSpace(powerState))
                 {
-                    SetRynorSleeping(sleeping.Value);
+                    SetRynorPowerState(powerState);
 
-                    if (sleeping.Value)
+                    if (!string.Equals(
+                            powerState,
+                            "AWAKE",
+                            StringComparison.Ordinal))
+                    {
                         return;
+                    }
                 }
             }
 

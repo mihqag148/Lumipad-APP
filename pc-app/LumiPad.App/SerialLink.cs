@@ -65,6 +65,8 @@ public sealed class SerialLink : IDeviceLink
         SupportsCapability("PROFILECAT");
     public bool SupportsPowerState =>
         SupportsCapability("POWERSTATE");
+    public bool SupportsHibernate =>
+        SupportsCapability("HIBERNATE");
     public bool SupportsActions =>
         SupportsCapability("ACTION");
     public bool SupportsVariableArtwork =>
@@ -134,6 +136,9 @@ public sealed class SerialLink : IDeviceLink
 
             if (_protocolVersion >= 6)
                 _capabilities.Add("POWERSTATE");
+
+            if (_protocolVersion >= 7)
+                _capabilities.Add("HIBERNATE");
         }
 
         Log(
@@ -1954,6 +1959,9 @@ public sealed class SerialLink : IDeviceLink
     public void SetDeepSleepTimeout(int seconds) =>
         _ = SendLineAsync($"CFG|DEEPSLEEP|{Math.Max(0, seconds)}");
 
+    public void SetHibernateTimeout(int seconds) =>
+        _ = SendLineAsync($"CFG|HIBERNATE|{Math.Max(0, seconds)}");
+
     private async Task<string?> RequestProfileMetadataAsync(
         string command,
         string context)
@@ -2018,7 +2026,7 @@ public sealed class SerialLink : IDeviceLink
         return response;
     }
 
-    public async Task<bool?> ReadSoftSleepStateAsync()
+    public async Task<string?> ReadPowerStateAsync()
     {
         if (!SupportsPowerState)
             return null;
@@ -2037,13 +2045,18 @@ public sealed class SerialLink : IDeviceLink
             return null;
         }
 
-        if (string.Equals(parts[1], "SLEEP", StringComparison.Ordinal))
-            return true;
+        string state = parts[1].Trim().ToUpperInvariant();
+        return state is "AWAKE" or "SLEEP" or "DEEP"
+            ? state
+            : null;
+    }
 
-        if (string.Equals(parts[1], "AWAKE", StringComparison.Ordinal))
-            return false;
-
-        return null;
+    public async Task<bool?> ReadSoftSleepStateAsync()
+    {
+        string? state = await ReadPowerStateAsync();
+        return state is null
+            ? null
+            : !string.Equals(state, "AWAKE", StringComparison.Ordinal);
     }
 
     public async Task<string[]?> ReadProfileCatalogAsync()
