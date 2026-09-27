@@ -52,7 +52,10 @@ internal static class RynorPackedAnimationEncoder
     // Keep an additional 12 KiB safety margin for future metadata growth.
     public const int GifPartitionBytes = 10 * 1024 * 1024;
     public const int SourceLosslessThresholdBytes = 10 * 1024 * 1024;
-    public const int CompressedTargetFloorBytes = 9 * 1024 * 1024;
+    // Large-source compression aims just below 10 MiB so it uses the new
+    // storage budget without running into the metadata/safety margin.
+    public const int CompressedTargetBytes =
+        9 * 1024 * 1024 + 768 * 1024; // 9.75 MiB
     public const int HardTargetBytes =
         GifPartitionBytes - (16 * 1024);
 
@@ -185,12 +188,12 @@ internal static class RynorPackedAnimationEncoder
                             colorMode,
                             scaleMode,
                             smartDeltaLevel,
-                            HardTargetBytes,
+                            CompressedTargetBytes,
                             preserveSourceTiming: false);
 
                     if (!candidate.ExceededLimit &&
                         candidate.Bytes is not null &&
-                        candidate.Bytes.Length <= HardTargetBytes)
+                        candidate.Bytes.Length <= CompressedTargetBytes)
                     {
                         return new RynorPackedAnimationResult(
                             candidate.Bytes,
