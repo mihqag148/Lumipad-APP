@@ -193,9 +193,8 @@ public partial class MainWindow : Window
     private byte _g = 120;
     private byte _b = 0;
     private ScreensaverAnimation? _screensaverAnimation;
-    // Keep RYNOR and PIXEL media paths isolated. Older builds shared one path,
-    // which let a saved PIXEL GIF get reprocessed by the RYNOR 160×86 service
-    // during startup before PIXEL PRO became the active product.
+    // Keep RYNOR and PIXEL media paths isolated. RYNOR now keeps GIF files as
+    // native device assets; PIXEL keeps its independent media pipeline.
     private string? _screensaverMediaPath;
     private string? _rynorScreensaverMediaPath;
     private string? _pixelScreensaverMediaPath;
@@ -415,9 +414,9 @@ public partial class MainWindow : Window
         BuildPixelProKeymapUi();
         InitializeTrayIcon();
 
-        // Keep the preview on an absolute playback timeline, just like the
-        // firmware. RYNOR ONE keeps its existing 25 FPS converter. PIXEL PRO
-        // uses its own 480x320/60 FPS media profile without changing RYNOR.
+        // Keep animated previews on an absolute playback timeline. RYNOR native
+        // GIFs use a single local preview frame because playback timing now lives
+        // in the original GIF decoded by the keyboard. PIXEL keeps its own path.
         _screensaverPreviewTimer.Interval =
             TimeSpan.FromMilliseconds(
                 ScreensaverMediaService.MinFrameIntervalMs);
@@ -1679,7 +1678,7 @@ public partial class MainWindow : Window
         ["GIF / Image local"] = "GIF / Ảnh trên máy",
         ["Choose a GIF or image"] = "Chọn GIF hoặc ảnh",
         ["No file selected"] = "Chưa chọn tệp",
-        ["Converted to a lightweight loop for RYNOR ONE."] = "Tự chuyển thành vòng lặp nhẹ cho RYNOR ONE.",
+        ["GIF is stored unchanged on RYNOR ONE and decoded on-device."] = "GIF được lưu nguyên file trên RYNOR ONE và giải mã trực tiếp trên thiết bị.",
         ["Scale"] = "Co giãn",
         ["Fill"] = "Lấp đầy",
         ["Fit"] = "Vừa khung",
@@ -1690,7 +1689,7 @@ public partial class MainWindow : Window
         ["Choose GIF / Image"] = "Chọn GIF / Ảnh",
         ["Send to RYNOR ONE"] = "Gửi tới RYNOR ONE",
         ["Clear"] = "Xóa",
-        ["The file stays local. Only reduced animation frames are sent."] = "Tệp vẫn nằm trên máy. Chỉ các frame đã giảm được gửi đi.",
+        ["The original GIF is stored on RYNOR ONE external flash."] = "GIF gốc được lưu trên flash ngoài của RYNOR ONE.",
         ["Screensaver after"] = "Bảo vệ màn hình sau",
         ["Sleep after"] = "Ngủ sau",
         ["15 seconds"] = "15 giây",
@@ -9766,8 +9765,8 @@ try {{
 
         ScreensaverMediaInfo.Text =
             L(
-                $"Converted to a lightweight loop for {_activeProduct.Name}.",
-                $"Tự chuyển thành vòng lặp nhẹ cho {_activeProduct.Name}.");
+                "GIF is stored unchanged on RYNOR ONE and decoded on-device.",
+                "GIF được lưu nguyên file trên RYNOR ONE và giải mã trực tiếp trên thiết bị.");
 
         ScreensaverSendProgress.Value = 0;
 
