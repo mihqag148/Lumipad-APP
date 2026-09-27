@@ -31,18 +31,22 @@ internal sealed record RynorPackedAnimationResult(
 ///
 /// RYQ1 keeps the first frame complete, then stores only changed row spans.
 /// Each span uses packet RLE. The encoder progressively reduces temporal
-/// detail/resolution only when the payload cannot fit the existing saver flash
-/// partition. The hard target intentionally stays below 400 KB and below the
-/// current RYNOR ONE saver partition payload capacity.
+/// detail/resolution only when the payload cannot fit the external W25Q128
+/// GIF partition. RYNOR ONE now reserves 10 MiB of external NOR for packed
+/// screensaver media; PIXEL PRO has a separate media pipeline and is untouched.
 /// </summary>
 internal static class RynorPackedAnimationEncoder
 {
     public const int DisplayWidth = 320;
     public const int DisplayHeight = 172;
 
-    // 0x56000 saver partition - 0x1000 metadata/data offset = 0x55000
-    // available payload. Keep a few KiB of margin and stay < 400 KB.
-    public const int HardTargetBytes = 336 * 1024;
+    // External W25Q128 layout:
+    //   10 MiB GIF partition
+    //   first 4 KiB reserved for firmware metadata
+    // Keep an additional 12 KiB safety margin for future metadata growth.
+    public const int GifPartitionBytes = 10 * 1024 * 1024;
+    public const int HardTargetBytes =
+        GifPartitionBytes - (16 * 1024);
 
     private const int MaxPackedFrames = 250;
     private const int DeltaSpanMergeGapPixels = 4;
@@ -210,7 +214,7 @@ internal static class RynorPackedAnimationEncoder
             new MemoryStream(
                 Math.Min(
                     abortAfterBytes,
-                    512 * 1024));
+                    1024 * 1024));
 
         WriteAscii(
             output,
