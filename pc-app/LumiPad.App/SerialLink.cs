@@ -1155,48 +1155,39 @@ public sealed class SerialLink : IDeviceLink
         await _mediaGate.WaitAsync();
         try
         {
-        // Even when the app is currently linked over Bluetooth, probe the
-        // dedicated CDC port before a large upload. USB wins automatically
-        // when present; Bluetooth remains the fallback.
-        bool useUsb = await EnsureUsbForBulkAsync();
+            // Large RYNOR media always prefers the dedicated USB CDC link.
+            // BLE remains a byte-for-byte fallback when USB is unavailable.
+            bool useUsb = await EnsureUsbForBulkAsync();
 
-        // RYNOR protocol v10: source GIFs that already fit the 10 MiB external
-        // partition are uploaded as the original GIF bytes. Do this before
-        // legacy frame validation because the preview animation is not the
-        // payload in this mode.
-        if (ScreensaverMediaService.TryGetRawGifSource(
-                animation,
-                out RynorRawGifSource rawGif))
-        {
-            if (!SupportsRawGif)
+            // Native RYNOR GIF path: upload the original GIF file exactly as
+            // selected. No reduced frame pack, FPS resampling, RYQ1
+            // recompression, or compatibility quality ladder.
+            if (ScreensaverMediaService.TryGetRawGifSource(
+                    animation,
+                    out RynorRawGifSource rawGif))
             {
-                Log(
-                    "WARN",
-                    "Connected RYNOR firmware does not support raw GIF storage. " +
-                    "Update firmware instead of silently falling back to 160x86.");
-                return false;
+                if (!SupportsRawGif)
+                {
+                    Log(
+                        "WARN",
+                        "Connected RYNOR firmware is too old for native GIF storage.");
+                    return false;
+                }
+
+                return await SendRynorRawGifAsync(
+                    rawGif,
+                    useUsb,
+                    progress);
             }
 
-            return await SendRynorRawGifAsync(
-                rawGif,
-                useUsb,
-                progress);
-        }
-
-        if (animation.Frames.Count < 1 ||
-            animation.Frames.Count > ScreensaverMediaService.MaxFrames)
-        {
-            throw new InvalidOperationException("Invalid screensaver frame count.");
-        }
-
-        if (animation.PixelFormat == ScreensaverPixelFormat.Rgb565)
-        {
-            if (animation.Frames.Count != 1 ||
+            // Static images remain a single full-panel RGB565 asset.
+            if (animation.PixelFormat != ScreensaverPixelFormat.Rgb565 ||
+                animation.Frames.Count != 1 ||
                 animation.Width != ScreensaverMediaService.StaticWidth ||
                 animation.Height != ScreensaverMediaService.StaticHeight)
             {
                 throw new InvalidOperationException(
-                    "Invalid static screensaver image.");
+                    "RYNOR ONE accepts native GIF assets or one 320x172 RGB565 image.");
             }
 
             byte[] image = animation.Frames[0];
@@ -1207,7 +1198,7 @@ public sealed class SerialLink : IDeviceLink
                 throw new InvalidOperationException(
                     "Invalid RGB565 static image size.");
 
-            int rawChunk = 240;
+            const int rawChunk = 240;
             int staticTotalChunks =
                 (image.Length + rawChunk - 1) / rawChunk;
             int sent = 0;
@@ -1217,18 +1208,31 @@ public sealed class SerialLink : IDeviceLink
                 $"Static saver upload: {animation.Width}x{animation.Height} RGB565, " +
                 $"{image.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
 
-            string staticBegin = $"IMGBEGIN|{image.Length}";
+            string staticBegin =
+                $"IMGBEGIN|{image.Length}";
+
             if (useUsb)
                 await SendUsbSaverLineAsync(staticBegin);
             else
                 await SendLineAsync(staticBegin);
 
-            for (int offset = 0; offset < image.Length; offset += rawChunk)
+            for (int offset = 0;
+                 offset < image.Length;
+                 offset += rawChunk)
             {
-                int len = Math.Min(rawChunk, image.Length - offset);
+                int len =
+                    Math.Min(
+                        rawChunk,
+                        image.Length - offset);
+
                 string payload =
-                    Convert.ToBase64String(image, offset, len);
-                string line = $"IMGCHUNK|{offset}|{payload}";
+                    Convert.ToBase64String(
+                        image,
+                        offset,
+                        len);
+
+                string line =
+                    $"IMGCHUNK|{offset}|{payload}";
 
                 if (useUsb)
                     await SendUsbSaverLineAsync(line);
@@ -1240,152 +1244,53 @@ public sealed class SerialLink : IDeviceLink
 
                 sent++;
                 progress?.Report(
-                    (int)Math.Round(sent * 100.0 / staticTotalChunks));
+                    (int)Math.Round(
+                        sent *
+                        100.0 /
+                        staticTotalChunks));
             }
 
             if (useUsb)
             {
-                string finalAck = await SendUsbSaverLineAsync("IMGEND");
-                if (!finalAck.EndsWith("|READY", StringComparison.Ordinal))
+                string finalAck =
+                    await SendUsbSaverLineAsync("IMGEND");
+
+                if (!finalAck.EndsWith(
+                        "|READY",
+                        StringComparison.Ordinal))
                 {
-                    Log("ERROR", $"Static saver final ACK not READY: {finalAck}");
+                    Log(
+                        "ERROR",
+                        $"Static saver final ACK not READY: {finalAck}");
                     return false;
                 }
 
+                progress?.Report(100);
                 return true;
             }
 
             await SendLineAsync("IMGEND");
             await Task.Delay(120);
 
-            if (_bleCharacteristic is not null)
-            {
-                string status = await ReadBleStatusAsync();
-                bool ready =
-                    status.Contains("SAVER:READY", StringComparison.Ordinal);
-                Log(
-                    ready ? "INFO" : "ERROR",
-                    $"BLE static saver verify: {status}");
-                return ready;
-            }
-
-            return false;
-        }
-
-        if (animation.PixelFormat != ScreensaverPixelFormat.Rgb332)
-            throw new InvalidOperationException("Unsupported screensaver format.");
-
-        if (ScreensaverMediaService.TryGetPackedAnimation(
-                animation,
-                out RynorPackedAnimationResult packed))
-        {
-            try
-            {
-                bool packedSent =
-                    await SendRynorPackedScreensaverAsync(
-                        packed,
-                        useUsb,
-                        progress);
-
-                if (packedSent)
-                    return true;
-            }
-            catch (Exception ex)
-            {
-                // Preserve compatibility and recover from an interrupted
-                // packed upload by falling back to the proven raw format.
-                Log(
-                    "WARN",
-                    $"RYNOR packed saver failed; using legacy fallback: {ex.Message}");
-            }
-        }
-
-        int loopMs = animation.FrameDurationsMs.Sum();
-        Log("INFO", $"Screensaver legacy upload: {animation.Frames.Count} frames, loop={loopMs} ms, avg={animation.FrameIntervalMs} ms, transport={(useUsb ? "USB" : "BLE")}");
-
-        int rawChunkSize = useUsb ? 240 : 180;
-        int frameBytes =
-            animation.Width * animation.Height;
-        int chunksPerFrame =
-            (frameBytes + rawChunkSize - 1) / rawChunkSize;
-        int totalChunks = chunksPerFrame * animation.Frames.Count;
-        int sentChunks = 0;
-
-        string timingCsv =
-            animation.FrameDurationsMs.Count == animation.Frames.Count
-                ? string.Join(",", animation.FrameDurationsMs.Select(
-                    ms => Math.Clamp(
-                        ms,
-                        ScreensaverMediaService.MinFrameIntervalMs,
-                        5000)))
-                : string.Empty;
-
-        string begin =
-            $"SAVBEGIN|{animation.Frames.Count}|{animation.FrameIntervalMs}" +
-            (timingCsv.Length > 0 ? $"|{timingCsv}" : string.Empty);
-
-        if (useUsb)
-            await SendUsbSaverLineAsync(begin);
-        else
-            await SendLineAsync(begin);
-
-        for (int i = 0; i < animation.Frames.Count; i++)
-        {
-            byte[] frame = animation.Frames[i];
-
-            if (frame.Length != frameBytes)
-                throw new InvalidOperationException("Invalid screensaver frame size.");
-
-            for (int offset = 0; offset < frame.Length; offset += rawChunkSize)
-            {
-                int len = Math.Min(rawChunkSize, frame.Length - offset);
-                string base64 =
-                    Convert.ToBase64String(frame, offset, len);
-
-                string line = $"SAVCHUNK|{i}|{offset}|{base64}";
-
-                if (useUsb)
-                    await SendUsbSaverLineAsync(line);
-                else
-                    await SendBulkLineAsync(line);
-
-                if (!useUsb)
-                    await Task.Delay(2);
-
-                sentChunks++;
-                if ((offset + len) >= frame.Length)
-                    Log("INFO", $"Screensaver frame {i + 1}/{animation.Frames.Count} sent");
-                progress?.Report(
-                    (int)Math.Round(sentChunks * 100.0 / totalChunks));
-            }
-        }
-
-        if (useUsb)
-        {
-            string finalAck = await SendUsbSaverLineAsync("SAVEND");
-            if (!finalAck.EndsWith("|READY", StringComparison.Ordinal)) {
-                Log("ERROR", $"Screensaver final ACK not READY: {finalAck}");
+            if (_bleCharacteristic is null)
                 return false;
-            }
-        }
-        else
-        {
-            await SendLineAsync("SAVEND");
-        }
 
-        await Task.Delay(useUsb ? 20 : 120);
+            string status =
+                await ReadBleStatusAsync();
 
-        if (!useUsb && _bleCharacteristic is not null)
-        {
-            string status = await ReadBleStatusAsync();
-            bool ready = status.Contains("SAVER:READY", StringComparison.Ordinal);
-            Log(ready ? "INFO" : "ERROR", $"BLE saver verify: {status}");
+            bool ready =
+                status.Contains(
+                    "SAVER:READY",
+                    StringComparison.Ordinal);
+
+            Log(
+                ready ? "INFO" : "ERROR",
+                $"BLE static saver verify: {status}");
+
+            if (ready)
+                progress?.Report(100);
+
             return ready;
-        }
-
-        // USB serial writes are lossless and the firmware only commits the
-        // flash header after SAVEND.
-        return true;
         }
         finally
         {
@@ -1402,7 +1307,7 @@ public sealed class SerialLink : IDeviceLink
             string.IsNullOrWhiteSpace(source.Path) ||
             !File.Exists(source.Path) ||
             source.Length < 13 ||
-            source.Length > RynorPackedAnimationEncoder.HardTargetBytes)
+            source.Length > ScreensaverMediaService.MaxRawGifBytes)
         {
             return false;
         }
@@ -1529,7 +1434,7 @@ public sealed class SerialLink : IDeviceLink
         }
 
         // BLE fallback keeps the original GIF bytes as well. It is slower than
-        // USB but never degrades to the 160x86 compatibility animation.
+        // USB but uses the same native on-device GIF decoder.
         const int rawChunkSize = 180;
         long offset = 0;
 
@@ -1612,145 +1517,6 @@ public sealed class SerialLink : IDeviceLink
                 $"RYNOR raw GIF BLE upload failed: {ex.Message}");
             return false;
         }
-    }
-
-    private async Task<bool> SendRynorPackedScreensaverAsync(
-        RynorPackedAnimationResult packed,
-        bool useUsb,
-        IProgress<int>? progress)
-    {
-        byte[] payload = packed.Bytes;
-
-        if (payload.Length < 26 ||
-            payload.Length > RynorPackedAnimationEncoder.HardTargetBytes)
-        {
-            throw new InvalidOperationException(
-                "Invalid RYNOR packed screensaver size.");
-        }
-
-        if (packed.PreservedSourceTiming &&
-            !SupportsExactGifTiming)
-        {
-            Log(
-                "WARN",
-                "RYNOR firmware does not support exact source GIF timing; " +
-                "using compatibility fallback.");
-            return false;
-        }
-
-        // Never attempt a multi-megabyte packed payload against the old
-        // internal-flash firmware. It will fall back immediately to the
-        // legacy 160x86 path instead of wasting time on a doomed transfer.
-        if (!SupportsExternalFlash &&
-            payload.Length > 336 * 1024)
-        {
-            return false;
-        }
-
-        int rawChunkSize =
-            useUsb
-                ? (SupportsExternalFlash ? 720 : 240)
-                : 180;
-
-        int totalChunks =
-            (payload.Length + rawChunkSize - 1) /
-            rawChunkSize;
-
-        Log(
-            "INFO",
-            $"RYNOR packed saver: {packed.StorageWidth}x{packed.StorageHeight}, " +
-            $"{packed.FrameCount} frames @ {packed.Fps} FPS, {packed.ColorMode}, " +
-            $"mode={(packed.PreservedSourceTiming ? "SOURCE" : "COMPRESSED")}, " +
-            $"{payload.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
-
-        string begin =
-            $"SAVPBEGIN|{payload.Length}";
-
-        if (useUsb)
-            await SendUsbSaverLineAsync(begin);
-        else
-            await SendLineAsync(begin);
-
-        int sentChunks = 0;
-
-        for (int offset = 0;
-             offset < payload.Length;
-             offset += rawChunkSize)
-        {
-            int len =
-                Math.Min(
-                    rawChunkSize,
-                    payload.Length - offset);
-
-            string base64 =
-                Convert.ToBase64String(
-                    payload,
-                    offset,
-                    len);
-
-            string line =
-                $"SAVPCHUNK|{offset}|{base64}";
-
-            if (useUsb)
-                await SendUsbSaverLineAsync(line);
-            else
-                await SendBulkLineAsync(line);
-
-            if (!useUsb)
-                await Task.Delay(2);
-
-            sentChunks++;
-            progress?.Report(
-                (int)Math.Round(
-                    sentChunks *
-                    100.0 /
-                    Math.Max(1, totalChunks)));
-        }
-
-        if (useUsb)
-        {
-            string finalAck =
-                await SendUsbSaverLineAsync(
-                    "SAVPEND");
-
-            if (!finalAck.EndsWith(
-                    "|READY",
-                    StringComparison.Ordinal))
-            {
-                Log(
-                    "ERROR",
-                    $"RYNOR packed saver final ACK not READY: {finalAck}");
-                return false;
-            }
-
-            return true;
-        }
-
-        await SendLineAsync(
-            "SAVPEND");
-
-        await Task.Delay(120);
-
-        if (_bleCharacteristic is not null)
-        {
-            string status =
-                await ReadBleStatusAsync();
-
-            bool ready =
-                status.Contains(
-                    "SAVER:READY",
-                    StringComparison.Ordinal);
-
-            Log(
-                ready
-                    ? "INFO"
-                    : "ERROR",
-                $"BLE packed saver verify: {status}");
-
-            return ready;
-        }
-
-        return false;
     }
 
     private async Task<string> ReadBleStatusAsync()
