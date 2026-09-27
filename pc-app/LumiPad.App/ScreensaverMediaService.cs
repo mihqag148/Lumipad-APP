@@ -34,6 +34,11 @@ public sealed record ScreensaverAnimation(
     IReadOnlyList<int> FrameDurationsMs,
     IReadOnlyList<byte[]> Frames);
 
+internal sealed record RynorRawGifSource(
+    string Path,
+    long Length,
+    ScreensaverScaleMode ScaleMode);
+
 public static class ScreensaverMediaService
 {
     public const int Width = 160;
@@ -48,6 +53,10 @@ public static class ScreensaverMediaService
         ScreensaverAnimation,
         RynorPackedAnimationResult> PackedAnimations = new();
 
+    private static readonly ConditionalWeakTable<
+        ScreensaverAnimation,
+        RynorRawGifSource> RawGifSources = new();
+
     internal static bool TryGetPackedAnimation(
         ScreensaverAnimation animation,
         out RynorPackedAnimationResult result)
@@ -61,6 +70,22 @@ public static class ScreensaverMediaService
         }
 
         result = null!;
+        return false;
+    }
+
+    internal static bool TryGetRawGifSource(
+        ScreensaverAnimation animation,
+        out RynorRawGifSource source)
+    {
+        if (RawGifSources.TryGetValue(
+                animation,
+                out RynorRawGifSource? raw))
+        {
+            source = raw;
+            return true;
+        }
+
+        source = null!;
         return false;
     }
 
@@ -201,10 +226,32 @@ public static class ScreensaverMediaService
                 frameDurations,
                 frames);
 
-        // RYNOR-specific smart path. PIXEL PRO uses its own media service and
-        // encoder; nothing in the PIXEL pipeline is touched here.
+        // RYNOR raw-GIF path: a source file that already fits the external
+        // 10 MiB partition is uploaded as the original GIF bytes. Firmware
+        // decodes it line-by-line and scales directly to 320x172, so there is
+        // no 160x86 fallback, frame dropping, color conversion, or RYQ1
+        // expansion. PIXEL PRO uses a separate media service and is untouched.
         try
         {
+            var file = new FileInfo(path);
+
+            if (file.Length >= 13 &&
+                file.Length <= RynorPackedAnimationEncoder.HardTargetBytes &&
+                image.Width <= 2048 &&
+                image.Height <= 2048)
+            {
+                RawGifSources.Add(
+                    animation,
+                    new RynorRawGifSource(
+                        path,
+                        file.Length,
+                        scaleMode));
+
+                return animation;
+            }
+
+            // Sources that do not fit as raw GIF use the existing RYNOR
+            // quality ladder, targeting ~9.75 MiB in external flash.
             RynorPackedAnimationResult? packed =
                 RynorPackedAnimationEncoder.TryEncodeBest(
                     path,
@@ -219,8 +266,8 @@ public static class ScreensaverMediaService
         }
         catch
         {
-            // The legacy 160x86 RGB332 animation remains a guaranteed-safe
-            // fallback and already fits the existing saver partition.
+            // The legacy 160x86 RGB332 animation remains a final compatibility
+            // fallback if the RYNOR-specific media path cannot be prepared.
         }
 
         return animation;
