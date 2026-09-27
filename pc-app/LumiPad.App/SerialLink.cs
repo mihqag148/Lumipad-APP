@@ -18,6 +18,7 @@ public sealed class SerialLink : IDeviceLink
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _mediaGate = new(1, 1);
+    private int _exclusiveMediaTransfer;
 
     private SerialPort? _port;
     private BluetoothLEDevice? _bleDevice;
@@ -39,6 +40,10 @@ public sealed class SerialLink : IDeviceLink
         new(StringComparer.OrdinalIgnoreCase);
     private int _consecutiveLinkFailures;
     private string _lastUsbPortSignature = "";
+
+    private bool IsExclusiveMediaTransferActive =>
+        System.Threading.Volatile.Read(
+            ref _exclusiveMediaTransfer) != 0;
 
     private bool IsBleTransportConnected =>
         _bleCharacteristic is not null &&
@@ -96,7 +101,7 @@ public sealed class SerialLink : IDeviceLink
         SupportsCapability("GIFBIN");
     public bool SupportsFlowControlledBinaryGifUpload =>
         _protocolVersion >= 10 &&
-        SupportsCapability("GIFBIN2");
+        SupportsCapability("GIFBIN3");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -258,6 +263,9 @@ public sealed class SerialLink : IDeviceLink
         await _connectGate.WaitAsync(cancellationToken);
         try
         {
+            if (IsConnected)
+                return _connectionName;
+
             Log("INFO", "Auto detect started");
             Disconnect();
 
@@ -280,6 +288,9 @@ public sealed class SerialLink : IDeviceLink
         await _connectGate.WaitAsync(cancellationToken);
         try
         {
+            if (_port?.IsOpen == true)
+                return _connectionName;
+
             Disconnect();
             return await TryUsbAsync(cancellationToken);
         }
@@ -294,6 +305,9 @@ public sealed class SerialLink : IDeviceLink
         await _connectGate.WaitAsync(cancellationToken);
         try
         {
+            if (IsBleTransportConnected)
+                return _connectionName;
+
             Disconnect();
             return await TryBluetoothAsync(cancellationToken);
         }
@@ -1236,9 +1250,16 @@ public sealed class SerialLink : IDeviceLink
         if (!IsConnected)
             throw new InvalidOperationException("LumiPad is not connected.");
 
-        await _mediaGate.WaitAsync();
+        await _connectGate.WaitAsync();
         try
         {
+            await _mediaGate.WaitAsync();
+            System.Threading.Interlocked.Exchange(
+                ref _exclusiveMediaTransfer,
+                1);
+
+            try
+            {
             // Large RYNOR media always prefers the dedicated USB CDC link.
             // BLE remains a byte-for-byte fallback when USB is unavailable.
             bool useUsb = await EnsureUsbForBulkAsync();
@@ -1376,9 +1397,17 @@ public sealed class SerialLink : IDeviceLink
 
             return ready;
         }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(
+                    ref _exclusiveMediaTransfer,
+                    0);
+                _mediaGate.Release();
+            }
+        }
         finally
         {
-            _mediaGate.Release();
+            _connectGate.Release();
         }
     }
 
@@ -1439,7 +1468,7 @@ public sealed class SerialLink : IDeviceLink
 
                                 string beginCommand =
                                     useFlowControl
-                                        ? $"GIFBIN2BEGIN|{source.Length}|{(int)source.ScaleMode}\n"
+                                        ? $"GIFBIN3BEGIN|{source.Length}|{(int)source.ScaleMode}\n"
                                         : $"GIFBEGIN|{source.Length}|{(int)source.ScaleMode}\n";
 
                                 byte[] beginBytes =
@@ -1494,7 +1523,7 @@ public sealed class SerialLink : IDeviceLink
 
                                 if (useFlowControl)
                                 {
-                                    const int blockSize = 4096;
+                                    const int blockSize = 1024;
                                     byte[] buffer =
                                         new byte[blockSize];
 
@@ -1836,7 +1865,8 @@ public sealed class SerialLink : IDeviceLink
     public async Task<(uint Seq, string Level, string Message)?> ReadFirmwareLogAsync(
         uint afterSeq)
     {
-        if (!SupportsDiagnostics)
+        if (IsExclusiveMediaTransferActive ||
+            !SupportsDiagnostics)
             return null;
 
         string response;
@@ -1892,7 +1922,8 @@ public sealed class SerialLink : IDeviceLink
 
     public async Task<string?> GetScreensaverStateAsync()
     {
-        if (!SupportsSaverState)
+        if (IsExclusiveMediaTransferActive ||
+            !SupportsSaverState)
             return null;
 
         try
@@ -1994,7 +2025,9 @@ public sealed class SerialLink : IDeviceLink
 
     public async Task<int?> ReadBatteryPercentAsync()
     {
-        if (!IsConnected || !SupportsBatteryInfo)
+        if (IsExclusiveMediaTransferActive ||
+            !IsConnected ||
+            !SupportsBatteryInfo)
             return null;
 
         string response;
@@ -2056,7 +2089,8 @@ public sealed class SerialLink : IDeviceLink
     public async Task<(string Panel, int RefreshHz, int SpiHz, int GifMaxFps)?>
         ReadPanelInfoAsync()
     {
-        if (!SupportsPanelInfo)
+        if (IsExclusiveMediaTransferActive ||
+            !SupportsPanelInfo)
             return null;
 
         string response;
@@ -2111,7 +2145,8 @@ public sealed class SerialLink : IDeviceLink
 
     public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
     {
-        if (!SupportsMemoryInfo)
+        if (IsExclusiveMediaTransferActive ||
+            !SupportsMemoryInfo)
             return null;
 
         string response;
@@ -2786,6 +2821,9 @@ public sealed class SerialLink : IDeviceLink
 
     private async Task<bool> SendFastMediaLineAsync(string line)
     {
+        if (IsExclusiveMediaTransferActive)
+            return false;
+
         // Protocol v4 fast path is only used for media payload chunks.
         // Begin/end/control packets still use acknowledged writes.
         if (_bleCharacteristic is null || !SupportsFastMedia)
@@ -2845,6 +2883,9 @@ public sealed class SerialLink : IDeviceLink
 
     private async Task<bool> SendRealtimeLineAsync(string line)
     {
+        if (IsExclusiveMediaTransferActive)
+            return false;
+
         await _writeGate.WaitAsync();
         try
         {
