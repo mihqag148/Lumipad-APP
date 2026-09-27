@@ -1155,17 +1155,39 @@ public sealed class SerialLink : IDeviceLink
         await _mediaGate.WaitAsync();
         try
         {
+        // Even when the app is currently linked over Bluetooth, probe the
+        // dedicated CDC port before a large upload. USB wins automatically
+        // when present; Bluetooth remains the fallback.
+        bool useUsb = await EnsureUsbForBulkAsync();
+
+        // RYNOR protocol v10: source GIFs that already fit the 10 MiB external
+        // partition are uploaded as the original GIF bytes. Do this before
+        // legacy frame validation because the preview animation is not the
+        // payload in this mode.
+        if (ScreensaverMediaService.TryGetRawGifSource(
+                animation,
+                out RynorRawGifSource rawGif))
+        {
+            if (!SupportsRawGif)
+            {
+                Log(
+                    "WARN",
+                    "Connected RYNOR firmware does not support raw GIF storage. " +
+                    "Update firmware instead of silently falling back to 160x86.");
+                return false;
+            }
+
+            return await SendRynorRawGifAsync(
+                rawGif,
+                useUsb,
+                progress);
+        }
 
         if (animation.Frames.Count < 1 ||
             animation.Frames.Count > ScreensaverMediaService.MaxFrames)
         {
             throw new InvalidOperationException("Invalid screensaver frame count.");
         }
-
-        // Even when the app is currently linked over Bluetooth, probe the
-        // dedicated CDC port before a large upload. USB wins automatically
-        // when present; Bluetooth remains the fallback.
-        bool useUsb = await EnsureUsbForBulkAsync();
 
         if (animation.PixelFormat == ScreensaverPixelFormat.Rgb565)
         {
@@ -1368,6 +1390,227 @@ public sealed class SerialLink : IDeviceLink
         finally
         {
             _mediaGate.Release();
+        }
+    }
+
+    private async Task<bool> SendRynorRawGifAsync(
+        RynorRawGifSource source,
+        bool useUsb,
+        IProgress<int>? progress)
+    {
+        if (!SupportsRawGif ||
+            string.IsNullOrWhiteSpace(source.Path) ||
+            !File.Exists(source.Path) ||
+            source.Length < 13 ||
+            source.Length > RynorPackedAnimationEncoder.HardTargetBytes)
+        {
+            return false;
+        }
+
+        long actualLength = new FileInfo(source.Path).Length;
+        if (actualLength != source.Length)
+        {
+            Log("ERROR", "RYNOR GIF source changed after it was selected.");
+            return false;
+        }
+
+        DateTimeOffset started = DateTimeOffset.UtcNow;
+
+        if (useUsb && SupportsBinaryGifUpload && _port?.IsOpen == true)
+        {
+            await _writeGate.WaitAsync();
+            try
+            {
+                if (_port?.IsOpen != true)
+                    return false;
+
+                _port.ReadTimeout = 60000;
+                _port.WriteTimeout = 60000;
+                _port.DiscardInBuffer();
+
+                string begin =
+                    $"GIFBINBEGIN|{source.Length}|{(int)source.ScaleMode}\n";
+                byte[] beginBytes = Encoding.UTF8.GetBytes(begin);
+                _port.Write(beginBytes, 0, beginBytes.Length);
+
+                string beginAck =
+                    await Task.Run(() => _port.ReadLine().Trim());
+
+                if (!string.Equals(
+                        beginAck,
+                        "GIFACK|BEGIN",
+                        StringComparison.Ordinal))
+                {
+                    Log("ERROR", $"Raw GIF begin rejected: {beginAck}");
+                    return false;
+                }
+
+                const int transferBlock = 32 * 1024;
+                byte[] buffer = new byte[transferBlock];
+                long sent = 0;
+
+                using var stream = new FileStream(
+                    source.Path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    transferBlock,
+                    FileOptions.SequentialScan);
+
+                while (true)
+                {
+                    int count =
+                        await stream.ReadAsync(
+                            buffer.AsMemory(0, buffer.Length));
+
+                    if (count <= 0)
+                        break;
+
+                    // SerialPort's managed async BaseStream path is unreliable
+                    // on some USB CDC drivers. A blocking write here provides
+                    // natural CDC back-pressure; run it off the UI thread.
+                    await Task.Run(
+                        () => _port.Write(buffer, 0, count));
+
+                    sent += count;
+                    progress?.Report(
+                        (int)Math.Clamp(
+                            Math.Round(
+                                sent * 100.0 /
+                                Math.Max(1L, source.Length)),
+                            0,
+                            100));
+                }
+
+                if (sent != source.Length)
+                {
+                    Log(
+                        "ERROR",
+                        $"Raw GIF short write: {sent}/{source.Length} bytes.");
+                    return false;
+                }
+
+                string finalAck =
+                    await Task.Run(() => _port.ReadLine().Trim());
+
+                bool ready =
+                    string.Equals(
+                        finalAck,
+                        "GIFACK|READY",
+                        StringComparison.Ordinal);
+
+                double seconds =
+                    Math.Max(
+                        0.001,
+                        (DateTimeOffset.UtcNow - started).TotalSeconds);
+
+                Log(
+                    ready ? "INFO" : "ERROR",
+                    $"RYNOR raw GIF USB: {source.Length} bytes in {seconds:F2}s " +
+                    $"({source.Length / 1024.0 / seconds:F0} KiB/s), " +
+                    $"ack={finalAck}");
+
+                if (ready)
+                    progress?.Report(100);
+
+                return ready;
+            }
+            catch (Exception ex)
+            {
+                Log(
+                    "ERROR",
+                    $"RYNOR raw GIF binary upload failed: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
+        }
+
+        // BLE fallback keeps the original GIF bytes as well. It is slower than
+        // USB but never degrades to the 160x86 compatibility animation.
+        const int rawChunkSize = 180;
+        long offset = 0;
+
+        try
+        {
+            await SendLineAsync(
+                $"GIFBEGIN|{source.Length}|{(int)source.ScaleMode}");
+
+            byte[] buffer = new byte[rawChunkSize];
+
+            using var stream = new FileStream(
+                source.Path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                rawChunkSize,
+                FileOptions.SequentialScan);
+
+            while (true)
+            {
+                int count =
+                    await stream.ReadAsync(
+                        buffer.AsMemory(0, buffer.Length));
+
+                if (count <= 0)
+                    break;
+
+                string base64 =
+                    Convert.ToBase64String(
+                        buffer,
+                        0,
+                        count);
+
+                await SendBulkLineAsync(
+                    $"GIFCHUNK|{offset}|{base64}");
+
+                offset += count;
+
+                progress?.Report(
+                    (int)Math.Clamp(
+                        Math.Round(
+                            offset * 100.0 /
+                            Math.Max(1L, source.Length)),
+                        0,
+                        100));
+
+                await Task.Delay(2);
+            }
+
+            if (offset != source.Length)
+                return false;
+
+            await SendLineAsync("GIFEND");
+            await Task.Delay(180);
+
+            if (_bleCharacteristic is null)
+                return false;
+
+            string status =
+                await ReadBleStatusAsync();
+
+            bool ready =
+                status.Contains(
+                    "SAVER:READY",
+                    StringComparison.Ordinal);
+
+            Log(
+                ready ? "INFO" : "ERROR",
+                $"RYNOR raw GIF BLE verify: {status}");
+
+            if (ready)
+                progress?.Report(100);
+
+            return ready;
+        }
+        catch (Exception ex)
+        {
+            Log(
+                "ERROR",
+                $"RYNOR raw GIF BLE upload failed: {ex.Message}");
+            return false;
         }
     }
 
