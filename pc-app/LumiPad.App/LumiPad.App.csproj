@@ -32,6 +32,7 @@
   <!-- LumiPad v1.23.49 · PIXEL PXM2 RGB565 Main Menu + USB recovery -->
   <!-- LumiPad v1.23.51 · PIXEL SAFE_USB recovery awareness -->
   <!-- LumiPad v1.23.52 · RYNOR 10 MiB external GIF flash support -->
+  <!-- LumiPad v1.23.53 · RYNOR preserve source GIF timing below 10 MiB -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -46,9 +47,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.23.52</Version>
-    <AssemblyVersion>1.23.52.0</AssemblyVersion>
-    <FileVersion>1.23.52.0</FileVersion>
+    <Version>1.23.53</Version>
+    <AssemblyVersion>1.23.53.0</AssemblyVersion>
+    <FileVersion>1.23.53.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Products\pixel-pro.png" LogicalName="Assets/Products/pixel-pro.png" />
