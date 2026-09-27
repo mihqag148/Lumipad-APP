@@ -9388,19 +9388,16 @@ try {{
             {
                 double sourceMb =
                     rynorGif.Length / 1048576.0;
-                double durationSeconds =
-                    rynorGif.DurationMs / 1000.0;
 
                 ScreensaverMediaInfo.Text =
                     L(
-                        $"Native GIF · {rynorGif.SourceWidth}×{rynorGif.SourceHeight} source · {rynorGif.FrameCount} frames · {durationSeconds:0.##} s · {sourceMb:0.00} MB · original timing · {rynorGif.ScaleMode}",
-                        $"GIF nguyên bản · nguồn {rynorGif.SourceWidth}×{rynorGif.SourceHeight} · {rynorGif.FrameCount} khung · {durationSeconds:0.##} giây · {sourceMb:0.00} MB · giữ timing gốc · {rynorGif.ScaleMode}");
+                        $"Native GIF · {rynorGif.SourceWidth}×{rynorGif.SourceHeight} source · {sourceMb:0.00} MB · original file + timing · {rynorGif.ScaleMode}",
+                        $"GIF nguyên bản · nguồn {rynorGif.SourceWidth}×{rynorGif.SourceHeight} · {sourceMb:0.00} MB · giữ nguyên file + timing · {rynorGif.ScaleMode}");
 
-                ScreensaverPreviewImage.Source =
-                    CreateRgb565Bitmap(
-                        _screensaverAnimation.Frames[0],
-                        _screensaverAnimation.Width,
-                        _screensaverAnimation.Height);
+                // RYNOR native GIFs are not decoded on the PC anymore. Avoid
+                // allocating/rendering animation frames in WPF; the real
+                // preview is the keyboard display after upload.
+                ScreensaverPreviewImage.Source = null;
             }
             else if (_screensaverAnimation.PixelFormat ==
                 ScreensaverPixelFormat.Rgb565)
@@ -9465,8 +9462,24 @@ try {{
                         _screensaverAnimation.Height);
             }
 
-            ScreensaverPreviewImage.Visibility = Visibility.Visible;
-            ScreensaverPreviewHint.Visibility = Visibility.Collapsed;
+            if (rynorRawGif)
+            {
+                ScreensaverPreviewImage.Visibility =
+                    Visibility.Collapsed;
+                ScreensaverPreviewHint.Text =
+                    L(
+                        "Native GIF · preview on RYNOR ONE after upload",
+                        "GIF nguyên bản · xem trực tiếp trên RYNOR ONE sau khi tải");
+                ScreensaverPreviewHint.Visibility =
+                    Visibility.Visible;
+            }
+            else
+            {
+                ScreensaverPreviewImage.Visibility =
+                    Visibility.Visible;
+                ScreensaverPreviewHint.Visibility =
+                    Visibility.Collapsed;
+            }
 
             if (PixelHomePreviewHint is not null)
                 PixelHomePreviewHint.Visibility =

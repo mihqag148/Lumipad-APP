@@ -143,51 +143,90 @@ public static class ScreensaverMediaService
                 $"Maximum GIF size is {MaxRawGifBytes / 1048576.0:0.00} MB.");
         }
 
-        using var image = Drawing.Image.FromFile(path);
+        // Native RYNOR GIFs are copied byte-for-byte to the keyboard, so the
+        // PC app does not need to decode every frame just to select the file.
+        // Reading only the 13-byte GIF header keeps selection/startup instant
+        // even for highly compressed GIFs with thousands of frames.
+        Span<byte> header = stackalloc byte[13];
 
-        if (image.Width < 1 ||
-            image.Height < 1 ||
-            image.Width > 2048 ||
-            image.Height > 2048)
+        using (var stream = new FileStream(
+                   path,
+                   FileMode.Open,
+                   FileAccess.Read,
+                   FileShare.Read,
+                   4096,
+                   FileOptions.SequentialScan))
+        {
+            int read = 0;
+
+            while (read < header.Length)
+            {
+                int count =
+                    stream.Read(
+                        header.Slice(read));
+
+                if (count <= 0)
+                    break;
+
+                read += count;
+            }
+
+            if (read != header.Length)
+            {
+                throw new InvalidDataException(
+                    "The selected GIF header is incomplete.");
+            }
+        }
+
+        bool gif87a =
+            header[0] == (byte)'G' &&
+            header[1] == (byte)'I' &&
+            header[2] == (byte)'F' &&
+            header[3] == (byte)'8' &&
+            header[4] == (byte)'7' &&
+            header[5] == (byte)'a';
+
+        bool gif89a =
+            header[0] == (byte)'G' &&
+            header[1] == (byte)'I' &&
+            header[2] == (byte)'F' &&
+            header[3] == (byte)'8' &&
+            header[4] == (byte)'9' &&
+            header[5] == (byte)'a';
+
+        if (!gif87a && !gif89a)
+        {
+            throw new InvalidDataException(
+                "The selected file is not a valid GIF87a/GIF89a image.");
+        }
+
+        int sourceWidth =
+            header[6] |
+            (header[7] << 8);
+
+        int sourceHeight =
+            header[8] |
+            (header[9] << 8);
+
+        if (sourceWidth < 1 ||
+            sourceHeight < 1 ||
+            sourceWidth > 2048 ||
+            sourceHeight > 2048)
         {
             throw new InvalidDataException(
                 "RYNOR ONE GIF canvas must be between 1x1 and 2048x2048.");
         }
 
-        var dimension =
-            new FrameDimension(image.FrameDimensionsList[0]);
-        int frameCount =
-            Math.Max(1, image.GetFrameCount(dimension));
-
-        int[] sourceDelaysMs =
-            ReadGifFrameDelaysMs(image, frameCount);
-        int durationMs =
-            Math.Max(1, sourceDelaysMs.Sum());
-
-        image.SelectActiveFrame(dimension, 0);
-
-        using var firstFrame = new Drawing.Bitmap(
-            image.Width,
-            image.Height,
-            PixelFormat.Format32bppArgb);
-
-        using (var g = Drawing.Graphics.FromImage(firstFrame))
-        {
-            g.Clear(Drawing.Color.Transparent);
-            g.DrawImageUnscaled(image, 0, 0);
-        }
-
-        // UI preview only. This frame is never uploaded as the GIF payload.
+        // The real GIF is decoded on RYNOR ONE. Keep only a tiny local
+        // placeholder frame so the WPF media model stays compatible without
+        // spending CPU/RAM decoding the animation on the PC.
         byte[] preview =
-            ToRgb565(firstFrame, scaleMode);
+            new byte[
+                Width *
+                Height *
+                2];
 
-        int previewDelay =
-            Math.Clamp(
-                sourceDelaysMs.Length > 0
-                    ? sourceDelaysMs[0]
-                    : 100,
-                MinFrameIntervalMs,
-                5000);
+        const int previewDelay = 100;
 
         var animation =
             new ScreensaverAnimation(
@@ -204,10 +243,10 @@ public static class ScreensaverMediaService
             new RynorRawGifSource(
                 path,
                 sourceFile.Length,
-                image.Width,
-                image.Height,
-                frameCount,
-                durationMs,
+                sourceWidth,
+                sourceHeight,
+                0,
+                0,
                 scaleMode));
 
         return animation;

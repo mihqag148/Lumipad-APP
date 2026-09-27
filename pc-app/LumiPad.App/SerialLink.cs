@@ -664,7 +664,9 @@ public sealed class SerialLink : IDeviceLink
         }
     }
 
-    private async Task<string> SendUsbSaverLineAsync(string line)
+    private async Task<string> SendUsbSaverLineAsync(
+        string line,
+        bool quiet = false)
     {
         await _writeGate.WaitAsync();
         try
@@ -672,23 +674,69 @@ public sealed class SerialLink : IDeviceLink
             if (_port?.IsOpen != true)
                 throw new IOException("LumiPad USB link is not available.");
 
-            _port.ReadTimeout = 8000;
-            byte[] data = Encoding.UTF8.GetBytes(line + "\n");
-            _port.Write(data, 0, data.Length);
+            _port.ReadTimeout = 10000;
+            _port.WriteTimeout = 10000;
 
-            string ack = await Task.Run(() => _port.ReadLine().Trim());
-            Log(ack.EndsWith("|ERROR", StringComparison.Ordinal) ? "ERROR" : "FW",
-                $"USB <- {ack}");
+            byte[] data =
+                Encoding.UTF8.GetBytes(
+                    line + "\n");
+
+            // SerialPort.Write can block while the MCU erases/writes a flash
+            // page. Keep that wait off the WPF dispatcher so the app never
+            // looks frozen during a media transfer.
+            await Task.Run(
+                () => _port.Write(
+                    data,
+                    0,
+                    data.Length));
+
+            string ack =
+                await Task.Run(
+                    () => _port.ReadLine().Trim());
+
+            bool isError =
+                ack.EndsWith(
+                    "|ERROR",
+                    StringComparison.Ordinal);
+
+            bool importantAck =
+                isError ||
+                ack.EndsWith(
+                    "|BEGIN",
+                    StringComparison.Ordinal) ||
+                ack.EndsWith(
+                    "|READY",
+                    StringComparison.Ordinal);
+
+            if (!quiet || importantAck)
+            {
+                Log(
+                    isError ? "ERROR" : "FW",
+                    $"USB <- {ack}");
+            }
+
             bool knownAck =
-                ack.StartsWith("SAVACK|", StringComparison.Ordinal) ||
-                ack.StartsWith("ASSETACK|", StringComparison.Ordinal) ||
-                ack.StartsWith("GIFACK|", StringComparison.Ordinal);
+                ack.StartsWith(
+                    "SAVACK|",
+                    StringComparison.Ordinal) ||
+                ack.StartsWith(
+                    "ASSETACK|",
+                    StringComparison.Ordinal) ||
+                ack.StartsWith(
+                    "GIFACK|",
+                    StringComparison.Ordinal);
 
             if (!knownAck)
-                throw new IOException($"Unexpected LumiPad USB response: {ack}");
+            {
+                throw new IOException(
+                    $"Unexpected LumiPad USB response: {ack}");
+            }
 
-            if (ack.EndsWith("|ERROR", StringComparison.Ordinal))
-                throw new IOException("LumiPad rejected a media/storage chunk.");
+            if (isError)
+            {
+                throw new IOException(
+                    "LumiPad rejected a media/storage chunk.");
+            }
 
             return ack;
         }
@@ -1321,82 +1369,97 @@ public sealed class SerialLink : IDeviceLink
 
         DateTimeOffset started = DateTimeOffset.UtcNow;
 
-        if (useUsb && SupportsBinaryGifUpload && _port?.IsOpen == true)
+        if (useUsb && _port?.IsOpen == true)
         {
-            await _writeGate.WaitAsync();
+            const int usbChunkSize = 840;
+            long usbOffset = 0;
+
             try
             {
-                if (_port?.IsOpen != true)
-                    return false;
-
-                _port.ReadTimeout = 60000;
-                _port.WriteTimeout = 60000;
-                _port.DiscardInBuffer();
-
-                string begin =
-                    $"GIFBINBEGIN|{source.Length}|{(int)source.ScaleMode}\n";
-                byte[] beginBytes = Encoding.UTF8.GetBytes(begin);
-                _port.Write(beginBytes, 0, beginBytes.Length);
-
                 string beginAck =
-                    await Task.Run(() => _port.ReadLine().Trim());
+                    await SendUsbSaverLineAsync(
+                        $"GIFBEGIN|{source.Length}|{(int)source.ScaleMode}");
 
                 if (!string.Equals(
                         beginAck,
                         "GIFACK|BEGIN",
                         StringComparison.Ordinal))
                 {
-                    Log("ERROR", $"Raw GIF begin rejected: {beginAck}");
+                    Log(
+                        "ERROR",
+                        $"Raw GIF begin rejected: {beginAck}");
                     return false;
                 }
 
-                const int transferBlock = 32 * 1024;
-                byte[] buffer = new byte[transferBlock];
-                long sent = 0;
+                byte[] buffer =
+                    new byte[usbChunkSize];
 
-                using var stream = new FileStream(
-                    source.Path,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    transferBlock,
-                    FileOptions.SequentialScan);
+                using var stream =
+                    new FileStream(
+                        source.Path,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        usbChunkSize,
+                        FileOptions.SequentialScan);
 
                 while (true)
                 {
                     int count =
                         await stream.ReadAsync(
-                            buffer.AsMemory(0, buffer.Length));
+                            buffer.AsMemory(
+                                0,
+                                buffer.Length));
 
                     if (count <= 0)
                         break;
 
-                    // SerialPort's managed async BaseStream path is unreliable
-                    // on some USB CDC drivers. A blocking write here provides
-                    // natural CDC back-pressure; run it off the UI thread.
-                    await Task.Run(
-                        () => _port.Write(buffer, 0, count));
+                    string base64 =
+                        Convert.ToBase64String(
+                            buffer,
+                            0,
+                            count);
 
-                    sent += count;
+                    string ack =
+                        await SendUsbSaverLineAsync(
+                            $"GIFCHUNK|{usbOffset}|{base64}",
+                            quiet: true);
+
+                    if (!string.Equals(
+                            ack,
+                            "GIFACK|CHUNK",
+                            StringComparison.Ordinal))
+                    {
+                        Log(
+                            "ERROR",
+                            $"Unexpected GIF chunk ACK at {usbOffset}: {ack}");
+                        return false;
+                    }
+
+                    usbOffset += count;
+
                     progress?.Report(
                         (int)Math.Clamp(
                             Math.Round(
-                                sent * 100.0 /
-                                Math.Max(1L, source.Length)),
+                                usbOffset * 100.0 /
+                                Math.Max(
+                                    1L,
+                                    source.Length)),
                             0,
-                            100));
+                            99));
                 }
 
-                if (sent != source.Length)
+                if (usbOffset != source.Length)
                 {
                     Log(
                         "ERROR",
-                        $"Raw GIF short write: {sent}/{source.Length} bytes.");
+                        $"Raw GIF short write: {usbOffset}/{source.Length} bytes.");
                     return false;
                 }
 
                 string finalAck =
-                    await Task.Run(() => _port.ReadLine().Trim());
+                    await SendUsbSaverLineAsync(
+                        "GIFEND");
 
                 bool ready =
                     string.Equals(
@@ -1407,7 +1470,8 @@ public sealed class SerialLink : IDeviceLink
                 double seconds =
                     Math.Max(
                         0.001,
-                        (DateTimeOffset.UtcNow - started).TotalSeconds);
+                        (DateTimeOffset.UtcNow - started)
+                            .TotalSeconds);
 
                 Log(
                     ready ? "INFO" : "ERROR",
@@ -1424,12 +1488,8 @@ public sealed class SerialLink : IDeviceLink
             {
                 Log(
                     "ERROR",
-                    $"RYNOR raw GIF binary upload failed: {ex.Message}");
+                    $"RYNOR raw GIF USB upload failed: {ex.Message}");
                 return false;
-            }
-            finally
-            {
-                _writeGate.Release();
             }
         }
 
