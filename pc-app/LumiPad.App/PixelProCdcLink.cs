@@ -312,8 +312,6 @@ public sealed class PixelProCdcLink : IDeviceLink
 
                     if (IsSafeUsbRecovery)
                     {
-                        BeginCriticalIo();
-
                         Log(
                             "WARN",
                             "PIXEL PRO is in SAFE_USB recovery mode. Background/device configuration traffic is suppressed; firmware update remains available.");
@@ -1371,6 +1369,10 @@ public sealed class PixelProCdcLink : IDeviceLink
         _connectionName = "";
         FirmwareHello = "";
         ProtocolVersion = 0;
+
+        System.Threading.Interlocked.Exchange(
+            ref _backgroundTrafficSuppressionCount,
+            0);
     }
 
     public void SendNowPlaying(NowPlayingData data) { }
