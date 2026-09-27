@@ -109,15 +109,20 @@ public sealed class PixelProCdcLink : IDeviceLink
     private int _activeProfile;
     public string? LastScreensaverError { get; private set; }
 
+    public bool IsSafeUsbRecovery =>
+        FirmwareHello.Contains(
+            "|SAFE_USB=1",
+            StringComparison.OrdinalIgnoreCase);
+
     public bool SupportsDiagnostics => true;
-    public bool SupportsMemoryInfo => true;
-    public bool SupportsPanelInfo => true;
-    public bool SupportsSaverState => true;
-    public bool SupportsProfileSwitch => true;
+    public bool SupportsMemoryInfo => !IsSafeUsbRecovery;
+    public bool SupportsPanelInfo => !IsSafeUsbRecovery;
+    public bool SupportsSaverState => !IsSafeUsbRecovery;
+    public bool SupportsProfileSwitch => !IsSafeUsbRecovery;
     public bool SupportsActions => false;
     public bool SupportsVariableArtwork => false;
     public bool SupportsBatteryInfo => false;
-    public bool SupportsPcMonitor => true;
+    public bool SupportsPcMonitor => !IsSafeUsbRecovery;
 
 
     public void BeginCriticalIo()
@@ -287,7 +292,10 @@ public sealed class PixelProCdcLink : IDeviceLink
                     candidate = null;
                     FirmwareHello = hello;
                     ProtocolVersion = ParseProtocolVersion(hello);
-                    _connectionName = $"USB CDC · {portName}";
+                    _connectionName =
+                        IsSafeUsbRecovery
+                            ? $"USB CDC Recovery · {portName}"
+                            : $"USB CDC · {portName}";
 
                     PortCandidate? info = metadata.FirstOrDefault(
                         x => string.Equals(
@@ -302,10 +310,21 @@ public sealed class PixelProCdcLink : IDeviceLink
 
                     StartReader();
 
-                    // Tell PIXEL PRO which host family is connected so the
-                    // bottom app dock can match Windows, macOS, or Linux.
-                    SendCommand(
-                        $"HOSTOS|{HostOsToken}");
+                    if (IsSafeUsbRecovery)
+                    {
+                        BeginCriticalIo();
+
+                        Log(
+                            "WARN",
+                            "PIXEL PRO is in SAFE_USB recovery mode. Background/device configuration traffic is suppressed; firmware update remains available.");
+                    }
+                    else
+                    {
+                        // Tell PIXEL PRO which host family is connected so the
+                        // bottom app dock can match Windows, macOS, or Linux.
+                        SendCommand(
+                            $"HOSTOS|{HostOsToken}");
+                    }
 
                     return _connectionName;
                 }
@@ -1258,6 +1277,15 @@ public sealed class PixelProCdcLink : IDeviceLink
 
     private async Task SendCommandSerializedAsync(string command)
     {
+        if (IsSafeUsbRecovery &&
+            !string.Equals(
+                command,
+                "REBOOT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         try
         {
             await _commandGate
@@ -3166,6 +3194,14 @@ public sealed class PixelProCdcLink : IDeviceLink
     public async Task<bool> EnsureStorageReadyAsync(
         CancellationToken cancellationToken = default)
     {
+        if (IsSafeUsbRecovery)
+        {
+            LastScreensaverError =
+                "PIXEL PRO is in SAFE USB Recovery. Update/reflash firmware before using media or Main Menu.";
+
+            return false;
+        }
+
         PixelProStorageInfo? info =
             await GetStorageInfoAsync(
                     cancellationToken)
@@ -3216,6 +3252,7 @@ public sealed class PixelProCdcLink : IDeviceLink
     public async Task<DeviceMemoryUsage?> ReadMemoryUsageAsync()
     {
         if (!IsConnected ||
+            IsSafeUsbRecovery ||
             IsBackgroundTrafficSuppressed)
         {
             return null;
@@ -3571,13 +3608,15 @@ public sealed class PixelProCdcLink : IDeviceLink
     private async Task<bool> SendPixelRealtimeLineAsync(
         string line)
     {
-        if (IsBackgroundTrafficSuppressed)
+        if (IsSafeUsbRecovery ||
+            IsBackgroundTrafficSuppressed)
             return true;
 
         await _commandGate.WaitAsync();
         try
         {
-            if (IsBackgroundTrafficSuppressed)
+            if (IsSafeUsbRecovery ||
+                IsBackgroundTrafficSuppressed)
                 return true;
 
             SerialPort? port = _port;
@@ -3613,7 +3652,9 @@ public sealed class PixelProCdcLink : IDeviceLink
         // Profile / time / CPU / GPU layout, so no six-slot layout config is
         // needed. Returning the connection state keeps the shared monitor loop
         // happy without changing any RYNOR behavior.
-        return Task.FromResult(IsConnected);
+        return Task.FromResult(
+            IsConnected &&
+            !IsSafeUsbRecovery);
     }
 
     public Task<bool> SendPcMonitorAsync(
