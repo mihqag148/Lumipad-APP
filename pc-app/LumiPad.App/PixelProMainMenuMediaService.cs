@@ -12,7 +12,11 @@ public static class PixelProMainMenuMediaService
 {
     public const int BackgroundWidth = 480;
     public const int BackgroundHeight = 320;
-    public const int BackgroundMaxBytes = 96 * 1024;
+    public const int BackgroundMaxBytes = 320 * 1024;
+    public const int CompositePxm2HeaderBytes = 8;
+    public const int CompositePxm2Bytes =
+        CompositePxm2HeaderBytes +
+        BackgroundWidth * BackgroundHeight * 2;
 
     // eezBotFun-style 8-key layout uses native 96x96 icon canvases. The
     // custom PXI1 payload stores RGB565 pixels plus a transparent color key,
@@ -462,6 +466,99 @@ public static class PixelProMainMenuMediaService
             BackgroundMaxBytes,
             [90, 84, 78, 72, 66, 60, 54, 48, 42, 36],
             "Composite Main Menu cannot be reduced below 96 KiB.");
+    }
+
+    public static byte[] CreateCompositeMenuPxm2(
+        PixelProMainMenuProfile profile,
+        IReadOnlyList<string> labels)
+    {
+        // Reuse the exact same composition path the app preview already uses,
+        // then convert the finished 480x320 frame once on the PC. Firmware no
+        // longer needs JPEGDEC for Main Menu rendering.
+        byte[] jpeg =
+            CreateCompositeMenuJpeg(
+                profile,
+                labels);
+
+        using var encoded =
+            new MemoryStream(
+                jpeg,
+                writable: false);
+
+        using var decoded =
+            new Bitmap(
+                encoded);
+
+        if (decoded.Width != BackgroundWidth ||
+            decoded.Height != BackgroundHeight)
+        {
+            throw new InvalidOperationException(
+                "Composite Main Menu did not decode to 480×320.");
+        }
+
+        using var stream =
+            new MemoryStream(
+                CompositePxm2Bytes);
+
+        using var writer =
+            new BinaryWriter(
+                stream);
+
+        writer.Write(
+            new byte[]
+            {
+                (byte)'P',
+                (byte)'X',
+                (byte)'M',
+                (byte)'2'
+            });
+
+        writer.Write(
+            (ushort)BackgroundWidth);
+
+        writer.Write(
+            (ushort)BackgroundHeight);
+
+        for (int y = 0;
+             y < BackgroundHeight;
+             y++)
+        {
+            for (int x = 0;
+                 x < BackgroundWidth;
+                 x++)
+            {
+                Color pixel =
+                    decoded.GetPixel(
+                        x,
+                        y);
+
+                ushort rgb565 =
+                    (ushort)(
+                        ((pixel.R * 31 + 127) /
+                         255) << 11 |
+                        ((pixel.G * 63 + 127) /
+                         255) << 5 |
+                        ((pixel.B * 31 + 127) /
+                         255));
+
+                writer.Write(
+                    rgb565);
+            }
+        }
+
+        writer.Flush();
+
+        byte[] result =
+            stream.ToArray();
+
+        if (result.Length !=
+            CompositePxm2Bytes)
+        {
+            throw new InvalidOperationException(
+                "PXM2 Main Menu size mismatch.");
+        }
+
+        return result;
     }
 
     private static GraphicsPath RoundedRectPath(
