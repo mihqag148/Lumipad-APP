@@ -602,7 +602,7 @@ public partial class MainWindow
                 await Task.Run(
                     () =>
                         PixelProMainMenuMediaService
-                            .CreateCompositeMenuJpeg(
+                            .CreateCompositeMenuPxm2(
                                 profile,
                                 labels));
 
@@ -621,7 +621,7 @@ public partial class MainWindow
                     composite))
             {
                 throw new InvalidOperationException(
-                    "PIXEL PRO rejected the 480×320 composite Main Menu image.");
+                    "PIXEL PRO rejected the 480×320 PXM2 Main Menu image.");
             }
 
             if (!await pixel.SetMainMenuCompositeModeAsync(
@@ -724,13 +724,13 @@ public partial class MainWindow
 
             PixelMenuStatusText.Text =
                 L(
-                    $"Restored 480×320 composite Main Menu to PIXEL PRO Profile {profileIndex + 1:00}.",
+                    $"Restored 480×320 PXM2 Main Menu to PIXEL PRO Profile {profileIndex + 1:00}.",
                     $"Đã khôi phục Main Menu composite 480×320 vào PIXEL PRO Profile {profileIndex + 1:00}.");
 
             AddLog(
                 "INFO",
                 "PIXEL MENU",
-                $"Composite reconnect restore verified for Profile {profileIndex + 1:00}: actions={string.Join(",", actions)}, jpeg={composite.Length} bytes.");
+                $"Composite reconnect restore verified for Profile {profileIndex + 1:00}: actions={string.Join(",", actions)}, pxm2={composite.Length} bytes.");
 
             return true;
         }
@@ -2334,7 +2334,7 @@ public partial class MainWindow
                 await Task.Run(
                     () =>
                         PixelProMainMenuMediaService
-                            .CreateCompositeMenuJpeg(
+                            .CreateCompositeMenuPxm2(
                                 profile,
                                 labels));
 
@@ -2367,7 +2367,7 @@ public partial class MainWindow
                     composite))
             {
                 throw new InvalidOperationException(
-                    "PIXEL PRO rejected the exact 480×320 Main Menu image.");
+                    "PIXEL PRO rejected the exact 480×320 PXM2 Main Menu.");
             }
 
             ReportOperation();
