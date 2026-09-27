@@ -24,7 +24,8 @@ internal sealed record RynorPackedAnimationResult(
     int DurationMs,
     RynorPackedColorMode ColorMode,
     ScreensaverScaleMode ScaleMode,
-    bool UsedFallbackQuality);
+    bool UsedFallbackQuality,
+    bool PreservedSourceTiming);
 
 /// <summary>
 /// RYNOR ONE animation packer.
@@ -154,7 +155,8 @@ internal static class RynorPackedAnimationEncoder
                     exact.DurationMs,
                     exact.ColorMode,
                     scaleMode,
-                    false);
+                    false,
+                    true);
             }
 
             // A compressed GIF can expand beyond 10 MiB after decoding and
@@ -205,7 +207,8 @@ internal static class RynorPackedAnimationEncoder
                             candidate.ColorMode,
                             scaleMode,
                             !firstCandidate ||
-                            sourceBytes >= SourceLosslessThresholdBytes);
+                            sourceBytes >= SourceLosslessThresholdBytes,
+                            false);
                     }
 
                     firstCandidate = false;
