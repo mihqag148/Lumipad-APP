@@ -33,6 +33,7 @@
   <!-- LumiPad v1.23.51 · PIXEL SAFE_USB recovery awareness -->
   <!-- LumiPad v1.23.52 · RYNOR 10 MiB external GIF flash support -->
   <!-- LumiPad v1.23.53 · RYNOR preserve source GIF timing below 10 MiB -->
+  <!-- LumiPad v1.23.54 · RYNOR raw GIF + fast binary USB upload -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -47,9 +48,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.23.53</Version>
-    <AssemblyVersion>1.23.53.0</AssemblyVersion>
-    <FileVersion>1.23.53.0</FileVersion>
+    <Version>1.23.54</Version>
+    <AssemblyVersion>1.23.54.0</AssemblyVersion>
+    <FileVersion>1.23.54.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Products\pixel-pro.png" LogicalName="Assets/Products/pixel-pro.png" />
