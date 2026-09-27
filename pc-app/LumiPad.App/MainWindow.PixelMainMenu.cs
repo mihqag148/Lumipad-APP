@@ -192,6 +192,21 @@ public partial class MainWindow
             return;
         }
 
+        if (pixel.IsSafeUsbRecovery)
+        {
+            PixelMenuStatusText.Text =
+                L(
+                    "PIXEL PRO is in SAFE USB Recovery. Update firmware before syncing Main Menu/media.",
+                    "PIXEL PRO đang ở SAFE USB Recovery. Hãy cập nhật firmware trước khi đồng bộ Main Menu/media.");
+
+            AddLog(
+                "WARN",
+                "PIXEL RECOVERY",
+                "Main Menu synchronization skipped because the device is in SAFE_USB recovery mode.");
+
+            return;
+        }
+
         string? resetInfo =
             await pixel.GetResetInfoAsync();
 
