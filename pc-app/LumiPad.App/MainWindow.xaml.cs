@@ -1214,8 +1214,8 @@ public partial class MainWindow : Window
                         "Choose a GIF or image. Final output specs will appear here after processing.",
                         "Chọn GIF hoặc ảnh. Thông số đầu ra sau xử lý sẽ hiển thị tại đây.")
                     : L(
-                        $"Converted to a lightweight loop for {productName}.",
-                        $"Tự chuyển thành vòng lặp nhẹ cho {productName}.");
+                        $"GIF files are stored unchanged on {productName} and decoded on-device.",
+                        $"GIF được lưu nguyên file trên {productName} và giải mã trực tiếp trên thiết bị.");
         }
 
         if (IsPixelProActive)
@@ -1231,7 +1231,7 @@ public partial class MainWindow : Window
             if (RynorPanelInfoText is not null)
             {
                 RynorPanelInfoText.Text =
-                    "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+                    "ST7789 ≈60 Hz default · SPI 32 MHz · native GIF timing · on-device decode";
             }
         }
 
@@ -3365,11 +3365,21 @@ public partial class MainWindow : Window
         {
             if (RynorFlashUsageText is not null)
             {
+                double rynorFlashPct =
+                    usage.Value.FlashTotal > 0
+                        ? Math.Clamp(
+                            usage.Value.FlashUsed * 100.0 /
+                            usage.Value.FlashTotal,
+                            0.0,
+                            100.0)
+                        : 0.0;
+
                 RynorFlashUsageText.Text =
-                    PercentText(
-                        "FLASH",
-                        usage.Value.FlashUsed,
-                        usage.Value.FlashTotal);
+                    usage.Value.FlashTotal > 0
+                        ? $"FLASH {rynorFlashPct:0.0}% · " +
+                          $"{usage.Value.FlashUsed / 1048576.0:0.00}/" +
+                          $"{usage.Value.FlashTotal / 1048576.0:0.00} MB"
+                        : "FLASH --";
             }
 
             if (RynorRamUsageText is not null)
@@ -3390,7 +3400,7 @@ public partial class MainWindow : Window
         string fallback =
             pixel
                 ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
-                : "ST7789 ≈60 Hz default · SPI 32 MHz · GIF ≤25 FPS";
+                : "ST7789 ≈60 Hz default · SPI 32 MHz · native GIF timing";
 
         void SetActivePanelText(string value)
         {
@@ -3432,9 +3442,14 @@ public partial class MainWindow : Window
         double spiMhz =
             info.Value.SpiHz / 1_000_000.0;
 
+        int minGifDelayMs =
+            info.Value.GifMaxFps > 0
+                ? Math.Max(1, 1000 / info.Value.GifMaxFps)
+                : 10;
+
         SetActivePanelText(
             $"{info.Value.Panel} ≈{info.Value.RefreshHz} Hz default · " +
-            $"SPI {spiMhz:0.#} MHz · GIF ≤{info.Value.GifMaxFps} FPS");
+            $"SPI {spiMhz:0.#} MHz · native GIF timing · decoder ≥{minGifDelayMs} ms/frame");
     }
 
     private async void ConnectUsbButton_Click(object sender, RoutedEventArgs e)
@@ -9363,7 +9378,31 @@ try {{
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
 
-            if (_screensaverAnimation.PixelFormat ==
+            bool rynorRawGif =
+                !pixel &&
+                ScreensaverMediaService.TryGetRawGifSource(
+                    _screensaverAnimation,
+                    out RynorRawGifSource rynorGif);
+
+            if (rynorRawGif)
+            {
+                double sourceMb =
+                    rynorGif.Length / 1048576.0;
+                double durationSeconds =
+                    rynorGif.DurationMs / 1000.0;
+
+                ScreensaverMediaInfo.Text =
+                    L(
+                        $"Native GIF · {rynorGif.SourceWidth}×{rynorGif.SourceHeight} source · {rynorGif.FrameCount} frames · {durationSeconds:0.##} s · {sourceMb:0.00} MB · original timing · {rynorGif.ScaleMode}",
+                        $"GIF nguyên bản · nguồn {rynorGif.SourceWidth}×{rynorGif.SourceHeight} · {rynorGif.FrameCount} khung · {durationSeconds:0.##} giây · {sourceMb:0.00} MB · giữ timing gốc · {rynorGif.ScaleMode}");
+
+                ScreensaverPreviewImage.Source =
+                    CreateRgb565Bitmap(
+                        _screensaverAnimation.Frames[0],
+                        _screensaverAnimation.Width,
+                        _screensaverAnimation.Height);
+            }
+            else if (_screensaverAnimation.PixelFormat ==
                 ScreensaverPixelFormat.Rgb565)
             {
                 if (pixel)
@@ -9416,8 +9455,8 @@ try {{
                     pixel
                         ? pixelGifSummary
                         : L(
-                            $"{_screensaverAnimation.Frames.Count} stored GIF frames · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 integer 2× · max {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}",
-                            $"{_screensaverAnimation.Frames.Count} khung GIF lưu · {_screensaverAnimation.Width}×{_screensaverAnimation.Height} -> 320×172 phóng nguyên 2× · tối đa {ScreensaverMediaService.MaxPlaybackFps} FPS · {scaleMode}");
+                            "Unsupported legacy RYNOR GIF preview.",
+                            "Định dạng xem trước GIF RYNOR cũ không còn được dùng.");
 
                 ScreensaverPreviewImage.Source =
                     CreateRgb332Bitmap(
@@ -9451,8 +9490,12 @@ try {{
                         "Ready to upload.",
                         "Sẵn sàng tải lên.")
                     : L(
-                        "Ready. Send once to store the lightweight loop in LumiPad flash.",
-                        "Đã sẵn sàng. Gửi một lần để lưu vòng lặp nhẹ vào flash LumiPad.");
+                        rynorRawGif
+                            ? "Ready. The original GIF will be copied byte-for-byte to RYNOR ONE external flash."
+                            : "Ready. The full 320×172 RGB565 image will be stored on RYNOR ONE.",
+                        rynorRawGif
+                            ? "Sẵn sàng. File GIF gốc sẽ được chép nguyên byte vào flash ngoài của RYNOR ONE."
+                            : "Sẵn sàng. Ảnh RGB565 320×172 đầy đủ sẽ được lưu trên RYNOR ONE.");
             SetScreensaverUploadState(
                 L("Ready to upload", "Sẵn sàng tải lên"),
                 MediaColor.FromRgb(255, 159, 10));
@@ -9503,8 +9546,8 @@ try {{
                     "Sending frames to PIXEL PRO over native USB…",
                     "Đang gửi frame tới PIXEL PRO qua USB native…")
                 : L(
-                    "Sending frames… Bluetooth can take a little while.",
-                    "Đang gửi frame… Bluetooth có thể mất một lúc.");
+                    "Sending the RYNOR media asset… USB is preferred for native GIF files.",
+                    "Đang gửi media RYNOR… Ưu tiên USB khi tải GIF nguyên bản.");
 
         var progress = new Progress<int>(value =>
         {
