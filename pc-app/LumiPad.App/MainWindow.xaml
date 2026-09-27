@@ -527,7 +527,7 @@
                                            Margin="0,8,0,0"/>
 
                                 <TextBlock x:Name="ScreensaverMediaInfo"
-                                           Text="Converted to a lightweight loop for RYNOR ONE."
+                                           Text="GIF is stored unchanged on RYNOR ONE and decoded on-device."
                                            FontSize="11"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource Muted}"
@@ -628,7 +628,7 @@
                                 </StackPanel>
 
                                 <TextBlock x:Name="ScreensaverSendStatus"
-                                           Text="The file stays local. Only reduced animation frames are sent."
+                                           Text="The original GIF is stored on RYNOR ONE external flash."
                                            FontSize="11"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource Muted}"
