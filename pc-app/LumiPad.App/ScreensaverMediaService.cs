@@ -134,6 +134,54 @@ public static class ScreensaverMediaService
         int[] sourceDelaysMs = ReadGifFrameDelaysMs(image, total);
         int sourceLoopMs = Math.Max(1, sourceDelaysMs.Sum());
 
+        // Fast RYNOR path: if the original GIF already fits external flash,
+        // keep the file itself as the device payload. Build only one small
+        // RGB332 preview frame for the app; do not decode/resample the whole
+        // animation on the PC.
+        var sourceFile = new FileInfo(path);
+        if (sourceFile.Length >= 13 &&
+            sourceFile.Length <= RynorPackedAnimationEncoder.HardTargetBytes &&
+            image.Width <= 2048 &&
+            image.Height <= 2048)
+        {
+            image.SelectActiveFrame(dimension, 0);
+
+            using var previewBitmap = new Drawing.Bitmap(
+                image.Width,
+                image.Height,
+                PixelFormat.Format32bppArgb);
+
+            using (var previewGraphics = Drawing.Graphics.FromImage(previewBitmap))
+            {
+                previewGraphics.Clear(Drawing.Color.Transparent);
+                previewGraphics.DrawImageUnscaled(image, 0, 0);
+            }
+
+            byte[] preview = ToRgb332(previewBitmap, scaleMode);
+            int previewDelay = Math.Clamp(
+                sourceDelaysMs.Length > 0 ? sourceDelaysMs[0] : 100,
+                10,
+                5000);
+
+            var rawAnimation = new ScreensaverAnimation(
+                Path.GetFileName(path),
+                Width,
+                Height,
+                ScreensaverPixelFormat.Rgb332,
+                previewDelay,
+                new[] { previewDelay },
+                new[] { preview });
+
+            RawGifSources.Add(
+                rawAnimation,
+                new RynorRawGifSource(
+                    path,
+                    sourceFile.Length,
+                    scaleMode));
+
+            return rawAnimation;
+        }
+
         // Keep the source loop duration, but never schedule more than 25 FPS
         // and never store more than MaxFrames. If the source is already within
         // both limits, preserve its exact per-frame timings. Otherwise sample
@@ -226,32 +274,11 @@ public static class ScreensaverMediaService
                 frameDurations,
                 frames);
 
-        // RYNOR raw-GIF path: a source file that already fits the external
-        // 10 MiB partition is uploaded as the original GIF bytes. Firmware
-        // decodes it line-by-line and scales directly to 320x172, so there is
-        // no 160x86 fallback, frame dropping, color conversion, or RYQ1
-        // expansion. PIXEL PRO uses a separate media service and is untouched.
+        // Sources that do not fit as raw GIF use the existing RYNOR quality
+        // ladder, targeting ~9.75 MiB in external flash. PIXEL PRO uses its
+        // own media service and is untouched.
         try
         {
-            var file = new FileInfo(path);
-
-            if (file.Length >= 13 &&
-                file.Length <= RynorPackedAnimationEncoder.HardTargetBytes &&
-                image.Width <= 2048 &&
-                image.Height <= 2048)
-            {
-                RawGifSources.Add(
-                    animation,
-                    new RynorRawGifSource(
-                        path,
-                        file.Length,
-                        scaleMode));
-
-                return animation;
-            }
-
-            // Sources that do not fit as raw GIF use the existing RYNOR
-            // quality ladder, targeting ~9.75 MiB in external flash.
             RynorPackedAnimationResult? packed =
                 RynorPackedAnimationEncoder.TryEncodeBest(
                     path,
