@@ -87,6 +87,12 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsExactGifTiming =>
         _protocolVersion >= 9 &&
         SupportsCapability("GIFSOURCE");
+    public bool SupportsRawGif =>
+        _protocolVersion >= 10 &&
+        SupportsCapability("GIFRAW");
+    public bool SupportsBinaryGifUpload =>
+        _protocolVersion >= 10 &&
+        SupportsCapability("GIFBIN");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -157,6 +163,12 @@ public sealed class SerialLink : IDeviceLink
 
             if (_protocolVersion >= 9)
                 _capabilities.Add("GIFSOURCE");
+
+            if (_protocolVersion >= 10)
+            {
+                _capabilities.Add("GIFRAW");
+                _capabilities.Add("GIFBIN");
+            }
         }
 
         Log(
@@ -669,7 +681,8 @@ public sealed class SerialLink : IDeviceLink
                 $"USB <- {ack}");
             bool knownAck =
                 ack.StartsWith("SAVACK|", StringComparison.Ordinal) ||
-                ack.StartsWith("ASSETACK|", StringComparison.Ordinal);
+                ack.StartsWith("ASSETACK|", StringComparison.Ordinal) ||
+                ack.StartsWith("GIFACK|", StringComparison.Ordinal);
 
             if (!knownAck)
                 throw new IOException($"Unexpected LumiPad USB response: {ack}");
