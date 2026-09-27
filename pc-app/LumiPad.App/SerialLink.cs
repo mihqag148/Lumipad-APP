@@ -78,6 +78,12 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsFastMedia =>
         _protocolVersion >= 4 &&
         SupportsCapability("MEDIAFAST");
+    public bool SupportsExternalFlash =>
+        _protocolVersion >= 8 &&
+        SupportsCapability("EXTFLASH");
+    public bool SupportsAssetStore =>
+        _protocolVersion >= 8 &&
+        SupportsCapability("ASSETSTORE");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -139,6 +145,12 @@ public sealed class SerialLink : IDeviceLink
 
             if (_protocolVersion >= 7)
                 _capabilities.Add("HIBERNATE");
+
+            if (_protocolVersion >= 8)
+            {
+                _capabilities.Add("EXTFLASH");
+                _capabilities.Add("ASSETSTORE");
+            }
         }
 
         Log(
@@ -1350,9 +1362,18 @@ public sealed class SerialLink : IDeviceLink
                 "Invalid RYNOR packed screensaver size.");
         }
 
+        // Never attempt a multi-megabyte packed payload against the old
+        // internal-flash firmware. It will fall back immediately to the
+        // legacy 160x86 path instead of wasting time on a doomed transfer.
+        if (!SupportsExternalFlash &&
+            payload.Length > 336 * 1024)
+        {
+            return false;
+        }
+
         int rawChunkSize =
             useUsb
-                ? 240
+                ? (SupportsExternalFlash ? 720 : 240)
                 : 180;
 
         int totalChunks =
@@ -2057,6 +2078,46 @@ public sealed class SerialLink : IDeviceLink
         return state is null
             ? null
             : !string.Equals(state, "AWAKE", StringComparison.Ordinal);
+    }
+
+    public async Task<(
+        bool Ready,
+        int GifBytes,
+        int AssetBytes,
+        int ReserveBytes,
+        bool AssetReady,
+        int AssetUsed)?> ReadExternalStorageInfoAsync()
+    {
+        if (!SupportsExternalFlash)
+            return null;
+
+        string? response = await RequestProfileMetadataAsync(
+            "STORAGE",
+            "Read external storage");
+
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+
+        string[] parts = response.Split('|');
+        if (parts.Length != 7 ||
+            !string.Equals(parts[0], "STORAGE", StringComparison.Ordinal) ||
+            !int.TryParse(parts[1], out int ready) ||
+            !int.TryParse(parts[2], out int gifBytes) ||
+            !int.TryParse(parts[3], out int assetBytes) ||
+            !int.TryParse(parts[4], out int reserveBytes) ||
+            !int.TryParse(parts[5], out int assetReady) ||
+            !int.TryParse(parts[6], out int assetUsed))
+        {
+            return null;
+        }
+
+        return (
+            ready != 0,
+            Math.Max(0, gifBytes),
+            Math.Max(0, assetBytes),
+            Math.Max(0, reserveBytes),
+            assetReady != 0,
+            Math.Max(0, assetUsed));
     }
 
     public async Task<string[]?> ReadProfileCatalogAsync()
