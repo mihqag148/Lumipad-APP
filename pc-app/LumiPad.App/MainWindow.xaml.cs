@@ -623,6 +623,45 @@ public partial class MainWindow : Window
     private IDeviceLink LinkFor(ProductDefinition product) =>
         _deviceLinks[product.Id];
 
+    private static Task<string?> RunDeviceConnectOffUiAsync(
+        IDeviceLink link,
+        string preference,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.Run(
+            async () =>
+            {
+                return preference switch
+                {
+                    "usb" =>
+                        await link
+                            .ConnectUsbAsync(cancellationToken)
+                            .ConfigureAwait(false),
+                    "bluetooth" =>
+                        await link
+                            .ConnectBluetoothAsync(cancellationToken)
+                            .ConfigureAwait(false),
+                    _ =>
+                        await link
+                            .AutoDetectAsync(cancellationToken)
+                            .ConfigureAwait(false)
+                };
+            },
+            cancellationToken);
+    }
+
+    private static Task<string?> RunUsbPromotionOffUiAsync(
+        IDeviceLink link,
+        CancellationToken cancellationToken)
+    {
+        return Task.Run(
+            async () =>
+                await link
+                    .PromoteToUsbIfAvailableAsync(cancellationToken)
+                    .ConfigureAwait(false),
+            cancellationToken);
+    }
+
     private bool IsActiveProduct(ProductDefinition product) =>
         string.Equals(
             _activeProduct.Id,
@@ -964,45 +1003,47 @@ public partial class MainWindow : Window
         IDeviceLink link)
     {
         link.Diagnostic += (level, message) =>
-            Dispatcher.Invoke(() =>
-                AddLog(
-                    level,
-                    product.Name,
-                    message));
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                    AddLog(
+                        level,
+                        product.Name,
+                        message)));
 
         link.LinkError += message =>
-            Dispatcher.Invoke(() =>
-            {
-                AddLog(
-                    "ERROR",
-                    product.Name,
-                    message);
-
-                _sleepingByProduct[product.Id] = false;
-                _batteryByProduct[product.Id] = null;
-
-                if (IsActiveProduct(product))
+            Dispatcher.BeginInvoke(
+                new Action(() =>
                 {
-                    DeviceStatus.Text =
-                        L(
-                            "Device link error",
-                            "Lỗi kết nối thiết bị");
+                    AddLog(
+                        "ERROR",
+                        product.Name,
+                        message);
 
-                    DeviceDot.Fill =
-                        new SolidColorBrush(
-                            MediaColor.FromRgb(
-                                255,
-                                69,
-                                58));
+                    _sleepingByProduct[product.Id] = false;
+                    _batteryByProduct[product.Id] = null;
 
-                    BottomStatus.Text = message;
-                    SetDeviceControlsEnabled(false);
-                    UpdateTransportIndicators();
-                    UpdateSleepButtonUi();
-                }
+                    if (IsActiveProduct(product))
+                    {
+                        DeviceStatus.Text =
+                            L(
+                                "Device link error",
+                                "Lỗi kết nối thiết bị");
 
-                UpdateProductHubUi();
-            });
+                        DeviceDot.Fill =
+                            new SolidColorBrush(
+                                MediaColor.FromRgb(
+                                    255,
+                                    69,
+                                    58));
+
+                        BottomStatus.Text = message;
+                        SetDeviceControlsEnabled(false);
+                        UpdateTransportIndicators();
+                        UpdateSleepButtonUi();
+                    }
+
+                    UpdateProductHubUi();
+                }));
 
         if (link is PixelProCdcLink pixel)
         {
@@ -1143,7 +1184,9 @@ public partial class MainWindow : Window
             try
             {
                 string? connection =
-                    await link.AutoDetectAsync();
+                    await RunDeviceConnectOffUiAsync(
+                        link,
+                        "auto");
 
                 if (connection is null)
                 {
@@ -3534,12 +3577,10 @@ public partial class MainWindow : Window
                 _ => L("Searching USB first, then Bluetooth…", "Đang tìm USB trước, sau đó Bluetooth…")
             };
 
-        var connection = _connectionPreference switch
-        {
-            "usb" => await _serial.ConnectUsbAsync(),
-            "bluetooth" => await _serial.ConnectBluetoothAsync(),
-            _ => await _serial.AutoDetectAsync()
-        };
+        var connection =
+            await RunDeviceConnectOffUiAsync(
+                _serial,
+                _connectionPreference);
 
         if (connection is null)
         {
@@ -3649,7 +3690,8 @@ public partial class MainWindow : Window
                             link.IsBluetoothConnected)
                         {
                             string? promoted =
-                                await link.PromoteToUsbIfAvailableAsync(
+                                await RunUsbPromotionOffUiAsync(
+                                    link,
                                     token);
 
                             if (promoted is not null)
@@ -3690,15 +3732,10 @@ public partial class MainWindow : Window
                     }
 
                     string? connection =
-                        preference switch
-                        {
-                            "usb" =>
-                                await link.ConnectUsbAsync(token),
-                            "bluetooth" =>
-                                await link.ConnectBluetoothAsync(token),
-                            _ =>
-                                await link.AutoDetectAsync(token)
-                        };
+                        await RunDeviceConnectOffUiAsync(
+                            link,
+                            preference,
+                            token);
 
                     if (connection is null)
                         continue;

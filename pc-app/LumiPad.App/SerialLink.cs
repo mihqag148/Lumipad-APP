@@ -15,6 +15,7 @@ public sealed class SerialLink : IDeviceLink
     private static readonly Guid ServiceUuid = Guid.Parse("D8A90001-6B5A-4C3B-9F2A-7C4E4C554D49");
     private static readonly Guid CharacteristicUuid = Guid.Parse("D8A90002-6B5A-4C3B-9F2A-7C4E4C554D49");
 
+    private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _mediaGate = new(1, 1);
 
@@ -254,37 +255,64 @@ public sealed class SerialLink : IDeviceLink
 
     public async Task<string?> AutoDetectAsync(CancellationToken cancellationToken = default)
     {
-        Log("INFO", "Auto detect started");
-        Disconnect();
+        await _connectGate.WaitAsync(cancellationToken);
+        try
+        {
+            Log("INFO", "Auto detect started");
+            Disconnect();
 
-        // Prefer the dedicated USB CDC link when the keyboard is physically
-        // connected. It is much faster for media/screensaver transfers.
-        var usb = await TryUsbAsync(cancellationToken);
-        if (usb is not null)
-            return usb;
+            // Prefer the dedicated USB CDC link when the keyboard is physically
+            // connected. It is much faster for media/screensaver transfers.
+            var usb = await TryUsbAsync(cancellationToken);
+            if (usb is not null)
+                return usb;
 
-        return await TryBluetoothAsync(cancellationToken);
+            return await TryBluetoothAsync(cancellationToken);
+        }
+        finally
+        {
+            _connectGate.Release();
+        }
     }
 
     public async Task<string?> ConnectUsbAsync(CancellationToken cancellationToken = default)
     {
-        Disconnect();
-        return await TryUsbAsync(cancellationToken);
+        await _connectGate.WaitAsync(cancellationToken);
+        try
+        {
+            Disconnect();
+            return await TryUsbAsync(cancellationToken);
+        }
+        finally
+        {
+            _connectGate.Release();
+        }
     }
 
     public async Task<string?> ConnectBluetoothAsync(CancellationToken cancellationToken = default)
     {
-        Disconnect();
-        return await TryBluetoothAsync(cancellationToken);
+        await _connectGate.WaitAsync(cancellationToken);
+        try
+        {
+            Disconnect();
+            return await TryBluetoothAsync(cancellationToken);
+        }
+        finally
+        {
+            _connectGate.Release();
+        }
     }
 
     public async Task<string?> PromoteToUsbIfAvailableAsync(
         CancellationToken cancellationToken = default)
     {
-        // Do not tear down BLE in the middle of a Now Playing/artwork packet.
-        // Wait for both media and normal command writers to become idle, then
-        // switch transports atomically from the app's point of view.
-        await _mediaGate.WaitAsync(cancellationToken);
+        await _connectGate.WaitAsync(cancellationToken);
+        try
+        {
+            // Do not tear down BLE in the middle of a Now Playing/artwork packet.
+            // Wait for both media and normal command writers to become idle, then
+            // switch transports atomically from the app's point of view.
+            await _mediaGate.WaitAsync(cancellationToken);
         try
         {
             await _writeGate.WaitAsync(cancellationToken);
@@ -359,6 +387,11 @@ public sealed class SerialLink : IDeviceLink
         finally
         {
             _mediaGate.Release();
+        }
+        }
+        finally
+        {
+            _connectGate.Release();
         }
     }
 
@@ -2915,6 +2948,7 @@ public sealed class SerialLink : IDeviceLink
     public void Dispose()
     {
         Disconnect();
+        _connectGate.Dispose();
         _writeGate.Dispose();
         _mediaGate.Dispose();
     }
