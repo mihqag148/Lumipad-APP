@@ -93,6 +93,9 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsBinaryGifUpload =>
         _protocolVersion >= 10 &&
         SupportsCapability("GIFBIN");
+    public bool SupportsFlowControlledBinaryGifUpload =>
+        _protocolVersion >= 10 &&
+        SupportsCapability("GIFBIN2");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -1360,112 +1363,297 @@ public sealed class SerialLink : IDeviceLink
             return false;
         }
 
-        long actualLength = new FileInfo(source.Path).Length;
+        long actualLength =
+            new FileInfo(source.Path).Length;
+
         if (actualLength != source.Length)
         {
-            Log("ERROR", "RYNOR GIF source changed after it was selected.");
+            Log(
+                "ERROR",
+                "RYNOR GIF source changed after it was selected.");
             return false;
         }
 
-        DateTimeOffset started = DateTimeOffset.UtcNow;
+        DateTimeOffset started =
+            DateTimeOffset.UtcNow;
 
         if (useUsb && _port?.IsOpen == true)
         {
-            const int usbChunkSize = 840;
-            long usbOffset = 0;
-
+            await _writeGate.WaitAsync();
             try
             {
-                string beginAck =
-                    await SendUsbSaverLineAsync(
-                        $"GIFBEGIN|{source.Length}|{(int)source.ScaleMode}");
-
-                if (!string.Equals(
-                        beginAck,
-                        "GIFACK|BEGIN",
-                        StringComparison.Ordinal))
-                {
-                    Log(
-                        "ERROR",
-                        $"Raw GIF begin rejected: {beginAck}");
+                SerialPort? port = _port;
+                if (port?.IsOpen != true)
                     return false;
-                }
 
-                byte[] buffer =
-                    new byte[usbChunkSize];
+                bool useFlowControl =
+                    SupportsFlowControlledBinaryGifUpload;
 
-                using var stream =
-                    new FileStream(
-                        source.Path,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.Read,
-                        usbChunkSize,
-                        FileOptions.SequentialScan);
+                var result =
+                    await Task.Run(
+                        () =>
+                        {
+                            int previousReadTimeout =
+                                port.ReadTimeout;
+                            int previousWriteTimeout =
+                                port.WriteTimeout;
 
-                while (true)
-                {
-                    int count =
-                        await stream.ReadAsync(
-                            buffer.AsMemory(
-                                0,
-                                buffer.Length));
+                            try
+                            {
+                                port.ReadTimeout = 20000;
+                                port.WriteTimeout = 20000;
+                                port.DiscardInBuffer();
 
-                    if (count <= 0)
-                        break;
+                                string beginCommand =
+                                    useFlowControl
+                                        ? $"GIFBIN2BEGIN|{source.Length}|{(int)source.ScaleMode}\n"
+                                        : $"GIFBEGIN|{source.Length}|{(int)source.ScaleMode}\n";
 
-                    string base64 =
-                        Convert.ToBase64String(
-                            buffer,
-                            0,
-                            count);
+                                byte[] beginBytes =
+                                    Encoding.UTF8.GetBytes(
+                                        beginCommand);
 
-                    string ack =
-                        await SendUsbSaverLineAsync(
-                            $"GIFCHUNK|{usbOffset}|{base64}",
-                            quiet: true);
+                                port.Write(
+                                    beginBytes,
+                                    0,
+                                    beginBytes.Length);
 
-                    if (!string.Equals(
-                            ack,
-                            "GIFACK|CHUNK",
-                            StringComparison.Ordinal))
-                    {
-                        Log(
-                            "ERROR",
-                            $"Unexpected GIF chunk ACK at {usbOffset}: {ack}");
-                        return false;
-                    }
+                                string beginAck =
+                                    port.ReadLine().Trim();
 
-                    usbOffset += count;
+                                if (!string.Equals(
+                                        beginAck,
+                                        "GIFACK|BEGIN",
+                                        StringComparison.Ordinal))
+                                {
+                                    return (
+                                        Ready: false,
+                                        Sent: 0L,
+                                        Ack: beginAck,
+                                        Mode: useFlowControl
+                                            ? "binary-flow"
+                                            : "chunked");
+                                }
 
-                    progress?.Report(
-                        (int)Math.Clamp(
-                            Math.Round(
-                                usbOffset * 100.0 /
-                                Math.Max(
-                                    1L,
-                                    source.Length)),
-                            0,
-                            99));
-                }
+                                long sent = 0;
+                                int lastPercent = -1;
 
-                if (usbOffset != source.Length)
-                {
-                    Log(
-                        "ERROR",
-                        $"Raw GIF short write: {usbOffset}/{source.Length} bytes.");
-                    return false;
-                }
+                                void ReportProgress()
+                                {
+                                    if (progress is null)
+                                        return;
 
-                string finalAck =
-                    await SendUsbSaverLineAsync(
-                        "GIFEND");
+                                    int percent =
+                                        (int)Math.Clamp(
+                                            sent * 100L /
+                                            Math.Max(
+                                                1L,
+                                                source.Length),
+                                            0L,
+                                            100L);
 
-                bool ready =
-                    string.Equals(
-                        finalAck,
-                        "GIFACK|READY",
-                        StringComparison.Ordinal);
+                                    if (percent == lastPercent)
+                                        return;
+
+                                    lastPercent = percent;
+                                    progress.Report(percent);
+                                }
+
+                                if (useFlowControl)
+                                {
+                                    const int blockSize = 4096;
+                                    byte[] buffer =
+                                        new byte[blockSize];
+
+                                    using var stream =
+                                        new FileStream(
+                                            source.Path,
+                                            FileMode.Open,
+                                            FileAccess.Read,
+                                            FileShare.Read,
+                                            blockSize,
+                                            FileOptions.SequentialScan);
+
+                                    while (sent < source.Length)
+                                    {
+                                        int wanted =
+                                            (int)Math.Min(
+                                                blockSize,
+                                                source.Length - sent);
+
+                                        int filled = 0;
+                                        while (filled < wanted)
+                                        {
+                                            int read =
+                                                stream.Read(
+                                                    buffer,
+                                                    filled,
+                                                    wanted - filled);
+
+                                            if (read <= 0)
+                                                break;
+
+                                            filled += read;
+                                        }
+
+                                        if (filled != wanted)
+                                        {
+                                            return (
+                                                Ready: false,
+                                                Sent: sent,
+                                                Ack: "SHORT_READ",
+                                                Mode: "binary-flow");
+                                        }
+
+                                        port.Write(
+                                            buffer,
+                                            0,
+                                            filled);
+
+                                        sent += filled;
+
+                                        string ack =
+                                            port.ReadLine().Trim();
+
+                                        string expected =
+                                            sent < source.Length
+                                                ? $"GIFACK|BLOCK|{sent}"
+                                                : "GIFACK|READY";
+
+                                        if (!string.Equals(
+                                                ack,
+                                                expected,
+                                                StringComparison.Ordinal))
+                                        {
+                                            return (
+                                                Ready: false,
+                                                Sent: sent,
+                                                Ack: ack,
+                                                Mode: "binary-flow");
+                                        }
+
+                                        ReportProgress();
+                                    }
+
+                                    return (
+                                        Ready: true,
+                                        Sent: sent,
+                                        Ack: "GIFACK|READY",
+                                        Mode: "binary-flow");
+                                }
+
+                                const int rawChunkSize = 840;
+                                byte[] chunk =
+                                    new byte[rawChunkSize];
+
+                                using (var stream =
+                                    new FileStream(
+                                        source.Path,
+                                        FileMode.Open,
+                                        FileAccess.Read,
+                                        FileShare.Read,
+                                        rawChunkSize,
+                                        FileOptions.SequentialScan))
+                                {
+                                    while (true)
+                                    {
+                                        int count =
+                                            stream.Read(
+                                                chunk,
+                                                0,
+                                                chunk.Length);
+
+                                        if (count <= 0)
+                                            break;
+
+                                        string base64 =
+                                            Convert.ToBase64String(
+                                                chunk,
+                                                0,
+                                                count);
+
+                                        byte[] line =
+                                            Encoding.UTF8.GetBytes(
+                                                $"GIFCHUNK|{sent}|{base64}\n");
+
+                                        port.Write(
+                                            line,
+                                            0,
+                                            line.Length);
+
+                                        string ack =
+                                            port.ReadLine().Trim();
+
+                                        if (!string.Equals(
+                                                ack,
+                                                "GIFACK|CHUNK",
+                                                StringComparison.Ordinal))
+                                        {
+                                            return (
+                                                Ready: false,
+                                                Sent: sent,
+                                                Ack: ack,
+                                                Mode: "chunked");
+                                        }
+
+                                        sent += count;
+                                        ReportProgress();
+                                    }
+                                }
+
+                                if (sent != source.Length)
+                                {
+                                    return (
+                                        Ready: false,
+                                        Sent: sent,
+                                        Ack: "SHORT_WRITE",
+                                        Mode: "chunked");
+                                }
+
+                                byte[] endBytes =
+                                    Encoding.UTF8.GetBytes(
+                                        "GIFEND\n");
+
+                                port.Write(
+                                    endBytes,
+                                    0,
+                                    endBytes.Length);
+
+                                string finalAck =
+                                    port.ReadLine().Trim();
+
+                                bool ready =
+                                    string.Equals(
+                                        finalAck,
+                                        "GIFACK|READY",
+                                        StringComparison.Ordinal);
+
+                                if (ready)
+                                {
+                                    sent = source.Length;
+                                    ReportProgress();
+                                }
+
+                                return (
+                                    Ready: ready,
+                                    Sent: sent,
+                                    Ack: finalAck,
+                                    Mode: "chunked");
+                            }
+                            finally
+                            {
+                                try
+                                {
+                                    port.ReadTimeout =
+                                        previousReadTimeout;
+                                    port.WriteTimeout =
+                                        previousWriteTimeout;
+                                }
+                                catch
+                                {
+                                }
+                            }
+                        });
 
                 double seconds =
                     Math.Max(
@@ -1474,15 +1662,18 @@ public sealed class SerialLink : IDeviceLink
                             .TotalSeconds);
 
                 Log(
-                    ready ? "INFO" : "ERROR",
-                    $"RYNOR raw GIF USB: {source.Length} bytes in {seconds:F2}s " +
-                    $"({source.Length / 1024.0 / seconds:F0} KiB/s), " +
-                    $"ack={finalAck}");
+                    result.Ready
+                        ? "INFO"
+                        : "ERROR",
+                    $"RYNOR raw GIF USB {result.Mode}: " +
+                    $"{result.Sent}/{source.Length} bytes in {seconds:F2}s " +
+                    $"({result.Sent / 1024.0 / seconds:F0} KiB/s), " +
+                    $"ack={result.Ack}");
 
-                if (ready)
+                if (result.Ready)
                     progress?.Report(100);
 
-                return ready;
+                return result.Ready;
             }
             catch (Exception ex)
             {
@@ -1491,33 +1682,42 @@ public sealed class SerialLink : IDeviceLink
                     $"RYNOR raw GIF USB upload failed: {ex.Message}");
                 return false;
             }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
 
-        // BLE fallback keeps the original GIF bytes as well. It is slower than
-        // USB but uses the same native on-device GIF decoder.
+        // BLE remains a byte-for-byte fallback. Keep progress throttled to
+        // integer percentages so a large GIF cannot flood the WPF dispatcher.
         const int rawChunkSize = 180;
         long offset = 0;
+        int lastBlePercent = -1;
 
         try
         {
             await SendLineAsync(
                 $"GIFBEGIN|{source.Length}|{(int)source.ScaleMode}");
 
-            byte[] buffer = new byte[rawChunkSize];
+            byte[] buffer =
+                new byte[rawChunkSize];
 
-            using var stream = new FileStream(
-                source.Path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                rawChunkSize,
-                FileOptions.SequentialScan);
+            using var stream =
+                new FileStream(
+                    source.Path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    rawChunkSize,
+                    FileOptions.SequentialScan);
 
             while (true)
             {
                 int count =
                     await stream.ReadAsync(
-                        buffer.AsMemory(0, buffer.Length));
+                        buffer.AsMemory(
+                            0,
+                            buffer.Length));
 
                 if (count <= 0)
                     break;
@@ -1533,13 +1733,20 @@ public sealed class SerialLink : IDeviceLink
 
                 offset += count;
 
-                progress?.Report(
+                int percent =
                     (int)Math.Clamp(
-                        Math.Round(
-                            offset * 100.0 /
-                            Math.Max(1L, source.Length)),
-                        0,
-                        100));
+                        offset * 100L /
+                        Math.Max(
+                            1L,
+                            source.Length),
+                        0L,
+                        100L);
+
+                if (percent != lastBlePercent)
+                {
+                    lastBlePercent = percent;
+                    progress?.Report(percent);
+                }
 
                 await Task.Delay(2);
             }
