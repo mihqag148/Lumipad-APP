@@ -1652,7 +1652,7 @@ public sealed class PixelProCdcLink : IDeviceLink
             return false;
         }
 
-        const int RawChunkSize = 512;
+        const int RawChunkSize = 128;
         uint crc =
             ComputeRawMediaCrc32(
                 bytes);
