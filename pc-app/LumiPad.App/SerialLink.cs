@@ -1372,7 +1372,7 @@ public sealed class SerialLink : IDeviceLink
         if (useUsb && _port?.IsOpen == true)
         {
             const int usbChunkSize = 840;
-            long offset = 0;
+            long usbOffset = 0;
 
             try
             {
@@ -1422,7 +1422,7 @@ public sealed class SerialLink : IDeviceLink
 
                     string ack =
                         await SendUsbSaverLineAsync(
-                            $"GIFCHUNK|{offset}|{base64}",
+                            $"GIFCHUNK|{usbOffset}|{base64}",
                             quiet: true);
 
                     if (!string.Equals(
@@ -1432,16 +1432,16 @@ public sealed class SerialLink : IDeviceLink
                     {
                         Log(
                             "ERROR",
-                            $"Unexpected GIF chunk ACK at {offset}: {ack}");
+                            $"Unexpected GIF chunk ACK at {usbOffset}: {ack}");
                         return false;
                     }
 
-                    offset += count;
+                    usbOffset += count;
 
                     progress?.Report(
                         (int)Math.Clamp(
                             Math.Round(
-                                offset * 100.0 /
+                                usbOffset * 100.0 /
                                 Math.Max(
                                     1L,
                                     source.Length)),
@@ -1449,11 +1449,11 @@ public sealed class SerialLink : IDeviceLink
                             99));
                 }
 
-                if (offset != source.Length)
+                if (usbOffset != source.Length)
                 {
                     Log(
                         "ERROR",
-                        $"Raw GIF short write: {offset}/{source.Length} bytes.");
+                        $"Raw GIF short write: {usbOffset}/{source.Length} bytes.");
                     return false;
                 }
 
