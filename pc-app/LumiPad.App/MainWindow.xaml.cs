@@ -9377,11 +9377,12 @@ try {{
 
             ScreensaverFileName.Text = _screensaverAnimation.FileName;
 
+            RynorRawGifSource rynorGif = null!;
             bool rynorRawGif =
                 !pixel &&
                 ScreensaverMediaService.TryGetRawGifSource(
                     _screensaverAnimation,
-                    out RynorRawGifSource rynorGif);
+                    out rynorGif);
 
             if (rynorRawGif)
             {
