@@ -78,6 +78,12 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsFastMedia =>
         _protocolVersion >= 4 &&
         SupportsCapability("MEDIAFAST");
+    public bool SupportsExternalFlash =>
+        _protocolVersion >= 8 &&
+        SupportsCapability("EXTFLASH");
+    public bool SupportsAssetStore =>
+        _protocolVersion >= 8 &&
+        SupportsCapability("ASSETSTORE");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -139,6 +145,12 @@ public sealed class SerialLink : IDeviceLink
 
             if (_protocolVersion >= 7)
                 _capabilities.Add("HIBERNATE");
+
+            if (_protocolVersion >= 8)
+            {
+                _capabilities.Add("EXTFLASH");
+                _capabilities.Add("ASSETSTORE");
+            }
         }
 
         Log(
@@ -649,11 +661,15 @@ public sealed class SerialLink : IDeviceLink
             string ack = await Task.Run(() => _port.ReadLine().Trim());
             Log(ack.EndsWith("|ERROR", StringComparison.Ordinal) ? "ERROR" : "FW",
                 $"USB <- {ack}");
-            if (!ack.StartsWith("SAVACK|", StringComparison.Ordinal))
+            bool knownAck =
+                ack.StartsWith("SAVACK|", StringComparison.Ordinal) ||
+                ack.StartsWith("ASSETACK|", StringComparison.Ordinal);
+
+            if (!knownAck)
                 throw new IOException($"Unexpected LumiPad USB response: {ack}");
 
             if (ack.EndsWith("|ERROR", StringComparison.Ordinal))
-                throw new IOException("LumiPad rejected a screensaver chunk.");
+                throw new IOException("LumiPad rejected a media/storage chunk.");
 
             return ack;
         }
@@ -1350,9 +1366,18 @@ public sealed class SerialLink : IDeviceLink
                 "Invalid RYNOR packed screensaver size.");
         }
 
+        // Never attempt a multi-megabyte packed payload against the old
+        // internal-flash firmware. It will fall back immediately to the
+        // legacy 160x86 path instead of wasting time on a doomed transfer.
+        if (!SupportsExternalFlash &&
+            payload.Length > 336 * 1024)
+        {
+            return false;
+        }
+
         int rawChunkSize =
             useUsb
-                ? 240
+                ? (SupportsExternalFlash ? 720 : 240)
                 : 180;
 
         int totalChunks =
@@ -2057,6 +2082,155 @@ public sealed class SerialLink : IDeviceLink
         return state is null
             ? null
             : !string.Equals(state, "AWAKE", StringComparison.Ordinal);
+    }
+
+    public async Task<(
+        bool Ready,
+        int GifBytes,
+        int AssetBytes,
+        int ReserveBytes,
+        bool AssetReady,
+        int AssetUsed)?> ReadExternalStorageInfoAsync()
+    {
+        if (!SupportsExternalFlash)
+            return null;
+
+        string? response = await RequestProfileMetadataAsync(
+            "STORAGE",
+            "Read external storage");
+
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+
+        string[] parts = response.Split('|');
+        if (parts.Length != 7 ||
+            !string.Equals(parts[0], "STORAGE", StringComparison.Ordinal) ||
+            !int.TryParse(parts[1], out int ready) ||
+            !int.TryParse(parts[2], out int gifBytes) ||
+            !int.TryParse(parts[3], out int assetBytes) ||
+            !int.TryParse(parts[4], out int reserveBytes) ||
+            !int.TryParse(parts[5], out int assetReady) ||
+            !int.TryParse(parts[6], out int assetUsed))
+        {
+            return null;
+        }
+
+        return (
+            ready != 0,
+            Math.Max(0, gifBytes),
+            Math.Max(0, assetBytes),
+            Math.Max(0, reserveBytes),
+            assetReady != 0,
+            Math.Max(0, assetUsed));
+    }
+
+    public async Task<bool> SendExternalAssetPackAsync(
+        byte[] payload,
+        IProgress<int>? progress = null)
+    {
+        if (!SupportsAssetStore ||
+            !IsConnected ||
+            payload is null ||
+            payload.Length < 1 ||
+            payload.Length > (2 * 1024 * 1024 - 4096))
+        {
+            return false;
+        }
+
+        bool useUsb = _port?.IsOpen == true;
+        int rawChunkSize = useUsb ? 720 : 180;
+        int totalChunks =
+            (payload.Length + rawChunkSize - 1) /
+            rawChunkSize;
+
+        await _mediaGate.WaitAsync();
+        try
+        {
+            string begin = $"ASSETBEGIN|{payload.Length}";
+
+            if (useUsb)
+            {
+                string ack = await SendUsbSaverLineAsync(begin);
+                if (!ack.EndsWith("|BEGIN", StringComparison.Ordinal))
+                    return false;
+            }
+            else
+            {
+                await SendLineAsync(begin);
+            }
+
+            int sent = 0;
+
+            for (int offset = 0;
+                 offset < payload.Length;
+                 offset += rawChunkSize)
+            {
+                int len =
+                    Math.Min(
+                        rawChunkSize,
+                        payload.Length - offset);
+
+                string base64 =
+                    Convert.ToBase64String(
+                        payload,
+                        offset,
+                        len);
+
+                string line =
+                    $"ASSETCHUNK|{offset}|{base64}";
+
+                if (useUsb)
+                {
+                    string ack =
+                        await SendUsbSaverLineAsync(line);
+
+                    if (!ack.EndsWith(
+                            "|CHUNK",
+                            StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    await SendBulkLineAsync(line);
+                    await Task.Delay(2);
+                }
+
+                sent++;
+                progress?.Report(
+                    (int)Math.Round(
+                        sent * 100.0 /
+                        Math.Max(1, totalChunks)));
+            }
+
+            if (useUsb)
+            {
+                string ack =
+                    await SendUsbSaverLineAsync("ASSETEND");
+
+                return ack.EndsWith(
+                    "|READY",
+                    StringComparison.Ordinal);
+            }
+
+            await SendLineAsync("ASSETEND");
+            await Task.Delay(120);
+
+            if (_bleCharacteristic is null)
+                return false;
+
+            string status =
+                await ReadBleStatusAsync();
+
+            return status.StartsWith(
+                "ASSET|READY|",
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            _mediaGate.Release();
+        }
     }
 
     public async Task<string[]?> ReadProfileCatalogAsync()
