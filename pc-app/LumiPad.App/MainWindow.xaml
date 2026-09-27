@@ -3119,7 +3119,7 @@
                                                 CornerRadius="10"
                                                 Padding="10">
                                             <TextBlock x:Name="RynorPanelInfoText"
-                                                       Text="ST7789 · ~60 Hz default · SPI 32 MHz · GIF max 25 FPS"
+                                                       Text="ST7789 · ~60 Hz default · SPI 32 MHz · native GIF timing"
                                                        FontSize="11"
                                                        FontWeight="SemiBold"
                                                        TextWrapping="Wrap"/>
