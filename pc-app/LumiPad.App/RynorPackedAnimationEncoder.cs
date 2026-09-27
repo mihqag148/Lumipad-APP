@@ -24,16 +24,23 @@ internal sealed record RynorPackedAnimationResult(
     int DurationMs,
     RynorPackedColorMode ColorMode,
     ScreensaverScaleMode ScaleMode,
-    bool UsedFallbackQuality);
+    bool UsedFallbackQuality,
+    bool PreservedSourceTiming);
 
 /// <summary>
 /// RYNOR ONE animation packer.
 ///
 /// RYQ1 keeps the first frame complete, then stores only changed row spans.
-/// Each span uses packet RLE. The encoder progressively reduces temporal
-/// detail/resolution only when the payload cannot fit the external W25Q128
-/// GIF partition. RYNOR ONE now reserves 10 MiB of external NOR for packed
-/// screensaver media; PIXEL PRO has a separate media pipeline and is untouched.
+/// Each span uses packet RLE.
+///
+/// RYNOR policy:
+/// - Source GIF < 10 MiB: preserve every source frame and its exact GIF delay,
+///   render at 320x172 RGB565, and use only lossless delta/RLE storage coding.
+///   No frame dropping, FPS reduction, color reduction, or smart-delta loss.
+/// - Source GIF >= 10 MiB: use the existing quality ladder and smart-delta
+///   compression until the packed payload fits the 10 MiB external partition.
+///
+/// PIXEL PRO has a separate media pipeline and is untouched.
 /// </summary>
 internal static class RynorPackedAnimationEncoder
 {
@@ -45,10 +52,15 @@ internal static class RynorPackedAnimationEncoder
     //   first 4 KiB reserved for firmware metadata
     // Keep an additional 12 KiB safety margin for future metadata growth.
     public const int GifPartitionBytes = 10 * 1024 * 1024;
+    public const int SourceLosslessThresholdBytes = 10 * 1024 * 1024;
+    // Large-source compression aims just below 10 MiB so it uses the new
+    // storage budget without running into the metadata/safety margin.
+    public const int CompressedTargetBytes =
+        9 * 1024 * 1024 + 768 * 1024; // 9.75 MiB
     public const int HardTargetBytes =
         GifPartitionBytes - (16 * 1024);
 
-    private const int MaxPackedFrames = 250;
+    private const int MaxPackedFrames = ushort.MaxValue;
     private const int DeltaSpanMergeGapPixels = 4;
 
     private static readonly int[] SmartDeltaLevels =
@@ -77,6 +89,9 @@ internal static class RynorPackedAnimationEncoder
         string path,
         ScreensaverScaleMode scaleMode)
     {
+        long sourceBytes =
+            new FileInfo(path).Length;
+
         using Drawing.Image image =
             Drawing.Image.FromFile(path);
 
@@ -101,6 +116,54 @@ internal static class RynorPackedAnimationEncoder
             ReadGifFrameDelaysMs(
                 image,
                 sourceFrameCount);
+
+        // For a source GIF below 10 MiB, preserve the source timeline exactly.
+        // RYQ1's delta/RLE is lossless storage coding here: every resized
+        // RGB565 pixel and every original GIF frame delay is preserved.
+        if (sourceBytes < SourceLosslessThresholdBytes &&
+            sourceFrameCount <= MaxPackedFrames)
+        {
+            int sourceFps =
+                NominalSourceFps(
+                    sourceDelays);
+
+            Candidate exact =
+                EncodeCandidate(
+                    image,
+                    dimension,
+                    sourceDelays,
+                    sourceFrameCount,
+                    DisplayWidth,
+                    DisplayHeight,
+                    sourceFps,
+                    RynorPackedColorMode.Rgb565,
+                    scaleMode,
+                    0,
+                    HardTargetBytes,
+                    preserveSourceTiming: true);
+
+            if (!exact.ExceededLimit &&
+                exact.Bytes is not null &&
+                exact.Bytes.Length <= HardTargetBytes)
+            {
+                return new RynorPackedAnimationResult(
+                    exact.Bytes,
+                    exact.StorageWidth,
+                    exact.StorageHeight,
+                    exact.FrameCount,
+                    exact.Fps,
+                    exact.DurationMs,
+                    exact.ColorMode,
+                    scaleMode,
+                    false,
+                    true);
+            }
+
+            // A compressed GIF can expand beyond 10 MiB after decoding and
+            // resizing even when the source file itself is smaller. In that
+            // physical overflow case only, continue into the quality ladder so
+            // the upload still fits the actual flash partition.
+        }
 
         bool firstCandidate = true;
 
@@ -127,11 +190,12 @@ internal static class RynorPackedAnimationEncoder
                             colorMode,
                             scaleMode,
                             smartDeltaLevel,
-                            HardTargetBytes);
+                            CompressedTargetBytes,
+                            preserveSourceTiming: false);
 
                     if (!candidate.ExceededLimit &&
                         candidate.Bytes is not null &&
-                        candidate.Bytes.Length <= HardTargetBytes)
+                        candidate.Bytes.Length <= CompressedTargetBytes)
                     {
                         return new RynorPackedAnimationResult(
                             candidate.Bytes,
@@ -142,7 +206,9 @@ internal static class RynorPackedAnimationEncoder
                             candidate.DurationMs,
                             candidate.ColorMode,
                             scaleMode,
-                            !firstCandidate);
+                            !firstCandidate ||
+                            sourceBytes >= SourceLosslessThresholdBytes,
+                            false);
                     }
 
                     firstCandidate = false;
@@ -150,9 +216,30 @@ internal static class RynorPackedAnimationEncoder
             }
         }
 
-        // Returning null deliberately preserves the proven legacy path:
-        // 25 x 160x86 RGB332 raw frames = 344000 bytes.
+        // Returning null deliberately preserves the proven legacy path.
         return null;
+    }
+
+    private static int NominalSourceFps(
+        IReadOnlyList<int> sourceDelays)
+    {
+        long durationMs =
+            Math.Max(
+                1L,
+                sourceDelays
+                    .Select(delay => Math.Max(1, delay))
+                    .Sum(delay => (long)delay));
+
+        double averageFps =
+            sourceDelays.Count *
+            1000.0 /
+            durationMs;
+
+        // GIF delay units are 10 ms, so the meaningful upper bound is 100 FPS.
+        return Math.Clamp(
+            (int)Math.Round(averageFps),
+            1,
+            100);
     }
 
     private static IReadOnlyList<(int Width, int Height, int Fps)>
@@ -184,13 +271,18 @@ internal static class RynorPackedAnimationEncoder
         RynorPackedColorMode colorMode,
         ScreensaverScaleMode scaleMode,
         int smartDeltaLevel,
-        int abortAfterBytes)
+        int abortAfterBytes,
+        bool preserveSourceTiming)
     {
         List<PlannedFrame> plan =
-            BuildFramePlan(
-                sourceDelays,
-                sourceFrameCount,
-                fps);
+            preserveSourceTiming
+                ? BuildExactFramePlan(
+                    sourceDelays,
+                    sourceFrameCount)
+                : BuildFramePlan(
+                    sourceDelays,
+                    sourceFrameCount,
+                    fps);
 
         if (plan.Count < 1 ||
             plan.Count > MaxPackedFrames)
@@ -322,6 +414,37 @@ internal static class RynorPackedAnimationEncoder
             durationMs,
             colorMode,
             false);
+    }
+
+    private static List<PlannedFrame> BuildExactFramePlan(
+        IReadOnlyList<int> sourceDelays,
+        int sourceFrameCount)
+    {
+        if (sourceFrameCount < 1 ||
+            sourceFrameCount > MaxPackedFrames ||
+            sourceDelays.Count < sourceFrameCount)
+        {
+            return new List<PlannedFrame>();
+        }
+
+        var result =
+            new List<PlannedFrame>(
+                sourceFrameCount);
+
+        for (int index = 0;
+             index < sourceFrameCount;
+             ++index)
+        {
+            result.Add(
+                new PlannedFrame(
+                    index,
+                    Math.Clamp(
+                        sourceDelays[index],
+                        1,
+                        ushort.MaxValue)));
+        }
+
+        return result;
     }
 
     private static List<PlannedFrame> BuildFramePlan(

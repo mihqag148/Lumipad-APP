@@ -84,6 +84,9 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsAssetStore =>
         _protocolVersion >= 8 &&
         SupportsCapability("ASSETSTORE");
+    public bool SupportsExactGifTiming =>
+        _protocolVersion >= 9 &&
+        SupportsCapability("GIFSOURCE");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -151,6 +154,9 @@ public sealed class SerialLink : IDeviceLink
                 _capabilities.Add("EXTFLASH");
                 _capabilities.Add("ASSETSTORE");
             }
+
+            if (_protocolVersion >= 9)
+                _capabilities.Add("GIFSOURCE");
         }
 
         Log(
@@ -1366,6 +1372,16 @@ public sealed class SerialLink : IDeviceLink
                 "Invalid RYNOR packed screensaver size.");
         }
 
+        if (packed.PreservedSourceTiming &&
+            !SupportsExactGifTiming)
+        {
+            Log(
+                "WARN",
+                "RYNOR firmware does not support exact source GIF timing; " +
+                "using compatibility fallback.");
+            return false;
+        }
+
         // Never attempt a multi-megabyte packed payload against the old
         // internal-flash firmware. It will fall back immediately to the
         // legacy 160x86 path instead of wasting time on a doomed transfer.
@@ -1388,6 +1404,7 @@ public sealed class SerialLink : IDeviceLink
             "INFO",
             $"RYNOR packed saver: {packed.StorageWidth}x{packed.StorageHeight}, " +
             $"{packed.FrameCount} frames @ {packed.Fps} FPS, {packed.ColorMode}, " +
+            $"mode={(packed.PreservedSourceTiming ? "SOURCE" : "COMPRESSED")}, " +
             $"{payload.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
 
         string begin =
