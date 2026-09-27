@@ -661,11 +661,15 @@ public sealed class SerialLink : IDeviceLink
             string ack = await Task.Run(() => _port.ReadLine().Trim());
             Log(ack.EndsWith("|ERROR", StringComparison.Ordinal) ? "ERROR" : "FW",
                 $"USB <- {ack}");
-            if (!ack.StartsWith("SAVACK|", StringComparison.Ordinal))
+            bool knownAck =
+                ack.StartsWith("SAVACK|", StringComparison.Ordinal) ||
+                ack.StartsWith("ASSETACK|", StringComparison.Ordinal);
+
+            if (!knownAck)
                 throw new IOException($"Unexpected LumiPad USB response: {ack}");
 
             if (ack.EndsWith("|ERROR", StringComparison.Ordinal))
-                throw new IOException("LumiPad rejected a screensaver chunk.");
+                throw new IOException("LumiPad rejected a media/storage chunk.");
 
             return ack;
         }
