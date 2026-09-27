@@ -2120,6 +2120,115 @@ public sealed class SerialLink : IDeviceLink
             Math.Max(0, assetUsed));
     }
 
+    public async Task<bool> SendExternalAssetPackAsync(
+        byte[] payload,
+        IProgress<int>? progress = null)
+    {
+        if (!SupportsAssetStore ||
+            !IsConnected ||
+            payload is null ||
+            payload.Length < 1 ||
+            payload.Length > (2 * 1024 * 1024 - 4096))
+        {
+            return false;
+        }
+
+        bool useUsb = _port?.IsOpen == true;
+        int rawChunkSize = useUsb ? 720 : 180;
+        int totalChunks =
+            (payload.Length + rawChunkSize - 1) /
+            rawChunkSize;
+
+        await _mediaGate.WaitAsync();
+        try
+        {
+            string begin = $"ASSETBEGIN|{payload.Length}";
+
+            if (useUsb)
+            {
+                string ack = await SendUsbSaverLineAsync(begin);
+                if (!ack.EndsWith("|BEGIN", StringComparison.Ordinal))
+                    return false;
+            }
+            else
+            {
+                await SendLineAsync(begin);
+            }
+
+            int sent = 0;
+
+            for (int offset = 0;
+                 offset < payload.Length;
+                 offset += rawChunkSize)
+            {
+                int len =
+                    Math.Min(
+                        rawChunkSize,
+                        payload.Length - offset);
+
+                string base64 =
+                    Convert.ToBase64String(
+                        payload,
+                        offset,
+                        len);
+
+                string line =
+                    $"ASSETCHUNK|{offset}|{base64}";
+
+                if (useUsb)
+                {
+                    string ack =
+                        await SendUsbSaverLineAsync(line);
+
+                    if (!ack.EndsWith(
+                            "|CHUNK",
+                            StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    await SendBulkLineAsync(line);
+                    await Task.Delay(2);
+                }
+
+                sent++;
+                progress?.Report(
+                    (int)Math.Round(
+                        sent * 100.0 /
+                        Math.Max(1, totalChunks)));
+            }
+
+            if (useUsb)
+            {
+                string ack =
+                    await SendUsbSaverLineAsync("ASSETEND");
+
+                return ack.EndsWith(
+                    "|READY",
+                    StringComparison.Ordinal);
+            }
+
+            await SendLineAsync("ASSETEND");
+            await Task.Delay(120);
+
+            if (_bleCharacteristic is null)
+                return false;
+
+            string status =
+                await ReadBleStatusAsync();
+
+            return status.StartsWith(
+                "ASSET|READY|",
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            _mediaGate.Release();
+        }
+    }
+
     public async Task<string[]?> ReadProfileCatalogAsync()
     {
         if (!SupportsProfileCatalog)
