@@ -128,7 +128,7 @@ internal static class RynorPackedAnimationEncoder
 
         bool exactTimingFits =
             sourceFrameCount <= MaxPackedFrames &&
-            sourceDelays.Count >= sourceFrameCount &&
+            sourceDelays.Length >= sourceFrameCount &&
             sourceDelays
                 .Take(sourceFrameCount)
                 .All(delay => delay >= 33) &&
