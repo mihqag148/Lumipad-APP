@@ -105,6 +105,9 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsPackedGif =>
         _protocolVersion >= 10 &&
         SupportsCapability("GIFPACK");
+    public bool SupportsPalette16Gif =>
+        _protocolVersion >= 11 &&
+        SupportsCapability("GIFP16");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -184,6 +187,9 @@ public sealed class SerialLink : IDeviceLink
                 _capabilities.Add("GIFBIN3");
                 _capabilities.Add("GIFPACK");
             }
+
+            if (_protocolVersion >= 11)
+                _capabilities.Add("GIFP16");
         }
 
         Log(
@@ -1292,7 +1298,8 @@ public sealed class SerialLink : IDeviceLink
                     Log(
                         "INFO",
                         $"RYNOR GIF optimization started: {rawGif.SourceWidth}x{rawGif.SourceHeight}, " +
-                        $"{rawGif.Length / 1048576.0:0.00} MB source");
+                        $"{rawGif.Length / 1048576.0:0.00} MB source, " +
+                        $"codec={(SupportsPalette16Gif ? "P16-stream" : "delta/RLE")}");
 
                     RynorPackedAnimationResult? packed = null;
 
@@ -1301,9 +1308,13 @@ public sealed class SerialLink : IDeviceLink
                         packed =
                             await Task.Run(
                                 () =>
-                                    RynorPackedAnimationEncoder.TryEncodeBest(
-                                        rawGif.Path,
-                                        rawGif.ScaleMode));
+                                    SupportsPalette16Gif
+                                        ? RynorPackedAnimationEncoder.TryEncodePalette16Best(
+                                            rawGif.Path,
+                                            rawGif.ScaleMode)
+                                        : RynorPackedAnimationEncoder.TryEncodeBest(
+                                            rawGif.Path,
+                                            rawGif.ScaleMode));
                     }
                     catch (Exception ex)
                     {
@@ -1319,7 +1330,8 @@ public sealed class SerialLink : IDeviceLink
                             $"RYNOR GIF optimized: {packed.StorageWidth}x{packed.StorageHeight}, " +
                             $"{packed.FrameCount} frames, {packed.ColorMode}, " +
                             $"{packed.Bytes.Length / 1048576.0:0.00} MB, " +
-                            $"timing={(packed.PreservedSourceTiming ? "source" : $"{packed.Fps} FPS")}");
+                            $"timing={(packed.PreservedSourceTiming ? "source" : $"{packed.Fps} FPS")}, " +
+                            $"path={(packed.ColorMode == RynorPackedColorMode.Palette16 ? "P16/4bpp" : "RYQ1")}");
 
                         bool packedSent =
                             await SendRynorPackedScreensaverAsync(
