@@ -102,6 +102,9 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsFlowControlledBinaryGifUpload =>
         _protocolVersion >= 10 &&
         SupportsCapability("GIFBIN3");
+    public bool SupportsPackedGif =>
+        _protocolVersion >= 10 &&
+        SupportsCapability("GIFPACK");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -1264,18 +1267,76 @@ public sealed class SerialLink : IDeviceLink
             // BLE remains a byte-for-byte fallback when USB is unavailable.
             bool useUsb = await EnsureUsbForBulkAsync();
 
-            // Native RYNOR GIF path: upload the original GIF file exactly as
-            // selected. No reduced frame pack, FPS resampling, RYQ1
-            // recompression, or compatibility quality ladder.
+            // RYNOR v1.14.44+: preprocess GIFs on the PC into full-resolution
+            // delta/RLE (RYQ1). The keyboard then reads only changed spans
+            // instead of running LZW and rewriting the full 320x172 frame.
+            // This work stays off the WPF dispatcher so selection/upload does
+            // not freeze the application.
             if (ScreensaverMediaService.TryGetRawGifSource(
                     animation,
                     out RynorRawGifSource rawGif))
             {
+                if (SupportsPackedGif)
+                {
+                    Log(
+                        "INFO",
+                        $"RYNOR GIF optimization started: {rawGif.SourceWidth}x{rawGif.SourceHeight}, " +
+                        $"{rawGif.Length / 1048576.0:0.00} MB source");
+
+                    RynorPackedAnimationResult? packed = null;
+
+                    try
+                    {
+                        packed =
+                            await Task.Run(
+                                () =>
+                                    RynorPackedAnimationEncoder.TryEncodeBest(
+                                        rawGif.Path,
+                                        rawGif.ScaleMode));
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(
+                            "WARN",
+                            $"RYNOR packed GIF preprocessing failed: {ex.Message}");
+                    }
+
+                    if (packed is not null)
+                    {
+                        Log(
+                            "INFO",
+                            $"RYNOR GIF optimized: {packed.StorageWidth}x{packed.StorageHeight}, " +
+                            $"{packed.FrameCount} frames, {packed.ColorMode}, " +
+                            $"{packed.Bytes.Length / 1048576.0:0.00} MB, " +
+                            $"timing={(packed.PreservedSourceTiming ? "source" : $"{packed.Fps} FPS")}");
+
+                        bool packedSent =
+                            await SendRynorPackedScreensaverAsync(
+                                packed,
+                                useUsb,
+                                progress);
+
+                        if (packedSent)
+                            return true;
+
+                        Log(
+                            "WARN",
+                            "Packed GIF upload failed; trying raw GIF fallback.");
+                    }
+                    else
+                    {
+                        Log(
+                            "WARN",
+                            "GIF could not fit the 10 MiB packed budget at 320x172; " +
+                            "trying raw GIF fallback when possible.");
+                    }
+                }
+
                 if (!SupportsRawGif)
                 {
                     Log(
                         "WARN",
-                        "Connected RYNOR firmware is too old for native GIF storage.");
+                        "Connected RYNOR firmware supports neither packed nor raw GIF storage.");
                     return false;
                 }
 
@@ -1847,6 +1908,145 @@ public sealed class SerialLink : IDeviceLink
             return false;
         }
     }
+
+    private async Task<bool> SendRynorPackedScreensaverAsync(
+        RynorPackedAnimationResult packed,
+        bool useUsb,
+        IProgress<int>? progress)
+    {
+        byte[] payload = packed.Bytes;
+
+        if (payload.Length < 26 ||
+            payload.Length > RynorPackedAnimationEncoder.HardTargetBytes)
+        {
+            throw new InvalidOperationException(
+                "Invalid RYNOR packed screensaver size.");
+        }
+
+        if (packed.PreservedSourceTiming &&
+            !SupportsExactGifTiming)
+        {
+            Log(
+                "WARN",
+                "RYNOR firmware does not support exact source GIF timing; " +
+                "using raw GIF fallback.");
+            return false;
+        }
+
+        // Multi-megabyte packed media requires the external GIF partition.
+        if (!SupportsExternalFlash &&
+            payload.Length > 336 * 1024)
+        {
+            return false;
+        }
+
+        int rawChunkSize =
+            useUsb
+                ? (SupportsExternalFlash ? 840 : 240)
+                : 180;
+
+        int totalChunks =
+            (payload.Length + rawChunkSize - 1) /
+            rawChunkSize;
+
+        Log(
+            "INFO",
+            $"RYNOR packed saver: {packed.StorageWidth}x{packed.StorageHeight}, " +
+            $"{packed.FrameCount} frames @ {packed.Fps} FPS, {packed.ColorMode}, " +
+            $"mode={(packed.PreservedSourceTiming ? "SOURCE" : "COMPRESSED")}, " +
+            $"{payload.Length} bytes, transport={(useUsb ? "USB" : "BLE")}");
+
+        string begin =
+            $"SAVPBEGIN|{payload.Length}";
+
+        if (useUsb)
+            await SendUsbSaverLineAsync(begin);
+        else
+            await SendLineAsync(begin);
+
+        int sentChunks = 0;
+
+        for (int offset = 0;
+             offset < payload.Length;
+             offset += rawChunkSize)
+        {
+            int len =
+                Math.Min(
+                    rawChunkSize,
+                    payload.Length - offset);
+
+            string base64 =
+                Convert.ToBase64String(
+                    payload,
+                    offset,
+                    len);
+
+            string line =
+                $"SAVPCHUNK|{offset}|{base64}";
+
+            if (useUsb)
+                await SendUsbSaverLineAsync(line);
+            else
+                await SendBulkLineAsync(line);
+
+            if (!useUsb)
+                await Task.Delay(2);
+
+            sentChunks++;
+            progress?.Report(
+                (int)Math.Round(
+                    sentChunks *
+                    100.0 /
+                    Math.Max(1, totalChunks)));
+        }
+
+        if (useUsb)
+        {
+            string finalAck =
+                await SendUsbSaverLineAsync(
+                    "SAVPEND");
+
+            if (!finalAck.EndsWith(
+                    "|READY",
+                    StringComparison.Ordinal))
+            {
+                Log(
+                    "ERROR",
+                    $"RYNOR packed saver final ACK not READY: {finalAck}");
+                return false;
+            }
+
+            return true;
+        }
+
+        await SendLineAsync(
+            "SAVPEND");
+
+        await Task.Delay(120);
+
+        if (_bleCharacteristic is not null)
+        {
+            string status =
+                await ReadBleStatusAsync();
+
+            bool ready =
+                status.Contains(
+                    "SAVER:READY",
+                    StringComparison.Ordinal);
+
+            Log(
+                ready
+                    ? "INFO"
+                    : "ERROR",
+                $"BLE packed saver verify: {status}");
+
+            return ready;
+        }
+
+        return false;
+    }
+
+    
 
     private async Task<string> ReadBleStatusAsync()
     {
