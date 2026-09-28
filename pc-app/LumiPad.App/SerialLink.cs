@@ -180,6 +180,9 @@ public sealed class SerialLink : IDeviceLink
             {
                 _capabilities.Add("GIFRAW");
                 _capabilities.Add("GIFBIN");
+                _capabilities.Add("GIFBIN2");
+                _capabilities.Add("GIFBIN3");
+                _capabilities.Add("GIFPACK");
             }
         }
 
@@ -687,6 +690,14 @@ public sealed class SerialLink : IDeviceLink
                 if (response.StartsWith("LUMIPAD|", StringComparison.Ordinal))
                 {
                     _port = candidate;
+                    SetFirmwareHello(response);
+                    RecordLinkSuccess();
+                    _lastUsbPortSignature = CurrentUsbPortSignature();
+
+                    Log(
+                        "INFO",
+                        $"Bulk USB capability refresh: {FirmwareHello}");
+
                     return true;
                 }
             }
