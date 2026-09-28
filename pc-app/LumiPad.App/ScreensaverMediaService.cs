@@ -44,9 +44,10 @@ internal sealed record RynorRawGifSource(
 /// <summary>
 /// RYNOR ONE media preparation.
 ///
-/// GIFs are never converted into the old 160x86 RGB332 frame pack. The original
-/// GIF file is kept byte-for-byte, uploaded to RYNOR ONE external flash and
-/// decoded on the keyboard at playback time. The app only renders one 320x172
+/// GIF selection stays lightweight and never uses the old 160x86 RGB332 frame
+/// pack. During upload, capable RYNOR firmware uses a PC-preprocessed 320x172
+/// delta/RLE animation so the keyboard can update changed regions directly.
+/// Raw GIF remains a compatibility fallback. The app only renders one 320x172
 /// RGB565 preview frame for its own UI.
 ///
 /// This follows the same asset-on-device principle visible in EezBotFun's
@@ -64,6 +65,11 @@ public static class ScreensaverMediaService
     // media and keeps the first 4 KiB for its metadata header.
     public const long MaxRawGifBytes =
         (10L * 1024L * 1024L) - 4096L;
+
+    // Larger source GIFs are accepted because the RYNOR upload path can
+    // preprocess them on the PC into the 10 MiB delta/RLE device format.
+    public const long MaxSourceGifBytes =
+        64L * 1024L * 1024L;
 
     // GIF timing uses the GIF 1/100 s unit. Firmware preserves source delays
     // and only normalizes invalid/zero delays to 10 ms.
@@ -136,11 +142,12 @@ public static class ScreensaverMediaService
                 "The selected GIF is empty or invalid.");
         }
 
-        if (sourceFile.Length > MaxRawGifBytes)
+        if (sourceFile.Length > MaxSourceGifBytes)
         {
             throw new InvalidDataException(
-                $"RYNOR ONE stores the original GIF without recompressing it. " +
-                $"Maximum GIF size is {MaxRawGifBytes / 1048576.0:0.00} MB.");
+                $"RYNOR ONE accepts source GIFs up to " +
+                $"{MaxSourceGifBytes / 1048576.0:0} MB. " +
+                "The app optimizes them into the device animation format during upload.");
         }
 
         // Native RYNOR GIFs are copied byte-for-byte to the keyboard, so the

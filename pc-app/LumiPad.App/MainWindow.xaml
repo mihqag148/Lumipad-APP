@@ -527,7 +527,7 @@
                                            Margin="0,8,0,0"/>
 
                                 <TextBlock x:Name="ScreensaverMediaInfo"
-                                           Text="GIF is stored unchanged on RYNOR ONE and decoded on-device."
+                                           Text="RYNOR optimizes GIFs on the PC to 320×172 delta/RLE before upload."
                                            FontSize="11"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource Muted}"
@@ -628,7 +628,7 @@
                                 </StackPanel>
 
                                 <TextBlock x:Name="ScreensaverSendStatus"
-                                           Text="The original GIF is stored on RYNOR ONE external flash."
+                                           Text="Only changed GIF regions are packed and stored on RYNOR ONE."
                                            FontSize="11"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource Muted}"
@@ -3119,7 +3119,7 @@
                                                 CornerRadius="10"
                                                 Padding="10">
                                             <TextBlock x:Name="RynorPanelInfoText"
-                                                       Text="ST7789 · ~60 Hz default · SPI 32 MHz · native GIF timing"
+                                                       Text="ST7789 · SPI 32 MHz · 320×172 delta/RLE GIF playback"
                                                        FontSize="11"
                                                        FontWeight="SemiBold"
                                                        TextWrapping="Wrap"/>

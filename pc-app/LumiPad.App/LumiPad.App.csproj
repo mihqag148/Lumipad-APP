@@ -39,6 +39,7 @@
   <!-- LumiPad v1.23.57 · RYNOR flow-controlled binary GIF upload -->
   <!-- LumiPad v1.23.58 · RYNOR non-blocking reconnect/probe scheduling -->
   <!-- LumiPad v1.23.59 · RYNOR exclusive GIF upload + GIFBIN3 -->
+  <!-- LumiPad v1.23.60 · RYNOR 320x172 delta/RLE GIF preprocessing -->
   <PropertyGroup>
     <!-- v1.14.0 fast Bluetooth media -->
     <OutputType>WinExe</OutputType>
@@ -53,9 +54,9 @@
     <Product>Lumi Macropad</Product>
     <AssemblyTitle>Lumi Macropad</AssemblyTitle>
     <Description>Lumi Macropad multi-product device manager</Description>
-    <Version>1.23.59</Version>
-    <AssemblyVersion>1.23.59.0</AssemblyVersion>
-    <FileVersion>1.23.59.0</FileVersion>
+    <Version>1.23.60</Version>
+    <AssemblyVersion>1.23.60.0</AssemblyVersion>
+    <FileVersion>1.23.60.0</FileVersion>
 </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Products\pixel-pro.png" LogicalName="Assets/Products/pixel-pro.png" />
