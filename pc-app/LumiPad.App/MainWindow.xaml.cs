@@ -1256,8 +1256,8 @@ public partial class MainWindow : Window
                         "Choose a GIF or image. Final output specs will appear here after processing.",
                         "Chọn GIF hoặc ảnh. Thông số đầu ra sau xử lý sẽ hiển thị tại đây.")
                     : L(
-                        $"GIF files are stored unchanged on {productName} and decoded on-device.",
-                        $"GIF được lưu nguyên file trên {productName} và giải mã trực tiếp trên thiết bị.");
+                        $"GIFs are optimized on the PC to 320×172 delta/RLE for {productName}.",
+                        $"GIF được tối ưu trên PC thành 320×172 delta/RLE cho {productName}.");
         }
 
         if (IsPixelProActive)
@@ -1273,7 +1273,7 @@ public partial class MainWindow : Window
             if (RynorPanelInfoText is not null)
             {
                 RynorPanelInfoText.Text =
-                    "ST7789 ≈60 Hz default · SPI 32 MHz · native GIF timing · on-device decode";
+                    "ST7789 · SPI 32 MHz · 320×172 delta/RLE GIF playback";
             }
         }
 
@@ -1721,7 +1721,7 @@ public partial class MainWindow : Window
         ["GIF / Image local"] = "GIF / Ảnh trên máy",
         ["Choose a GIF or image"] = "Chọn GIF hoặc ảnh",
         ["No file selected"] = "Chưa chọn tệp",
-        ["GIF is stored unchanged on RYNOR ONE and decoded on-device."] = "GIF được lưu nguyên file trên RYNOR ONE và giải mã trực tiếp trên thiết bị.",
+        ["RYNOR optimizes GIFs on the PC to 320×172 delta/RLE before upload."] = "GIF được tối ưu trên PC thành 320×172 delta/RLE trước khi tải lên.",
         ["Scale"] = "Co giãn",
         ["Fill"] = "Lấp đầy",
         ["Fit"] = "Vừa khung",
@@ -1732,7 +1732,7 @@ public partial class MainWindow : Window
         ["Choose GIF / Image"] = "Chọn GIF / Ảnh",
         ["Send to RYNOR ONE"] = "Gửi tới RYNOR ONE",
         ["Clear"] = "Xóa",
-        ["The original GIF is stored on RYNOR ONE external flash."] = "GIF gốc được lưu trên flash ngoài của RYNOR ONE.",
+        ["Only changed GIF regions are packed and stored on RYNOR ONE."] = "Chỉ các vùng GIF thay đổi được đóng gói và lưu trên RYNOR ONE.",
         ["Screensaver after"] = "Bảo vệ màn hình sau",
         ["Sleep after"] = "Ngủ sau",
         ["15 seconds"] = "15 giây",
@@ -3442,7 +3442,7 @@ public partial class MainWindow : Window
         string fallback =
             pixel
                 ? "ILI9486 · 480×320 landscape · i8080 8-bit · refresh cap 60 Hz · GIF ≤60 FPS"
-                : "ST7789 ≈60 Hz default · SPI 32 MHz · native GIF timing";
+                : "ST7789 · SPI 32 MHz · 320×172 delta/RLE GIF playback";
 
         void SetActivePanelText(string value)
         {
@@ -9816,8 +9816,8 @@ try {{
 
         ScreensaverMediaInfo.Text =
             L(
-                "GIF is stored unchanged on RYNOR ONE and decoded on-device.",
-                "GIF được lưu nguyên file trên RYNOR ONE và giải mã trực tiếp trên thiết bị.");
+                "RYNOR optimizes GIFs on the PC to 320×172 delta/RLE before upload.",
+                "GIF được tối ưu trên PC thành 320×172 delta/RLE trước khi tải lên.");
 
         ScreensaverSendProgress.Value = 0;
 
