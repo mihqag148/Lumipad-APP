@@ -13,6 +13,7 @@ internal enum RynorPackedColorMode : byte
 {
     Rgb565 = 0,
     Rgb332 = 1,
+    Palette16 = 2,
 }
 
 internal sealed record RynorPackedAnimationResult(
@@ -65,6 +66,7 @@ internal static class RynorPackedAnimationEncoder
         GifPartitionBytes - (16 * 1024);
 
     private const int MaxPackedFrames = ushort.MaxValue;
+    private const int SAVER_HEADER_BYTES = 26;
     private const int DeltaSpanMergeGapPixels = 4;
 
     private static readonly int[] SmartDeltaLevels =
@@ -89,6 +91,103 @@ internal static class RynorPackedAnimationEncoder
         int DurationMs,
         RynorPackedColorMode ColorMode,
         bool ExceededLimit);
+
+    public static RynorPackedAnimationResult? TryEncodePalette16Best(
+        string path,
+        ScreensaverScaleMode scaleMode)
+    {
+        using Drawing.Image image =
+            Drawing.Image.FromFile(path);
+
+        if (image.Width < 1 ||
+            image.Height < 1 ||
+            image.Width > 2048 ||
+            image.Height > 2048)
+        {
+            return null;
+        }
+
+        var dimension =
+            new FrameDimension(
+                image.FrameDimensionsList[0]);
+
+        int sourceFrameCount =
+            Math.Max(
+                1,
+                image.GetFrameCount(dimension));
+
+        int[] sourceDelays =
+            ReadGifFrameDelaysMs(
+                image,
+                sourceFrameCount);
+
+        const int frameBytes =
+            2 +
+            (16 * 2) +
+            (DisplayWidth * DisplayHeight / 2);
+
+        bool exactTimingFits =
+            sourceFrameCount <= MaxPackedFrames &&
+            sourceDelays.Count >= sourceFrameCount &&
+            sourceDelays
+                .Take(sourceFrameCount)
+                .All(delay => delay >= 33) &&
+            SAVER_HEADER_BYTES +
+                ((long)sourceFrameCount * frameBytes) <=
+                    HardTargetBytes;
+
+        if (exactTimingFits)
+        {
+            List<PlannedFrame> exact =
+                BuildExactFramePlan(
+                    sourceDelays,
+                    sourceFrameCount);
+
+            var result =
+                EncodePalette16Candidate(
+                    image,
+                    dimension,
+                    exact,
+                    NominalSourceFps(sourceDelays),
+                    scaleMode,
+                    true);
+
+            if (result is not null)
+                return result;
+        }
+
+        foreach (int fps in new[] { 30, 25, 20, 15 })
+        {
+            List<PlannedFrame> plan =
+                BuildFramePlan(
+                    sourceDelays,
+                    sourceFrameCount,
+                    fps);
+
+            if (plan.Count < 1 ||
+                plan.Count > MaxPackedFrames ||
+                SAVER_HEADER_BYTES +
+                    ((long)plan.Count * frameBytes) >
+                        HardTargetBytes)
+            {
+                continue;
+            }
+
+            var result =
+                EncodePalette16Candidate(
+                    image,
+                    dimension,
+                    plan,
+                    fps,
+                    scaleMode,
+                    false);
+
+            if (result is not null)
+                return result;
+        }
+
+        return null;
+    }
 
     public static RynorPackedAnimationResult? TryEncodeBest(
         string path,
@@ -264,6 +363,489 @@ internal static class RynorPackedAnimationEncoder
         }
 
         return result;
+    }
+
+    private static RynorPackedAnimationResult?
+        EncodePalette16Candidate(
+            Drawing.Image image,
+            FrameDimension dimension,
+            IReadOnlyList<PlannedFrame> plan,
+            int fps,
+            ScreensaverScaleMode scaleMode,
+            bool preservedSourceTiming)
+    {
+        if (plan.Count < 1 ||
+            plan.Count > MaxPackedFrames)
+        {
+            return null;
+        }
+
+        int durationMs =
+            plan.Sum(frame => frame.DelayMs);
+
+        using var output =
+            new MemoryStream(
+                Math.Min(
+                    HardTargetBytes,
+                    1024 * 1024));
+
+        WriteAscii(output, "RYQ2");
+        output.WriteByte(
+            (byte)RynorPackedColorMode.Palette16);
+        output.WriteByte(0x10);
+        WriteU16(output, DisplayWidth);
+        WriteU16(output, DisplayHeight);
+        WriteU16(output, DisplayWidth);
+        WriteU16(output, DisplayHeight);
+        WriteU16(output, plan.Count);
+        WriteU16(output, Math.Clamp(fps, 1, 100));
+        WriteU32(output, durationMs);
+        WriteU16(output, 16);
+        WriteU16(output, 0);
+
+        foreach (PlannedFrame planned in plan)
+        {
+            byte[] rgb =
+                RenderRgb24(
+                    image,
+                    dimension,
+                    planned.SourceIndex,
+                    scaleMode);
+
+            QuantizePalette16(
+                rgb,
+                out ushort[] palette,
+                out byte[] packedIndices);
+
+            WriteU16(
+                output,
+                Math.Clamp(
+                    planned.DelayMs,
+                    1,
+                    ushort.MaxValue));
+
+            for (int i = 0; i < 16; i++)
+                WriteU16(output, palette[i]);
+
+            output.Write(
+                packedIndices,
+                0,
+                packedIndices.Length);
+
+            if (output.Length >
+                HardTargetBytes)
+            {
+                return null;
+            }
+        }
+
+        return new RynorPackedAnimationResult(
+            output.ToArray(),
+            DisplayWidth,
+            DisplayHeight,
+            plan.Count,
+            fps,
+            durationMs,
+            RynorPackedColorMode.Palette16,
+            scaleMode,
+            true,
+            preservedSourceTiming);
+    }
+
+    private static byte[] RenderRgb24(
+        Drawing.Image image,
+        FrameDimension dimension,
+        int sourceIndex,
+        ScreensaverScaleMode scaleMode)
+    {
+        image.SelectActiveFrame(
+            dimension,
+            sourceIndex);
+
+        using var canvas =
+            new Drawing.Bitmap(
+                DisplayWidth,
+                DisplayHeight,
+                PixelFormat.Format24bppRgb);
+
+        using (Drawing.Graphics graphics =
+               Drawing.Graphics.FromImage(
+                   canvas))
+        {
+            graphics.Clear(
+                Drawing.Color.Black);
+
+            graphics.InterpolationMode =
+                Drawing2D.InterpolationMode.HighQualityBilinear;
+            graphics.PixelOffsetMode =
+                Drawing2D.PixelOffsetMode.HighQuality;
+            graphics.CompositingQuality =
+                Drawing2D.CompositingQuality.HighQuality;
+
+            DrawScaled(
+                graphics,
+                image,
+                DisplayWidth,
+                DisplayHeight,
+                scaleMode);
+        }
+
+        var rgb =
+            new byte[
+                DisplayWidth *
+                DisplayHeight *
+                3];
+
+        var rect =
+            new Drawing.Rectangle(
+                0,
+                0,
+                DisplayWidth,
+                DisplayHeight);
+
+        BitmapData data =
+            canvas.LockBits(
+                rect,
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb);
+
+        try
+        {
+            int stride =
+                Math.Abs(data.Stride);
+
+            var raw =
+                new byte[
+                    stride *
+                    DisplayHeight];
+
+            Marshal.Copy(
+                data.Scan0,
+                raw,
+                0,
+                raw.Length);
+
+            int destination = 0;
+
+            for (int y = 0;
+                 y < DisplayHeight;
+                 y++)
+            {
+                int row =
+                    data.Stride >= 0
+                        ? y * stride
+                        : (DisplayHeight - 1 - y) *
+                          stride;
+
+                for (int x = 0;
+                     x < DisplayWidth;
+                     x++)
+                {
+                    int source =
+                        row +
+                        x *
+                        3;
+
+                    rgb[destination++] =
+                        raw[source + 2];
+                    rgb[destination++] =
+                        raw[source + 1];
+                    rgb[destination++] =
+                        raw[source];
+                }
+            }
+        }
+        finally
+        {
+            canvas.UnlockBits(data);
+        }
+
+        return rgb;
+    }
+
+    private static void QuantizePalette16(
+        IReadOnlyList<byte> rgb,
+        out ushort[] palette,
+        out byte[] packedIndices)
+    {
+        var histogram =
+            new int[4096];
+
+        int pixelCount =
+            rgb.Count /
+            3;
+
+        for (int pixel = 0;
+             pixel < pixelCount;
+             pixel++)
+        {
+            int o =
+                pixel *
+                3;
+
+            int code =
+                ((rgb[o] >> 4) << 8) |
+                ((rgb[o + 1] >> 4) << 4) |
+                (rgb[o + 2] >> 4);
+
+            histogram[code]++;
+        }
+
+        int[] centers =
+            Enumerable
+                .Range(0, 4096)
+                .Where(code => histogram[code] > 0)
+                .OrderByDescending(code => histogram[code])
+                .Take(16)
+                .ToArray();
+
+        if (centers.Length == 0)
+            centers = [0];
+
+        if (centers.Length < 16)
+        {
+            int original =
+                centers.Length;
+
+            Array.Resize(
+                ref centers,
+                16);
+
+            for (int i = original;
+                 i < 16;
+                 i++)
+            {
+                centers[i] =
+                    centers[i % original];
+            }
+        }
+
+        // A few weighted k-means rounds over the 12-bit histogram give a much
+        // better 16-color frame palette than a fixed RGBI palette while
+        // keeping preprocessing cheap enough for the desktop app.
+        for (int iteration = 0;
+             iteration < 5;
+             iteration++)
+        {
+            var sumR = new long[16];
+            var sumG = new long[16];
+            var sumB = new long[16];
+            var weights = new long[16];
+
+            for (int code = 0;
+                 code < 4096;
+                 code++)
+            {
+                int count =
+                    histogram[code];
+
+                if (count == 0)
+                    continue;
+
+                int r =
+                    (code >> 8) &
+                    0x0F;
+
+                int g =
+                    (code >> 4) &
+                    0x0F;
+
+                int b =
+                    code &
+                    0x0F;
+
+                int nearest =
+                    NearestCenter(
+                        r,
+                        g,
+                        b,
+                        centers);
+
+                sumR[nearest] +=
+                    (long)r *
+                    count;
+                sumG[nearest] +=
+                    (long)g *
+                    count;
+                sumB[nearest] +=
+                    (long)b *
+                    count;
+                weights[nearest] +=
+                    count;
+            }
+
+            for (int i = 0;
+                 i < 16;
+                 i++)
+            {
+                if (weights[i] == 0)
+                    continue;
+
+                int r =
+                    (int)Math.Clamp(
+                        (sumR[i] +
+                         weights[i] / 2) /
+                        weights[i],
+                        0,
+                        15);
+
+                int g =
+                    (int)Math.Clamp(
+                        (sumG[i] +
+                         weights[i] / 2) /
+                        weights[i],
+                        0,
+                        15);
+
+                int b =
+                    (int)Math.Clamp(
+                        (sumB[i] +
+                         weights[i] / 2) /
+                        weights[i],
+                        0,
+                        15);
+
+                centers[i] =
+                    (r << 8) |
+                    (g << 4) |
+                    b;
+            }
+        }
+
+        palette =
+            new ushort[16];
+
+        for (int i = 0;
+             i < 16;
+             i++)
+        {
+            int code =
+                centers[i];
+
+            byte r =
+                (byte)(
+                    ((code >> 8) &
+                     0x0F) *
+                    17);
+
+            byte g =
+                (byte)(
+                    ((code >> 4) &
+                     0x0F) *
+                    17);
+
+            byte b =
+                (byte)(
+                    (code &
+                     0x0F) *
+                    17);
+
+            palette[i] =
+                (ushort)ToRgb565(
+                    r,
+                    g,
+                    b);
+        }
+
+        var lookup =
+            new byte[4096];
+
+        for (int code = 0;
+             code < 4096;
+             code++)
+        {
+            lookup[code] =
+                (byte)NearestCenter(
+                    (code >> 8) & 0x0F,
+                    (code >> 4) & 0x0F,
+                    code & 0x0F,
+                    centers);
+        }
+
+        packedIndices =
+            new byte[
+                DisplayWidth *
+                DisplayHeight /
+                2];
+
+        for (int pixel = 0;
+             pixel < pixelCount;
+             pixel += 2)
+        {
+            int o0 =
+                pixel *
+                3;
+
+            int c0 =
+                ((rgb[o0] >> 4) << 8) |
+                ((rgb[o0 + 1] >> 4) << 4) |
+                (rgb[o0 + 2] >> 4);
+
+            int o1 =
+                (pixel + 1) *
+                3;
+
+            int c1 =
+                ((rgb[o1] >> 4) << 8) |
+                ((rgb[o1 + 1] >> 4) << 4) |
+                (rgb[o1 + 2] >> 4);
+
+            packedIndices[
+                pixel /
+                2] =
+                (byte)(
+                    (lookup[c0] << 4) |
+                    lookup[c1]);
+        }
+    }
+
+    private static int NearestCenter(
+        int r,
+        int g,
+        int b,
+        IReadOnlyList<int> centers)
+    {
+        int best = 0;
+        int bestDistance =
+            int.MaxValue;
+
+        for (int i = 0;
+             i < centers.Count;
+             i++)
+        {
+            int code =
+                centers[i];
+
+            int dr =
+                r -
+                ((code >> 8) &
+                 0x0F);
+
+            int dg =
+                g -
+                ((code >> 4) &
+                 0x0F);
+
+            int db =
+                b -
+                (code &
+                 0x0F);
+
+            int distance =
+                dr * dr +
+                dg * dg +
+                db * db;
+
+            if (distance <
+                bestDistance)
+            {
+                bestDistance =
+                    distance;
+                best = i;
+            }
+        }
+
+        return best;
     }
 
     private static Candidate EncodeCandidate(
