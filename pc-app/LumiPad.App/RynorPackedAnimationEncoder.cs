@@ -68,6 +68,9 @@ internal static class RynorPackedAnimationEncoder
     private const int MaxPackedFrames = ushort.MaxValue;
     private const int SAVER_HEADER_BYTES = 26;
     private const int DeltaSpanMergeGapPixels = 4;
+    private const int P16DeltaMergeGapPixels = 6;
+    private const int P16TemporalThreshold4 = 1;
+    private const double P16FullFrameCutover = 0.72;
 
     private static readonly int[] SmartDeltaLevels =
     [
@@ -81,6 +84,12 @@ internal static class RynorPackedAnimationEncoder
         int SourceIndex,
         int DelayMs);
 
+    private readonly record struct P16Rect(
+        int X,
+        int Y,
+        int Width,
+        int Height);
+
     private sealed record Candidate(
         byte[]? Bytes,
         long EncodedBytes,
@@ -91,6 +100,89 @@ internal static class RynorPackedAnimationEncoder
         int DurationMs,
         RynorPackedColorMode ColorMode,
         bool ExceededLimit);
+
+    public static RynorPackedAnimationResult? TryEncodePalette16DeltaBest(
+        string path,
+        ScreensaverScaleMode scaleMode)
+    {
+        using Drawing.Image image =
+            Drawing.Image.FromFile(path);
+
+        if (image.Width < 1 ||
+            image.Height < 1 ||
+            image.Width > 2048 ||
+            image.Height > 2048)
+        {
+            return null;
+        }
+
+        var dimension =
+            new FrameDimension(
+                image.FrameDimensionsList[0]);
+
+        int sourceFrameCount =
+            Math.Max(
+                1,
+                image.GetFrameCount(dimension));
+
+        int[] sourceDelays =
+            ReadGifFrameDelaysMs(
+                image,
+                sourceFrameCount);
+
+        if (sourceFrameCount <= MaxPackedFrames &&
+            sourceDelays.Length >= sourceFrameCount &&
+            sourceDelays
+                .Take(sourceFrameCount)
+                .All(delay => delay >= 33))
+        {
+            List<PlannedFrame> exact =
+                BuildExactFramePlan(
+                    sourceDelays,
+                    sourceFrameCount);
+
+            var exactResult =
+                EncodePalette16DeltaCandidate(
+                    image,
+                    dimension,
+                    exact,
+                    NominalSourceFps(sourceDelays),
+                    scaleMode,
+                    true);
+
+            if (exactResult is not null)
+                return exactResult;
+        }
+
+        foreach (int fps in new[] { 30, 25, 20, 15 })
+        {
+            List<PlannedFrame> plan =
+                BuildFramePlan(
+                    sourceDelays,
+                    sourceFrameCount,
+                    fps);
+
+            if (plan.Count < 1 ||
+                plan.Count > MaxPackedFrames)
+            {
+                continue;
+            }
+
+            var result =
+                EncodePalette16DeltaCandidate(
+                    image,
+                    dimension,
+                    plan,
+                    fps,
+                    scaleMode,
+                    false);
+
+            if (result is not null)
+                return result;
+        }
+
+        return null;
+    }
 
     public static RynorPackedAnimationResult? TryEncodePalette16Best(
         string path,
@@ -363,6 +455,472 @@ internal static class RynorPackedAnimationEncoder
         }
 
         return result;
+    }
+
+    private static RynorPackedAnimationResult?
+        EncodePalette16DeltaCandidate(
+            Drawing.Image image,
+            FrameDimension dimension,
+            IReadOnlyList<PlannedFrame> plan,
+            int fps,
+            ScreensaverScaleMode scaleMode,
+            bool preservedSourceTiming)
+    {
+        if (plan.Count < 1 ||
+            plan.Count > MaxPackedFrames)
+        {
+            return null;
+        }
+
+        int durationMs =
+            plan.Sum(frame => frame.DelayMs);
+
+        using var output =
+            new MemoryStream(
+                Math.Min(
+                    HardTargetBytes,
+                    1024 * 1024));
+
+        WriteAscii(output, "RYQ3");
+        output.WriteByte(
+            (byte)RynorPackedColorMode.Palette16);
+        output.WriteByte(0x20);
+        WriteU16(output, DisplayWidth);
+        WriteU16(output, DisplayHeight);
+        WriteU16(output, DisplayWidth);
+        WriteU16(output, DisplayHeight);
+        WriteU16(output, plan.Count);
+        WriteU16(output, Math.Clamp(fps, 1, 100));
+        WriteU32(output, durationMs);
+        WriteU16(output, 16);
+        WriteU16(output, 0);
+
+        int pixelCount =
+            DisplayWidth *
+            DisplayHeight;
+
+        var previous444 =
+            Enumerable
+                .Repeat(
+                    ushort.MaxValue,
+                    pixelCount)
+                .ToArray();
+
+        bool firstFrame = true;
+
+        foreach (PlannedFrame planned in plan)
+        {
+            byte[] rgb =
+                RenderRgb24(
+                    image,
+                    dimension,
+                    planned.SourceIndex,
+                    scaleMode);
+
+            QuantizePalette16(
+                rgb,
+                out ushort[] palette,
+                out byte[] packedIndices);
+
+            ushort[] current444 =
+                BuildP16Rgb444Frame(
+                    palette,
+                    packedIndices);
+
+            List<P16Rect> rects =
+                BuildP16DeltaRects(
+                    current444,
+                    previous444,
+                    firstFrame);
+
+            WriteU16(
+                output,
+                Math.Clamp(
+                    planned.DelayMs,
+                    1,
+                    ushort.MaxValue));
+
+            for (int i = 0; i < 16; i++)
+                WriteU16(output, palette[i]);
+
+            WriteU16(
+                output,
+                rects.Count);
+
+            foreach (P16Rect rect in rects)
+            {
+                WriteU16(output, rect.Y);
+                WriteU16(output, rect.X);
+                WriteU16(output, rect.Width);
+                WriteU16(output, rect.Height);
+
+                WriteP16RectIndices(
+                    output,
+                    packedIndices,
+                    rect);
+
+                UpdateP16DisplayedState(
+                    previous444,
+                    current444,
+                    rect);
+            }
+
+            firstFrame = false;
+
+            if (output.Length >
+                HardTargetBytes)
+            {
+                return null;
+            }
+        }
+
+        return new RynorPackedAnimationResult(
+            output.ToArray(),
+            DisplayWidth,
+            DisplayHeight,
+            plan.Count,
+            fps,
+            durationMs,
+            RynorPackedColorMode.Palette16,
+            scaleMode,
+            true,
+            preservedSourceTiming);
+    }
+
+    private static ushort[] BuildP16Rgb444Frame(
+        IReadOnlyList<ushort> palette,
+        IReadOnlyList<byte> packedIndices)
+    {
+        int pixelCount =
+            DisplayWidth *
+            DisplayHeight;
+
+        var palette444 =
+            new ushort[16];
+
+        for (int i = 0; i < 16; i++)
+        {
+            ushort value =
+                palette[i];
+
+            int r5 =
+                (value >> 11) &
+                0x1F;
+            int g6 =
+                (value >> 5) &
+                0x3F;
+            int b5 =
+                value &
+                0x1F;
+
+            int r4 =
+                (r5 * 15 + 15) /
+                31;
+            int g4 =
+                (g6 * 15 + 31) /
+                63;
+            int b4 =
+                (b5 * 15 + 15) /
+                31;
+
+            palette444[i] =
+                (ushort)(
+                    (r4 << 8) |
+                    (g4 << 4) |
+                    b4);
+        }
+
+        var result =
+            new ushort[pixelCount];
+
+        for (int pixel = 0;
+             pixel < pixelCount;
+             pixel += 2)
+        {
+            byte pair =
+                packedIndices[
+                    pixel / 2];
+
+            result[pixel] =
+                palette444[
+                    pair >> 4];
+
+            result[pixel + 1] =
+                palette444[
+                    pair & 0x0F];
+        }
+
+        return result;
+    }
+
+    private static int P16Distance4(
+        ushort a,
+        ushort b)
+    {
+        if (a == ushort.MaxValue ||
+            b == ushort.MaxValue) {
+            return int.MaxValue;
+        }
+
+        int ar =
+            (a >> 8) &
+            0x0F;
+        int ag =
+            (a >> 4) &
+            0x0F;
+        int ab =
+            a &
+            0x0F;
+
+        int br =
+            (b >> 8) &
+            0x0F;
+        int bg =
+            (b >> 4) &
+            0x0F;
+        int bb =
+            b &
+            0x0F;
+
+        return Math.Max(
+            Math.Abs(ar - br),
+            Math.Max(
+                Math.Abs(ag - bg),
+                Math.Abs(ab - bb)));
+    }
+
+    private static List<P16Rect> BuildP16DeltaRects(
+        IReadOnlyList<ushort> current444,
+        IReadOnlyList<ushort> previous444,
+        bool firstFrame)
+    {
+        if (firstFrame)
+            return BuildP16InterlacedFullFrameRects();
+
+        var rects =
+            new List<P16Rect>();
+
+        long transmittedPixels = 0L;
+
+        for (int y = 0;
+             y < DisplayHeight;
+             y++)
+        {
+            int row =
+                y *
+                DisplayWidth;
+
+            int x = 0;
+
+            while (x < DisplayWidth)
+            {
+                while (x < DisplayWidth &&
+                       P16Distance4(
+                           current444[row + x],
+                           previous444[row + x]) <=
+                           P16TemporalThreshold4)
+                {
+                    x++;
+                }
+
+                if (x >= DisplayWidth)
+                    break;
+
+                int start = x;
+                int lastChanged = x;
+                int gap = 0;
+                int scan = x + 1;
+
+                while (scan < DisplayWidth)
+                {
+                    bool changed =
+                        P16Distance4(
+                            current444[row + scan],
+                            previous444[row + scan]) >
+                        P16TemporalThreshold4;
+
+                    if (changed)
+                    {
+                        lastChanged = scan;
+                        gap = 0;
+                    }
+                    else
+                    {
+                        gap++;
+
+                        if (gap >
+                            P16DeltaMergeGapPixels)
+                        {
+                            break;
+                        }
+                    }
+
+                    scan++;
+                }
+
+                int evenStart =
+                    start &
+                    ~1;
+
+                int evenEnd =
+                    Math.Min(
+                        DisplayWidth,
+                        (lastChanged + 2) &
+                        ~1);
+
+                int width =
+                    evenEnd -
+                    evenStart;
+
+                if (width > 0)
+                {
+                    rects.Add(
+                        new P16Rect(
+                            evenStart,
+                            y,
+                            width,
+                            1));
+
+                    transmittedPixels +=
+                        width;
+                }
+
+                x =
+                    lastChanged +
+                    1;
+            }
+        }
+
+        double coverage =
+            transmittedPixels /
+            (double)(
+                DisplayWidth *
+                DisplayHeight);
+
+        if (rects.Count > 768 ||
+            coverage >=
+                P16FullFrameCutover)
+        {
+            return BuildP16InterlacedFullFrameRects();
+        }
+
+        // Do not walk from the top row to the bottom row. Spread small updates
+        // over four row phases so any remaining physical LCD update is spatially
+        // interlaced instead of appearing as one visible downward wipe.
+        return rects
+            .OrderBy(rect =>
+                rect.Y &
+                0x03)
+            .ThenBy(rect =>
+                rect.Y)
+            .ThenBy(rect =>
+                rect.X)
+            .ToList();
+    }
+
+    private static List<P16Rect>
+        BuildP16InterlacedFullFrameRects()
+    {
+        const int BandRows = 4;
+        const int PhaseStrideRows =
+            BandRows * 4;
+
+        var rects =
+            new List<P16Rect>(
+                (DisplayHeight +
+                 BandRows -
+                 1) /
+                BandRows);
+
+        for (int phase = 0;
+             phase < 4;
+             phase++)
+        {
+            for (int y =
+                     phase *
+                     BandRows;
+                 y < DisplayHeight;
+                 y += PhaseStrideRows)
+            {
+                int height =
+                    Math.Min(
+                        BandRows,
+                        DisplayHeight - y);
+
+                rects.Add(
+                    new P16Rect(
+                        0,
+                        y,
+                        DisplayWidth,
+                        height));
+            }
+        }
+
+        return rects;
+    }
+
+    private static void WriteP16RectIndices(
+        Stream output,
+        IReadOnlyList<byte> packedIndices,
+        P16Rect rect)
+    {
+        int bytesPerFullRow =
+            DisplayWidth /
+            2;
+
+        int bytesPerRectRow =
+            rect.Width /
+            2;
+
+        int startByte =
+            rect.X /
+            2;
+
+        for (int row = 0;
+             row < rect.Height;
+             row++)
+        {
+            int sourceOffset =
+                (rect.Y + row) *
+                    bytesPerFullRow +
+                startByte;
+
+            for (int i = 0;
+                 i < bytesPerRectRow;
+                 i++)
+            {
+                output.WriteByte(
+                    packedIndices[
+                        sourceOffset +
+                        i]);
+            }
+        }
+    }
+
+    private static void UpdateP16DisplayedState(
+        ushort[] previous444,
+        IReadOnlyList<ushort> current444,
+        P16Rect rect)
+    {
+        for (int row = 0;
+             row < rect.Height;
+             row++)
+        {
+            int offset =
+                (rect.Y + row) *
+                    DisplayWidth +
+                rect.X;
+
+            for (int x = 0;
+                 x < rect.Width;
+                 x++)
+            {
+                previous444[
+                    offset + x] =
+                    current444[
+                        offset + x];
+            }
+        }
     }
 
     private static RynorPackedAnimationResult?
