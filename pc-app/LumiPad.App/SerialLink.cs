@@ -108,6 +108,9 @@ public sealed class SerialLink : IDeviceLink
     public bool SupportsPalette16Gif =>
         _protocolVersion >= 11 &&
         SupportsCapability("GIFP16");
+    public bool SupportsPalette16DeltaGif =>
+        _protocolVersion >= 12 &&
+        SupportsCapability("GIFP16D");
 
     private bool SupportsCapability(string name) =>
         _protocolVersion >= 3 &&
@@ -190,6 +193,9 @@ public sealed class SerialLink : IDeviceLink
 
             if (_protocolVersion >= 11)
                 _capabilities.Add("GIFP16");
+
+            if (_protocolVersion >= 12)
+                _capabilities.Add("GIFP16D");
         }
 
         Log(
@@ -1299,7 +1305,7 @@ public sealed class SerialLink : IDeviceLink
                         "INFO",
                         $"RYNOR GIF optimization started: {rawGif.SourceWidth}x{rawGif.SourceHeight}, " +
                         $"{rawGif.Length / 1048576.0:0.00} MB source, " +
-                        $"codec={(SupportsPalette16Gif ? "P16-stream" : "delta/RLE")}");
+                        $"codec={(SupportsPalette16DeltaGif ? "P16-delta" : (SupportsPalette16Gif ? "P16-stream" : "delta/RLE"))}");
 
                     RynorPackedAnimationResult? packed = null;
 
@@ -1308,13 +1314,17 @@ public sealed class SerialLink : IDeviceLink
                         packed =
                             await Task.Run(
                                 () =>
-                                    SupportsPalette16Gif
-                                        ? RynorPackedAnimationEncoder.TryEncodePalette16Best(
+                                    SupportsPalette16DeltaGif
+                                        ? RynorPackedAnimationEncoder.TryEncodePalette16DeltaBest(
                                             rawGif.Path,
                                             rawGif.ScaleMode)
-                                        : RynorPackedAnimationEncoder.TryEncodeBest(
-                                            rawGif.Path,
-                                            rawGif.ScaleMode));
+                                        : (SupportsPalette16Gif
+                                            ? RynorPackedAnimationEncoder.TryEncodePalette16Best(
+                                                rawGif.Path,
+                                                rawGif.ScaleMode)
+                                            : RynorPackedAnimationEncoder.TryEncodeBest(
+                                                rawGif.Path,
+                                                rawGif.ScaleMode)));
                     }
                     catch (Exception ex)
                     {
@@ -1331,7 +1341,7 @@ public sealed class SerialLink : IDeviceLink
                             $"{packed.FrameCount} frames, {packed.ColorMode}, " +
                             $"{packed.Bytes.Length / 1048576.0:0.00} MB, " +
                             $"timing={(packed.PreservedSourceTiming ? "source" : $"{packed.Fps} FPS")}, " +
-                            $"path={(packed.ColorMode == RynorPackedColorMode.Palette16 ? "P16/4bpp" : "RYQ1")}");
+                            $"path={(packed.ColorMode == RynorPackedColorMode.Palette16 ? (SupportsPalette16DeltaGif ? "P16-delta/4bpp" : "P16/4bpp") : "RYQ1")}");
 
                         bool packedSent =
                             await SendRynorPackedScreensaverAsync(
